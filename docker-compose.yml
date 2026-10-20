@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: construction-erp
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/prod.db
+      - UPLOAD_DIR=/app/data/uploads
+      - JWT_SECRET=change_this_to_a_strong_random_secret_in_coolify
+      - JWT_EXPIRES_IN=7d
+      - SEED_DB=true
+    volumes:
+      - construction_data:/app/data
+
+volumes:
+  construction_data:
