@@ -3,13 +3,20 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Ensure devDependencies (Vite, TypeScript, Tailwind) are installed during build
+ENV NODE_ENV=development
+
+# Install required system libraries for Prisma engine on Alpine
+RUN apk add --no-cache openssl libc6-compat
+
+# Copy package definitions
 COPY package.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 
-RUN npm --prefix backend install
-RUN npm --prefix frontend install
+# Force install of all dependencies including devDependencies
+RUN npm --prefix backend install --include=dev
+RUN npm --prefix frontend install --include=dev
 
 # Copy source files
 COPY backend ./backend
@@ -26,6 +33,9 @@ RUN npm --prefix frontend run build
 FROM node:20-alpine AS runner
 
 WORKDIR /app
+
+# Install required system libraries for Prisma engine on Alpine
+RUN apk add --no-cache openssl libc6-compat
 
 ENV NODE_ENV=production
 ENV PORT=5000
