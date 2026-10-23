@@ -13,12 +13,15 @@ import {
   X,
   LayoutGrid,
   List,
+  Eye,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 
 export const Tasks: React.FC = () => {
   const { hasRole } = useAuth();
-  const { projects, selectedProjectId } = useProject();
-  const [projectId, setProjectId] = useState<string>(selectedProjectId || (projects[0]?.id || ''));
+  const { projects, selectedProjectId, setSelectedProjectId, refreshProjects } = useProject();
+  const [projectId, setProjectId] = useState<string>(selectedProjectId || '');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [loading, setLoading] = useState(true);
@@ -36,18 +39,34 @@ export const Tasks: React.FC = () => {
     priority: 'MEDIUM',
     plannedQty: '100',
     unit: 'SQMT',
-    estimatedCost: '50000',
+    estimatedCost: '8000',
+  });
+
+  // Edit / Delete Task States
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState<any>({
+    title: '',
+    description: '',
+    startDate: '',
+    dueDate: '',
+    priority: 'MEDIUM',
+    plannedQty: '100',
+    completedQty: '0',
+    unit: 'SQMT',
+    estimatedCost: '0',
+    actualCost: '0',
+    status: 'NOT_STARTED',
   });
 
   useEffect(() => {
-    if (selectedProjectId) setProjectId(selectedProjectId);
+    setProjectId(selectedProjectId || '');
   }, [selectedProjectId]);
 
   const fetchTasks = async () => {
-    if (!projectId) return;
     setLoading(true);
     try {
-      const res = await api.getTasks(`projectId=${projectId}`);
+      const res = await api.getTasks(projectId ? `projectId=${projectId}` : '');
       if (res.success) {
         setTasks(res.tasks || []);
         if (selectedTask) {
@@ -71,6 +90,7 @@ export const Tasks: React.FC = () => {
       const res = await api.updateTask(taskId, { status: newStatus });
       if (res.success) {
         fetchTasks();
+        refreshProjects();
       }
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
@@ -94,10 +114,12 @@ export const Tasks: React.FC = () => {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await api.createTask({ ...taskForm, projectId });
+      const targetProjId = taskForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
+      const res = await api.createTask({ ...taskForm, projectId: targetProjId });
       if (res.success) {
         setShowCreateModal(false);
         fetchTasks();
+        refreshProjects();
         setTaskForm({
           projectId: '',
           title: '',
@@ -112,6 +134,58 @@ export const Tasks: React.FC = () => {
       }
     } catch (err: any) {
       alert(err.message || 'Failed to create task');
+    }
+  };
+
+  const openEditTask = (task: Task) => {
+    setEditingTask(task);
+    setEditTaskForm({
+      title: task.title,
+      description: task.description || '',
+      startDate: task.startDate ? new Date(task.startDate).toISOString().split('T')[0] : '',
+      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
+      priority: task.priority || 'MEDIUM',
+      plannedQty: String(task.plannedQty || 0),
+      completedQty: String(task.completedQty || 0),
+      unit: task.unit || 'SQMT',
+      estimatedCost: String(task.estimatedCost || 0),
+      actualCost: String(task.actualCost || 0),
+      status: task.status || 'NOT_STARTED',
+    });
+  };
+
+  const handleUpdateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask) return;
+    try {
+      const res = await api.updateTask(editingTask.id, editTaskForm);
+      if (res.success) {
+        setEditingTask(null);
+        fetchTasks();
+        refreshProjects();
+        if (selectedTask?.id === editingTask.id) {
+          setSelectedTask(res.task);
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update task');
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!deletingTask) return;
+    try {
+      const res = await api.deleteTask(deletingTask.id);
+      if (res.success) {
+        if (selectedTask?.id === deletingTask.id) {
+          setSelectedTask(null);
+        }
+        setDeletingTask(null);
+        fetchTasks();
+        refreshProjects();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete task');
     }
   };
 
@@ -170,12 +244,16 @@ export const Tasks: React.FC = () => {
 
       {/* Project Selector Bar */}
       <div className="flex items-center space-x-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
-        <label className="text-xs font-bold text-slate-500 whitespace-nowrap">Filter Project:</label>
+        <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
         <select
           value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-bold text-slate-800 focus:outline-none"
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setSelectedProjectId(e.target.value);
+          }}
+          className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
         >
+          <option value="">🌐 All Projects</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               [{p.code}] {p.name}
@@ -241,9 +319,8 @@ export const Tasks: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Status Dropdown */}
+                      {/* Status Dropdown & Actions */}
                       <div className="pt-2 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-400">Assigned: {task.assignedUser?.name || 'Engineer'}</span>
                         <select
                           value={task.status}
                           onClick={(e) => e.stopPropagation()}
@@ -255,6 +332,30 @@ export const Tasks: React.FC = () => {
                           <option value="PENDING_APPROVAL">Pending Review</option>
                           <option value="COMPLETED">Completed</option>
                         </select>
+
+                        <div className="flex items-center space-x-0.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => setSelectedTask(task)}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                            title="View Task Details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => openEditTask(task)}
+                            className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition"
+                            title="Edit Task"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingTask(task)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+                            title="Delete Task"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -276,6 +377,7 @@ export const Tasks: React.FC = () => {
                 <th className="py-3 px-3">Due Date</th>
                 <th className="py-3 px-3 text-right">Quantity Completed</th>
                 <th className="py-3 px-3 text-center">Status</th>
+                <th className="py-3 px-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
@@ -302,6 +404,31 @@ export const Tasks: React.FC = () => {
                     }`}>
                       {task.status}
                     </span>
+                  </td>
+                  <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center space-x-1">
+                      <button
+                        onClick={() => setSelectedTask(task)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        title="View Task Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => openEditTask(task)}
+                        className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                        title="Edit Task"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeletingTask(task)}
+                        className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        title="Delete Task"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -374,6 +501,38 @@ export const Tasks: React.FC = () => {
                 </button>
               </form>
             </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  const t = selectedTask;
+                  setSelectedTask(null);
+                  setDeletingTask(t);
+                }}
+                className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Task</span>
+              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => {
+                    const t = selectedTask;
+                    openEditTask(t);
+                  }}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Task</span>
+                </button>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -389,6 +548,23 @@ export const Tasks: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleCreateTask} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
+                <select
+                  required
+                  value={taskForm.projectId || projectId || selectedProjectId || ''}
+                  onChange={(e) => setTaskForm({ ...taskForm, projectId: e.target.value })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                >
+                  <option value="">Select Project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      [{p.code}] {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Task Title *</label>
                 <input
@@ -485,6 +661,190 @@ export const Tasks: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Task Modal */}
+      {editingTask && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full my-8 p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900">Edit Site Task & Progress</h3>
+              <button onClick={() => setEditingTask(null)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateTask} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Task Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={editTaskForm.title}
+                  onChange={(e) => setEditTaskForm({ ...editTaskForm, title: e.target.value })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={editTaskForm.description}
+                  onChange={(e) => setEditTaskForm({ ...editTaskForm, description: e.target.value })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
+                  <select
+                    value={editTaskForm.status}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, status: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
+                  >
+                    <option value="NOT_STARTED">Not Started</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="PENDING_APPROVAL">Pending Review</option>
+                    <option value="COMPLETED">Completed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Priority</label>
+                  <select
+                    value={editTaskForm.priority}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, priority: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="URGENT">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={editTaskForm.startDate}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, startDate: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    value={editTaskForm.dueDate}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, dueDate: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Planned Qty</label>
+                  <input
+                    type="number"
+                    value={editTaskForm.plannedQty}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, plannedQty: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Completed Qty</label>
+                  <input
+                    type="number"
+                    value={editTaskForm.completedQty}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, completedQty: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-emerald-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">UOM</label>
+                  <input
+                    type="text"
+                    value={editTaskForm.unit}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, unit: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg uppercase"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Estimated Cost (₹)</label>
+                  <input
+                    type="number"
+                    value={editTaskForm.estimatedCost}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, estimatedCost: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Actual Cost (₹)</label>
+                  <input
+                    type="number"
+                    value={editTaskForm.actualCost}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, actualCost: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTask(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Task Modal */}
+      {deletingTask && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 text-center space-y-4">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Delete Task?</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Are you sure you want to delete task <strong className="text-slate-800">{deletingTask.title}</strong>? All task comments will also be permanently deleted.
+              </p>
+            </div>
+            <div className="flex justify-center space-x-2 pt-2">
+              <button
+                onClick={() => setDeletingTask(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteTask}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition"
+              >
+                Yes, Delete Task
+              </button>
+            </div>
           </div>
         </div>
       )}

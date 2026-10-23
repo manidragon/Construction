@@ -14,6 +14,8 @@ import {
   Clock,
   CheckCircle2,
   X,
+  Search,
+  Filter,
 } from 'lucide-react';
 
 export const Accounts: React.FC = () => {
@@ -26,6 +28,8 @@ export const Accounts: React.FC = () => {
   const [aging, setAging] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'coa' | 'journal' | 'trialBalance' | 'pnl' | 'balanceSheet' | 'aging'>('coa');
+  const [journalFilter, setJournalFilter] = useState<string>('ALL');
+  const [journalSearch, setJournalSearch] = useState<string>('');
 
   // Manual Journal Modal
   const [showJournalModal, setShowJournalModal] = useState(false);
@@ -180,70 +184,155 @@ export const Accounts: React.FC = () => {
       )}
 
       {/* Tab 2: General Ledger Journal Entries */}
-      {activeTab === 'journal' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900">General Ledger Journal Entries Audit Trail</h3>
-            <span className="text-xs text-slate-500">Every operational transaction auto-creates balanced entries</span>
-          </div>
+      {activeTab === 'journal' && (() => {
+        const wageCount = journals.filter((j) => j.referenceType === 'WAGE_PAYMENT').length;
+        const filteredJournals = journals.filter((j) => {
+          if (journalFilter !== 'ALL' && j.referenceType !== journalFilter) return false;
+          if (journalSearch.trim()) {
+            const q = journalSearch.toLowerCase();
+            const matchNumber = j.entryNumber.toLowerCase().includes(q);
+            const matchNarration = j.narration?.toLowerCase().includes(q);
+            const matchType = j.referenceType.toLowerCase().includes(q);
+            const matchLines = j.lines.some(
+              (l) => l.account?.name.toLowerCase().includes(q) || l.account?.code.includes(q)
+            );
+            return matchNumber || matchNarration || matchType || matchLines;
+          }
+          return true;
+        });
 
-          <div className="space-y-4">
-            {journals.map((j) => {
-              const totalDeb = j.lines.reduce((s, l) => s + l.debit, 0);
-              const totalCred = j.lines.reduce((s, l) => s + l.credit, 0);
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">General Ledger Journal Entries Audit Trail</h3>
+                <p className="text-xs text-slate-500">Every operational transaction auto-creates balanced double entries</p>
+              </div>
+              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                Showing {filteredJournals.length} of {journals.length} entries
+              </span>
+            </div>
 
-              return (
-                <div key={j.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono font-bold text-slate-900">{j.entryNumber}</span>
-                      <span className="text-slate-400">•</span>
-                      <span className="text-slate-500">{formatDate(j.entryDate)}</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">
-                        {j.referenceType}
-                      </span>
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'ALL', label: `All (${journals.length})` },
+                  { id: 'WAGE_PAYMENT', label: `💵 Wage Payments (${wageCount})` },
+                  { id: 'CLIENT_INVOICE', label: 'Client Invoices' },
+                  { id: 'CLIENT_RECEIPT', label: 'Client Receipts' },
+                  { id: 'SUPPLIER_INVOICE', label: 'Supplier Bills' },
+                  { id: 'SUPPLIER_PAYMENT', label: 'Supplier Payments' },
+                  { id: 'MANUAL', label: 'Manual Entries' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setJournalFilter(f.id)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
+                      journalFilter === f.id
+                        ? f.id === 'WAGE_PAYMENT'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'bg-slate-900 text-amber-400 shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search entries or accounts..."
+                  value={journalSearch}
+                  onChange={(e) => setJournalSearch(e.target.value)}
+                  className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {filteredJournals.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                No journal entries found matching the filter or search query.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredJournals.map((j) => {
+                  const totalDeb = j.lines.reduce((s, l) => s + l.debit, 0);
+
+                  return (
+                    <div
+                      key={j.id}
+                      className={`p-4 rounded-xl border space-y-2 transition ${
+                        j.referenceType === 'WAGE_PAYMENT'
+                          ? 'bg-emerald-50/40 border-emerald-200'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono font-bold text-slate-900">{j.entryNumber}</span>
+                          <span className="text-slate-400">•</span>
+                          <span className="text-slate-500">{formatDate(j.entryDate)}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              j.referenceType === 'WAGE_PAYMENT'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : j.referenceType === 'CLIENT_RECEIPT'
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : j.referenceType === 'SUPPLIER_PAYMENT'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {j.referenceType}
+                          </span>
+                        </div>
+                        <span className="font-bold text-slate-900 font-mono">
+                          Total: {formatCurrency(totalDeb)}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-slate-700 font-medium">{j.narration}</p>
+
+                      <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mt-2">
+                        <table className="w-full text-left">
+                          <thead className="bg-slate-100 text-slate-500 text-[10px] uppercase font-bold">
+                            <tr>
+                              <th className="py-1.5 px-3">Account Code & Title</th>
+                              <th className="py-1.5 px-3">Project</th>
+                              <th className="py-1.5 px-3 text-right">Debit (₹)</th>
+                              <th className="py-1.5 px-3 text-right">Credit (₹)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {j.lines.map((l) => (
+                              <tr key={l.id}>
+                                <td className="py-1.5 px-3 font-semibold text-slate-800">
+                                  [{l.account.code}] {l.account.name}
+                                </td>
+                                <td className="py-1.5 px-3 text-slate-500">{l.project?.name || '—'}</td>
+                                <td className="py-1.5 px-3 text-right font-mono text-slate-900">
+                                  {l.debit > 0 ? formatCurrency(l.debit) : '—'}
+                                </td>
+                                <td className="py-1.5 px-3 text-right font-mono text-slate-900">
+                                  {l.credit > 0 ? formatCurrency(l.credit) : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                    <span className="font-bold text-slate-900 font-mono">
-                      Total: {formatCurrency(totalDeb)}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-700 italic">{j.narration}</p>
-
-                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mt-2">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-100 text-slate-500 text-[10px] uppercase font-bold">
-                        <tr>
-                          <th className="py-1.5 px-3">Account Code & Title</th>
-                          <th className="py-1.5 px-3">Project</th>
-                          <th className="py-1.5 px-3 text-right">Debit (₹)</th>
-                          <th className="py-1.5 px-3 text-right">Credit (₹)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {j.lines.map((l) => (
-                          <tr key={l.id}>
-                            <td className="py-1.5 px-3 font-semibold text-slate-800">
-                              [{l.account.code}] {l.account.name}
-                            </td>
-                            <td className="py-1.5 px-3 text-slate-500">{l.project?.name || '—'}</td>
-                            <td className="py-1.5 px-3 text-right font-mono text-slate-900">
-                              {l.debit > 0 ? formatCurrency(l.debit) : '—'}
-                            </td>
-                            <td className="py-1.5 px-3 text-right font-mono text-slate-900">
-                              {l.credit > 0 ? formatCurrency(l.credit) : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Tab 3: Trial Balance */}
       {activeTab === 'trialBalance' && (

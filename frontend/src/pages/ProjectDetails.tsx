@@ -13,7 +13,16 @@ import {
   Plus,
   PlusCircle,
   X,
+  TrendingUp,
+  HardHat,
+  Truck,
+  Users,
+  ShieldCheck,
+  Share2,
+  FileText,
+  Printer,
 } from 'lucide-react';
+import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
 export const ProjectDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +31,10 @@ export const ProjectDetails: React.FC = () => {
   const [activeTab, setActiveTab] = useState<
     'overview' | 'boq' | 'tasks' | 'dpr' | 'expenses' | 'billing' | 'changeOrders' | 'documents'
   >('overview');
+
+  // Daily Report Sharing modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTab, setShareTab] = useState<'owner' | 'client'>('owner');
 
   // Change Order modal state
   const [showCOModal, setShowCOModal] = useState(false);
@@ -90,17 +103,45 @@ export const ProjectDetails: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Breadcrumb & Return */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <Link to="/projects" className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-800 transition font-medium">
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Projects</span>
         </Link>
 
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-          project.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-700'
-        }`}>
-          Status: {project.status}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Share Daily Report to Owner Button */}
+          <button
+            onClick={() => {
+              setShareTab('owner');
+              setShowShareModal(true);
+            }}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs transition shadow-sm border border-slate-800"
+            title="Share daily financial & task report with Owner via WhatsApp or PDF"
+          >
+            <Share2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Daily Report to Owner (WhatsApp / PDF)</span>
+          </button>
+
+          {/* Share Client Progress & Billing Button */}
+          <button
+            onClick={() => {
+              setShareTab('client');
+              setShowShareModal(true);
+            }}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm"
+            title="Share work progress, payments, and balance with Client via WhatsApp"
+          >
+            <Users className="w-3.5 h-3.5 text-white" />
+            <span>Share Client Update (WhatsApp)</span>
+          </button>
+
+          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+            project.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-700'
+          }`}>
+            Status: {project.status}
+          </span>
+        </div>
       </div>
 
       {/* Project Header Banner Card */}
@@ -132,7 +173,7 @@ export const ProjectDetails: React.FC = () => {
           </div>
 
           {/* Quick Metrics Badge Group */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-right">
               <span className="text-[10px] text-slate-400 block">Contract Value</span>
               <strong className="text-xs sm:text-sm text-slate-900">{formatCurrency(project.contractValue, true)}</strong>
@@ -145,9 +186,16 @@ export const ProjectDetails: React.FC = () => {
               <span className="text-[10px] text-amber-700 block">Actual Cost</span>
               <strong className="text-xs sm:text-sm text-amber-900">{formatCurrency(f.actualCost || 0, true)}</strong>
             </div>
-            <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 text-right">
-              <span className="text-[10px] text-emerald-700 block">Work Progress</span>
-              <strong className="text-xs sm:text-sm text-emerald-900">{project.completionPercent}%</strong>
+            <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 text-right">
+              <span className="text-[10px] text-emerald-700 block font-bold">Realized Net Profit</span>
+              <strong className="text-xs sm:text-sm text-emerald-800">
+                {formatCurrency(f.netProfit !== undefined ? f.netProfit : ((f.totalBilled || 0) - (f.actualCost || 0)), true)}
+              </strong>
+              <span className="text-[9px] text-emerald-600 block font-bold">({f.netProfitMargin || 0}%)</span>
+            </div>
+            <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-right">
+              <span className="text-[10px] text-blue-700 block">Work Progress</span>
+              <strong className="text-xs sm:text-sm text-blue-900">{project.completionPercent}%</strong>
             </div>
           </div>
         </div>
@@ -182,6 +230,88 @@ export const ProjectDetails: React.FC = () => {
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            {/* Financial Performance & Net Profit Overview */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-5 text-white border border-slate-800 shadow-md">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Project Financial Health & Realized Profit</h3>
+                    <p className="text-[11px] text-slate-400">Client billing vs. actual site costs incurred</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block">Net Profit Margin</span>
+                  <span className="text-base font-extrabold text-emerald-400 font-mono">
+                    +{f.netProfitMargin || 0}%
+                  </span>
+                </div>
+              </div>
+
+              {/* 3 Key Metrics KPI Strip */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <span className="text-[11px] text-slate-400 block font-medium">Billed Revenue</span>
+                  <strong className="text-sm font-mono text-white block mt-0.5">
+                    {formatCurrency(f.totalBilled || 0)}
+                  </strong>
+                  <span className="text-[10px] text-emerald-400 mt-1 block">
+                    {f.outstandingReceivable === 0 ? '✓ 100% Collected (₹0 Due)' : `₹${formatCurrency(f.outstandingReceivable)} Pending`}
+                  </span>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <span className="text-[11px] text-slate-400 block font-medium">Total Incurred Cost</span>
+                  <strong className="text-sm font-mono text-amber-300 block mt-0.5">
+                    {formatCurrency(f.actualCost || 0)}
+                  </strong>
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Budget: {formatCurrency(project.approvedBudget)} ({f.budgetBurnPercent || 0}% used)
+                  </span>
+                </div>
+
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+                  <span className="text-[11px] text-emerald-300 block font-medium">Realized Net Profit</span>
+                  <strong className="text-base font-mono text-emerald-400 block mt-0.5">
+                    {formatCurrency(f.netProfit !== undefined ? f.netProfit : ((f.totalBilled || 0) - (f.actualCost || 0)))}
+                  </strong>
+                  <span className="text-[10px] text-emerald-300/80 mt-1 block font-semibold">
+                    Healthy Profit Realized
+                  </span>
+                </div>
+              </div>
+
+              {/* Cost Breakdown Details */}
+              <div className="pt-3 border-t border-slate-800">
+                <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2">Cost Breakdown Details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <span className="text-slate-400 flex items-center">
+                      <Truck className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
+                      Materials (POs)
+                    </span>
+                    <strong className="font-mono text-slate-200">{formatCurrency(f.materialsCost || 0)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <span className="text-slate-400 flex items-center">
+                      <HardHat className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
+                      Labour (Muster Roll)
+                    </span>
+                    <strong className="font-mono text-slate-200">{formatCurrency(f.labourCost || 0)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <span className="text-slate-400 flex items-center">
+                      <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-rose-400" />
+                      Site Expenses
+                    </span>
+                    <strong className="font-mono text-slate-200">{formatCurrency(f.expensesCost || 0)}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Sites under this Project */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <div className="flex items-center justify-between mb-4">
@@ -231,22 +361,104 @@ export const ProjectDetails: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Assigned Team & Billing Terms */}
+          {/* Right Column: Assigned Team, Site Workforce, Suppliers & Billing Terms */}
           <div className="space-y-6">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 mb-3">Project Team Members</h3>
-              <div className="space-y-3">
-                {(project.members || []).map((m: any) => (
-                  <div key={m.id} className="flex items-center space-x-3 text-xs">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
-                      {m.user?.name.charAt(0) || 'U'}
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800">{m.user?.name}</p>
-                      <p className="text-[10px] text-slate-500">{m.roleTitle} ({m.user?.role})</p>
-                    </div>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center">
+                  <Users className="w-4 h-4 mr-1.5 text-amber-600" />
+                  Team & Contributors
+                </h3>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {((project.members || []).length) + ((project.siteWorkforce || []).length) + ((project.projectSuppliers || []).length)} active
+                </span>
+              </div>
+
+              {/* 1. Internal App Users / Project Members */}
+              {(project.members || []).length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Project Management</h4>
+                  <div className="space-y-2">
+                    {project.members.map((m: any) => (
+                      <div key={m.id} className="flex items-center space-x-2.5 p-2 bg-slate-50 rounded-xl text-xs">
+                        <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">
+                          {m.user?.name.charAt(0) || 'U'}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800">{m.user?.name}</p>
+                          <p className="text-[10px] text-slate-500">{m.roleTitle} ({m.user?.role})</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              )}
+
+              {/* 2. Site Labour Workforce */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center">
+                    <HardHat className="w-3 h-3 mr-1 text-amber-500" />
+                    Site Labour Workforce
+                  </h4>
+                  <span className="text-[10px] text-slate-500 font-bold">{(project.siteWorkforce || []).length} Workers</span>
+                </div>
+                {(project.siteWorkforce || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic bg-slate-50 p-2.5 rounded-lg">No worker attendance recorded for this project yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {project.siteWorkforce.map((w: any) => (
+                      <div key={w.id} className="p-2.5 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between text-xs">
+                        <div>
+                          <div className="flex items-center space-x-1.5">
+                            <strong className="text-slate-900">{w.name}</strong>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                              {w.trade}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Code: <span className="font-mono">{w.code}</span> • ₹{w.dailyWageRate}/day
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-slate-800 block">{formatCurrency(w.totalEarned)}</span>
+                          <span className="text-[9px] text-slate-400">{w.shiftsWorked} shift{w.shiftsWorked > 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Procurement Suppliers / Vendors */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center">
+                    <Truck className="w-3 h-3 mr-1 text-blue-500" />
+                    Material Vendors & Suppliers
+                  </h4>
+                  <span className="text-[10px] text-slate-500 font-bold">{(project.projectSuppliers || []).length} Vendors</span>
+                </div>
+                {(project.projectSuppliers || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic bg-slate-50 p-2.5 rounded-lg">No purchase orders linked to this project yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {project.projectSuppliers.map((s: any) => (
+                      <div key={s.id} className="p-2.5 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between text-xs">
+                        <div>
+                          <strong className="text-slate-900 block truncate max-w-[150px]">{s.name}</strong>
+                          <p className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[150px]">
+                            {s.items?.length > 0 ? s.items.join(', ') : `${s.orderCount} PO(s)`}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-slate-800 block">{formatCurrency(s.totalOrdersValue)}</span>
+                          <span className="text-[9px] text-slate-400">{s.orderCount} PO settled</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -563,6 +775,14 @@ export const ProjectDetails: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Daily Report Sharing Modal (Owner & Client) */}
+      <DailyReportShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        projectId={id || ''}
+        defaultTab={shareTab}
+      />
     </div>
   );
 };

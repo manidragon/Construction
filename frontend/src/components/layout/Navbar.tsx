@@ -62,18 +62,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
       </div>
 
       {/* Center: Global Project Switcher */}
-      <div className="hidden md:flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60 max-w-md w-full mx-4">
+      <div className="hidden md:flex items-center space-x-2.5 bg-slate-800/90 hover:bg-slate-800 px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-700/80 hover:border-slate-600 shadow-sm flex-1 max-w-xl lg:max-w-2xl mx-2 lg:mx-4 transition-colors">
         <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
-        <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Filter Project:</span>
+        <span className="text-xs font-bold text-slate-400 whitespace-nowrap">Filter Project:</span>
         <select
           value={selectedProjectId}
           onChange={(e) => setSelectedProjectId(e.target.value)}
           aria-label="Filter active project"
-          className="bg-transparent text-xs text-white font-medium focus:outline-none w-full cursor-pointer truncate"
+          className="bg-transparent text-xs sm:text-sm text-white font-semibold focus:outline-none w-full cursor-pointer truncate py-0.5"
         >
-          <option value="" className="bg-slate-800 text-white">🌐 All Projects (Enterprise Overview)</option>
+          <option value="" className="bg-slate-900 text-white font-medium">🌐 All Projects (Enterprise Overview)</option>
           {projects.map((p) => (
-            <option key={p.id} value={p.id} className="bg-slate-800 text-white">
+            <option key={p.id} value={p.id} className="bg-slate-900 text-white font-medium">
               [{p.code}] {p.name}
             </option>
           ))}

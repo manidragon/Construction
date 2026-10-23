@@ -21,6 +21,9 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
         clientReceipts: true,
         expenses: true,
         labourAttendances: true,
+        purchaseOrders: {
+          where: { status: { not: 'CANCELLED' } },
+        },
       },
     });
 
@@ -77,11 +80,20 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     });
     const materialStockValue = stockBalances.reduce((sum, sb) => sum + (sb.totalValuation || 0), 0);
 
+    // Material Purchases
+    const purchaseOrders = await prisma.purchaseOrder.findMany({
+      where: {
+        status: { not: 'CANCELLED' },
+        ...(projectId ? { projectId: String(projectId) } : {}),
+      },
+    });
+    const totalMaterialsCost = purchaseOrders.reduce((sum, po) => sum + (po.totalAmount || 0), 0);
+
     // BOQ Actual Expenditure
     const boqItems = await prisma.bOQItem.findMany({
       where: projectId ? { projectId: String(projectId) } : {},
     });
-    const actualExpenditureToDate = boqItems.reduce((sum, b) => sum + (b.actualExpenditure || 0), 0) + totalExpenses;
+    const actualExpenditureToDate = boqItems.reduce((sum, b) => sum + (b.actualExpenditure || 0), 0) + totalExpenses + totalLabourCost + totalMaterialsCost;
 
     // 3. Operational Counts & Alerts
     const pendingRequisitions = await prisma.materialRequisition.count({
@@ -115,12 +127,15 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
       const pReceipts = p.clientReceipts.reduce((sum, r) => sum + r.amount, 0);
       const pBoqCost = p.boqItems.reduce((sum, b) => sum + (b.actualExpenditure || 0), 0);
       const pExpCost = p.expenses.reduce((sum, e) => sum + e.totalAmount, 0);
-      const pActualCost = pBoqCost + pExpCost;
+      const pMatCost = (p.purchaseOrders || []).reduce((sum, po) => sum + (po.totalAmount || 0), 0);
+      const pLabCost = (p.labourAttendances || []).reduce((sum, att) => sum + (att.totalWageEarned || 0), 0);
+      const pActualCost = pBoqCost + pExpCost + pMatCost + pLabCost;
       const pBudgetUtilization = p.approvedBudget > 0 ? (pActualCost / p.approvedBudget) * 100 : 0;
       
-      // Estimated Profit = Contract Value - Actual Cost (or projected)
-      const estimatedProfit = p.contractValue - (pActualCost > p.approvedBudget ? pActualCost : p.approvedBudget);
-      const profitMarginPercent = p.contractValue > 0 ? (estimatedProfit / p.contractValue) * 100 : 0;
+      // Realized / Projected Profit = (Billed Revenue if billed, else Contract Value) - Actual Cost
+      const revenueBase = pInvoices > 0 ? pInvoices : p.contractValue;
+      const estimatedProfit = revenueBase - pActualCost;
+      const profitMarginPercent = revenueBase > 0 ? (estimatedProfit / revenueBase) * 100 : 0;
 
       return {
         id: p.id,
@@ -130,6 +145,9 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
         contractValue: p.contractValue,
         approvedBudget: p.approvedBudget,
         actualCost: pActualCost,
+        materialsCost: pMatCost,
+        labourCost: pLabCost,
+        expensesCost: pExpCost,
         budgetUtilization: Math.round(pBudgetUtilization * 10) / 10,
         billedAmount: pInvoices,
         receivedAmount: pReceipts,

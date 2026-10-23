@@ -20,30 +20,46 @@ export const getClients = async (req: Request, res: Response) => {
 
 export const createClient = async (req: Request, res: Response) => {
   try {
-    const { code, name, companyName, contactPerson, phone, email, billingAddress, gstin, pan } = req.body;
+    let { code, name, companyName, contactPerson, phone, email, billingAddress, gstin, pan } = req.body;
 
-    if (!code || !name || !phone || !billingAddress) {
-      return res.status(400).json({ success: false, message: 'Code, name, phone, and billing address are required.' });
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, message: 'Client name is required.' });
+    }
+
+    let finalCode = code ? String(code).trim() : '';
+    if (!finalCode) {
+      const allClients = await prisma.client.findMany({ select: { code: true } });
+      let maxNum = 0;
+      for (const c of allClients) {
+        if (c.code && c.code.startsWith('CLI-')) {
+          const num = parseInt(c.code.replace('CLI-', ''), 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      }
+      finalCode = `CLI-${String(maxNum + 1).padStart(3, '0')}`;
     }
 
     const client = await prisma.client.create({
       data: {
-        code,
-        name,
-        companyName,
-        contactPerson,
-        phone,
-        email,
-        billingAddress,
-        gstin,
-        pan,
+        code: finalCode,
+        name: String(name).trim(),
+        companyName: companyName ? String(companyName).trim() : null,
+        contactPerson: contactPerson ? String(contactPerson).trim() : null,
+        phone: phone ? String(phone).trim() : '-',
+        email: email ? String(email).trim() : null,
+        billingAddress: billingAddress ? String(billingAddress).trim() : 'Registered Office Address',
+        gstin: gstin ? String(gstin).trim() : null,
+        pan: pan ? String(pan).trim() : null,
       },
     });
 
-    await logAudit(req.user?.id, 'CREATE_CLIENT', 'CLIENT', client.id, { code, name }, req.ip);
+    await logAudit(req.user?.id, 'CREATE_CLIENT', 'CLIENT', client.id, { code: finalCode, name }, req.ip);
 
     return res.status(201).json({ success: true, client });
   } catch (error: any) {
+    if (error.code === 'P2002') {
+      return res.status(400).json({ success: false, message: 'A client with this code already exists.' });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -106,9 +122,9 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     }
 
     const sub = Number(subtotal);
-    const retPct = Number(retentionPercent) || 5.0;
-    const tdsPct = Number(tdsPercent) || 2.0;
-    const gstPct = Number(gstPercent) || 18.0;
+    const retPct = retentionPercent !== undefined && retentionPercent !== '' ? Number(retentionPercent) : 5.0;
+    const tdsPct = tdsPercent !== undefined && tdsPercent !== '' ? Number(tdsPercent) : 2.0;
+    const gstPct = gstPercent !== undefined && gstPercent !== '' ? Number(gstPercent) : 18.0;
 
     const retentionAmount = (sub * retPct) / 100;
     const tdsAmount = (sub * tdsPct) / 100;
@@ -117,11 +133,50 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     // Net payable by client = Subtotal + GST - Retention - TDS
     const netInvoiceAmount = sub + gstAmount - retentionAmount - tdsAmount;
 
+    // Auto-resolve or create client record if needed
+    let finalClientId = clientId && clientId !== '__PROJECT_CLIENT__' ? clientId : null;
+    if (!finalClientId && projectId) {
+      const proj = await prisma.project.findUnique({ where: { id: projectId } });
+      if (proj && proj.clientName) {
+        let matchedClient = await prisma.client.findFirst({
+          where: {
+            OR: [
+              { name: proj.clientName },
+              { companyName: proj.clientName },
+            ],
+          },
+        });
+        if (!matchedClient) {
+          const allClients = await prisma.client.findMany({ select: { code: true } });
+          let maxNum = 0;
+          for (const c of allClients) {
+            if (c.code && c.code.startsWith('CLI-')) {
+              const num = parseInt(c.code.replace('CLI-', ''), 10);
+              if (!isNaN(num) && num > maxNum) maxNum = num;
+            }
+          }
+          const finalCode = `CLI-${String(maxNum + 1).padStart(3, '0')}`;
+          matchedClient = await prisma.client.create({
+            data: {
+              code: finalCode,
+              name: proj.clientName,
+              companyName: proj.clientName,
+              phone: proj.clientContact || '-',
+              email: proj.clientEmail || null,
+              billingAddress: proj.clientBillingAddr || 'Registered Office Address',
+              gstin: proj.clientGstin || null,
+            },
+          });
+        }
+        finalClientId = matchedClient.id;
+      }
+    }
+
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.clientInvoice.create({
         data: {
           invoiceNumber,
-          clientId: clientId || null,
+          clientId: finalClientId || null,
           projectId,
           invoiceType: invoiceType || 'RUNNING_ACCOUNT_RA',
           invoiceDate: new Date(invoiceDate),
@@ -266,16 +321,17 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
     });
 
     // Auto post balanced double entry:
-    // Dr. HDFC Bank: rcpAmount
+    // Dr. Cash or HDFC Bank: rcpAmount
     // Cr. Accounts Receivable: rcpAmount
     try {
+      const debitAccount = paymentMethod === 'CASH' ? COA.CASH : COA.HDFC_BANK;
       await postBalancedJournalEntry({
         entryDate: receiptDate ? new Date(receiptDate) : new Date(),
         referenceType: 'CLIENT_RECEIPT',
         referenceId: receipt.id,
-        narration: `Payment received from client ${receiptNumber}. Ref: ${referenceNo || 'Direct'}`,
+        narration: `Payment received from client ${receiptNumber} via ${paymentMethod}. Ref: ${referenceNo || 'Direct'}`,
         lines: [
-          { accountCode: COA.HDFC_BANK, debit: rcpAmount, credit: 0, projectId },
+          { accountCode: debitAccount, debit: rcpAmount, credit: 0, projectId },
           { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: 0, credit: rcpAmount, projectId },
         ],
         createdById: req.user?.id,
@@ -287,6 +343,262 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
     await logAudit(req.user?.id, 'CLIENT_RECEIPT', 'CLIENT_RECEIPT', receipt.id, { receiptNumber, amount: rcpAmount }, req.ip);
 
     return res.status(201).json({ success: true, receipt });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateClient = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { code, name, companyName, contactPerson, phone, email, billingAddress, gstin, pan } = req.body;
+
+    const existing = await prisma.client.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Client not found.' });
+    }
+
+    const updated = await prisma.client.update({
+      where: { id },
+      data: {
+        code: code !== undefined ? String(code).trim() : existing.code,
+        name: name !== undefined ? String(name).trim() : existing.name,
+        companyName: companyName !== undefined ? (companyName ? String(companyName).trim() : null) : existing.companyName,
+        contactPerson: contactPerson !== undefined ? (contactPerson ? String(contactPerson).trim() : null) : existing.contactPerson,
+        phone: phone !== undefined ? String(phone).trim() : existing.phone,
+        email: email !== undefined ? (email ? String(email).trim() : null) : existing.email,
+        billingAddress: billingAddress !== undefined ? String(billingAddress).trim() : existing.billingAddress,
+        gstin: gstin !== undefined ? (gstin ? String(gstin).trim() : null) : existing.gstin,
+        pan: pan !== undefined ? (pan ? String(pan).trim() : null) : existing.pan,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_CLIENT', 'CLIENT', id, { name: updated.name }, req.ip);
+
+    return res.json({ success: true, client: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteClient = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.client.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { invoices: true, receipts: true } },
+      },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Client not found.' });
+    }
+
+    if (existing._count.invoices > 0 || existing._count.receipts > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete client with active records (${existing._count.invoices} invoices, ${existing._count.receipts} receipts).`,
+      });
+    }
+
+    await prisma.client.delete({ where: { id } });
+    await logAudit(req.user?.id, 'DELETE_CLIENT', 'CLIENT', id, { name: existing.name }, req.ip);
+
+    return res.json({ success: true, message: 'Client deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateClientInvoice = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const {
+      invoiceNumber,
+      invoiceType,
+      invoiceDate,
+      dueDate,
+      workPeriodStart,
+      workPeriodEnd,
+      subtotal,
+      retentionPercent,
+      tdsPercent,
+      gstPercent,
+      certificationNotes,
+      status,
+    } = req.body;
+
+    const existing = await prisma.clientInvoice.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Client invoice not found.' });
+    }
+
+    const sub = subtotal !== undefined ? Number(subtotal) : existing.subtotal;
+    const retPct = retentionPercent !== undefined ? Number(retentionPercent) : existing.retentionPercent;
+    const tdsPct = tdsPercent !== undefined ? Number(tdsPercent) : existing.tdsPercent;
+    const gstPct = gstPercent !== undefined ? Number(gstPercent) : existing.gstPercent;
+
+    const retentionAmount = (sub * retPct) / 100;
+    const tdsAmount = (sub * tdsPct) / 100;
+    const gstAmount = (sub * gstPct) / 100;
+    const netInvoiceAmount = sub + gstAmount - retentionAmount - tdsAmount;
+    const balanceDue = Math.max(0, netInvoiceAmount - existing.paidAmount);
+
+    const updated = await prisma.clientInvoice.update({
+      where: { id },
+      data: {
+        invoiceNumber: invoiceNumber || existing.invoiceNumber,
+        invoiceType: invoiceType || existing.invoiceType,
+        invoiceDate: invoiceDate ? new Date(invoiceDate) : existing.invoiceDate,
+        dueDate: dueDate ? new Date(dueDate) : existing.dueDate,
+        workPeriodStart: workPeriodStart ? new Date(workPeriodStart) : existing.workPeriodStart,
+        workPeriodEnd: workPeriodEnd ? new Date(workPeriodEnd) : existing.workPeriodEnd,
+        subtotal: sub,
+        retentionPercent: retPct,
+        retentionAmount,
+        tdsPercent: tdsPct,
+        tdsAmount,
+        gstPercent: gstPct,
+        gstAmount,
+        netInvoiceAmount,
+        balanceDue,
+        certificationNotes: certificationNotes !== undefined ? certificationNotes : existing.certificationNotes,
+        status: status || existing.status,
+      },
+      include: {
+        client: true,
+        project: { select: { id: true, code: true, name: true } },
+        items: true,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_CLIENT_INVOICE', 'CLIENT_INVOICE', id, { invoiceNumber: updated.invoiceNumber }, req.ip);
+
+    return res.json({ success: true, invoice: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteClientInvoice = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.clientInvoice.findUnique({
+      where: { id },
+      include: { receipts: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Client invoice not found.' });
+    }
+
+    if (existing.receipts.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete invoice that has ${existing.receipts.length} payment receipts linked. Delete receipts first.`,
+      });
+    }
+
+    // Delete linked journal entries
+    await prisma.journalEntry.deleteMany({
+      where: { referenceType: 'CLIENT_INVOICE', referenceId: id },
+    });
+
+    // Invoice items cascade delete
+    await prisma.clientInvoice.delete({ where: { id } });
+
+    await logAudit(req.user?.id, 'DELETE_CLIENT_INVOICE', 'CLIENT_INVOICE', id, { invoiceNumber: existing.invoiceNumber }, req.ip);
+
+    return res.json({ success: true, message: 'Client invoice deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateClientReceipt = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { receiptDate, amount, paymentMethod, referenceNo, notes } = req.body;
+
+    const existing = await prisma.clientReceipt.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Client receipt not found.' });
+    }
+
+    const newAmount = amount !== undefined ? Number(amount) : existing.amount;
+    const diff = newAmount - existing.amount;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const rcp = await tx.clientReceipt.update({
+        where: { id },
+        data: {
+          receiptDate: receiptDate ? new Date(receiptDate) : existing.receiptDate,
+          amount: newAmount,
+          paymentMethod: paymentMethod || existing.paymentMethod,
+          referenceNo: referenceNo !== undefined ? referenceNo : existing.referenceNo,
+          notes: notes !== undefined ? notes : existing.notes,
+        },
+      });
+
+      // Update linked invoice if any
+      if (existing.invoiceId && diff !== 0) {
+        const inv = await tx.clientInvoice.findUnique({ where: { id: existing.invoiceId } });
+        if (inv) {
+          const newPaid = Math.max(0, inv.paidAmount + diff);
+          const newBal = Math.max(0, inv.netInvoiceAmount - newPaid);
+          const newStatus = newBal === 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : 'APPROVED';
+
+          await tx.clientInvoice.update({
+            where: { id: existing.invoiceId },
+            data: { paidAmount: newPaid, balanceDue: newBal, status: newStatus },
+          });
+        }
+      }
+
+      return rcp;
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_CLIENT_RECEIPT', 'CLIENT_RECEIPT', id, { receiptNumber: updated.receiptNumber, amount: newAmount }, req.ip);
+
+    return res.json({ success: true, receipt: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteClientReceipt = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.clientReceipt.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Client receipt not found.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (existing.invoiceId) {
+        const inv = await tx.clientInvoice.findUnique({ where: { id: existing.invoiceId } });
+        if (inv) {
+          const newPaid = Math.max(0, inv.paidAmount - existing.amount);
+          const newBal = Math.max(0, inv.netInvoiceAmount - newPaid);
+          const newStatus = newPaid === 0 ? 'APPROVED' : 'PARTIALLY_PAID';
+
+          await tx.clientInvoice.update({
+            where: { id: existing.invoiceId },
+            data: { paidAmount: newPaid, balanceDue: newBal, status: newStatus },
+          });
+        }
+      }
+
+      // Delete journal entries
+      await tx.journalEntry.deleteMany({
+        where: { referenceType: 'CLIENT_RECEIPT', referenceId: id },
+      });
+
+      await tx.clientReceipt.delete({ where: { id } });
+    });
+
+    await logAudit(req.user?.id, 'DELETE_CLIENT_RECEIPT', 'CLIENT_RECEIPT', id, { receiptNumber: existing.receiptNumber }, req.ip);
+
+    return res.json({ success: true, message: 'Client receipt deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

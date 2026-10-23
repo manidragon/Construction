@@ -16,18 +16,23 @@ import {
   CheckCircle2,
   X,
   FileCheck,
+  Share2,
 } from 'lucide-react';
+import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
 export const DailyReports: React.FC = () => {
   const { hasRole } = useAuth();
-  const { projects, selectedProjectId } = useProject();
-  const [projectId, setProjectId] = useState<string>(selectedProjectId || (projects[0]?.id || ''));
+  const { projects, selectedProjectId, setSelectedProjectId } = useProject();
+  const [projectId, setProjectId] = useState<string>(selectedProjectId || '');
   const [reports, setReports] = useState<DailySiteReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState<DailySiteReport | null>(null);
 
   // Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareProjectId, setShareProjectId] = useState('');
+  const [shareTab, setShareTab] = useState<'owner' | 'client'>('owner');
   const [dprForm, setDprForm] = useState({
     projectId: '',
     siteId: '',
@@ -57,14 +62,13 @@ export const DailyReports: React.FC = () => {
   });
 
   useEffect(() => {
-    if (selectedProjectId) setProjectId(selectedProjectId);
+    setProjectId(selectedProjectId || '');
   }, [selectedProjectId]);
 
   const fetchDPRs = async () => {
-    if (!projectId) return;
     setLoading(true);
     try {
-      const res = await api.getDailyReports(`projectId=${projectId}`);
+      const res = await api.getDailyReports(projectId ? `projectId=${projectId}` : '');
       if (res.success) {
         setReports(res.reports || []);
         if (selectedReport) {
@@ -129,6 +133,25 @@ export const DailyReports: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* Share Daily Report Trigger */}
+          <button
+            onClick={() => {
+              const targetPrj = projectId || selectedProjectId || (projects[0]?.id || '');
+              if (!targetPrj) {
+                alert('Please select a project first to share its daily report.');
+                return;
+              }
+              setShareProjectId(targetPrj);
+              setShareTab('owner');
+              setShowShareModal(true);
+            }}
+            className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition border border-slate-800"
+            title="Share aggregated project daily report with Owner or Client"
+          >
+            <Share2 className="w-4 h-4 text-amber-400" />
+            <span>Share Daily Report (Owner / Client)</span>
+          </button>
+
           {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
             <button
               onClick={() => setShowCreateModal(true)}
@@ -143,12 +166,16 @@ export const DailyReports: React.FC = () => {
 
       {/* Project Selector Bar */}
       <div className="flex items-center space-x-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
-        <label className="text-xs font-bold text-slate-500 whitespace-nowrap">Filter Project:</label>
+        <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
         <select
           value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-bold text-slate-800 focus:outline-none"
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setSelectedProjectId(e.target.value);
+          }}
+          className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
         >
+          <option value="">🌐 All Projects</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               [{p.code}] {p.name}
@@ -438,6 +465,14 @@ export const DailyReports: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Daily Report Sharing Modal */}
+      <DailyReportShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        projectId={shareProjectId}
+        defaultTab={shareTab}
+      />
     </div>
   );
 };

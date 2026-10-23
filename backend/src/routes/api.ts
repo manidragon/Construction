@@ -13,6 +13,7 @@ import {
   createSite,
   createPhase,
   createChangeOrder,
+  getProjectDailyShareReport,
 } from '../controllers/projectController';
 import {
   getBOQByProject,
@@ -35,6 +36,8 @@ import {
   createSupplier,
   getPurchaseOrders,
   createPurchaseOrder,
+  updatePurchaseOrder,
+  deletePurchaseOrder,
   getGoodsReceiptNotes,
   createGoodsReceiptNote,
   getSupplierInvoices,
@@ -44,27 +47,40 @@ import {
 import {
   getWorkers,
   createWorker,
+  getNextWorkerCode,
   getDailyAttendance,
   saveBulkAttendance,
   getMusterRoll,
   getSubcontractors,
+  recordWagePayment,
 } from '../controllers/labourController';
-import { getTasks, createTask, updateTask, addTaskComment } from '../controllers/taskController';
+import { getTasks, createTask, updateTask, deleteTask, addTaskComment } from '../controllers/taskController';
 import { getDailyReports, getDailyReportById, createDailyReport, approveDailyReport } from '../controllers/dprController';
 import {
   getPettyCashAccounts,
   createPettyCashAccount,
   recordPettyCashTxn,
+  updatePettyCashTxn,
+  deletePettyCashTxn,
+  deletePettyCashAccount,
   getExpenses,
   createExpense,
+  updateExpense,
+  deleteExpense,
 } from '../controllers/expenseController';
 import {
   getClients,
   createClient,
+  updateClient,
+  deleteClient,
   getClientInvoices,
   createClientInvoice,
+  updateClientInvoice,
+  deleteClientInvoice,
   getClientReceipts,
   recordClientReceipt,
+  updateClientReceipt,
+  deleteClientReceipt,
 } from '../controllers/billingController';
 import {
   getChartOfAccounts,
@@ -122,6 +138,7 @@ router.get('/dashboard/metrics', getExecutiveMetrics);
 // Projects
 router.get('/projects', getProjects);
 router.get('/projects/:id', getProjectById);
+router.get('/projects/:id/daily-share-report', getProjectDailyShareReport);
 router.post('/projects', requireRole('OWNER', 'PROJECT_MANAGER'), createProject);
 router.put('/projects/:id', requireRole('OWNER', 'PROJECT_MANAGER'), updateProject);
 router.post('/projects/:projectId/sites', requireRole('OWNER', 'PROJECT_MANAGER'), createSite);
@@ -149,6 +166,8 @@ router.get('/procurement/suppliers', getSuppliers);
 router.post('/procurement/suppliers', requireRole('OWNER', 'PURCHASE_MANAGER', 'ACCOUNTS_MANAGER'), createSupplier);
 router.get('/procurement/purchase-orders', getPurchaseOrders);
 router.post('/procurement/purchase-orders', requireRole('OWNER', 'PURCHASE_MANAGER'), createPurchaseOrder);
+router.put('/procurement/purchase-orders/:id', requireRole('OWNER', 'PURCHASE_MANAGER'), updatePurchaseOrder);
+router.delete('/procurement/purchase-orders/:id', requireRole('OWNER', 'PURCHASE_MANAGER'), deletePurchaseOrder);
 router.get('/procurement/grn', getGoodsReceiptNotes);
 router.post('/procurement/grn', requireRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER'), createGoodsReceiptNote);
 router.get('/procurement/invoices', getSupplierInvoices);
@@ -156,17 +175,28 @@ router.post('/procurement/invoices', requireRole('OWNER', 'ACCOUNTS_MANAGER'), c
 router.post('/procurement/payments', requireRole('OWNER', 'ACCOUNTS_MANAGER'), recordSupplierPayment);
 
 // Labour, Attendance & Subcontractors
+router.get('/labour/next-worker-code', getNextWorkerCode);
 router.get('/labour/workers', getWorkers);
-router.post('/labour/workers', requireRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER'), createWorker);
+router.post(
+  '/labour/workers',
+  upload.fields([
+    { name: 'photo', maxCount: 1 },
+    { name: 'document', maxCount: 1 },
+  ]),
+  requireRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER'),
+  createWorker
+);
 router.get('/labour/attendance', getDailyAttendance);
 router.post('/labour/attendance/bulk', requireRole('OWNER', 'HR_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER'), saveBulkAttendance);
 router.get('/labour/muster-roll', getMusterRoll);
 router.get('/labour/subcontractors', getSubcontractors);
+router.post('/labour/payout', requireRole('OWNER', 'HR_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), recordWagePayment);
 
 // Tasks
 router.get('/tasks', getTasks);
 router.post('/tasks', requireRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER'), createTask);
 router.put('/tasks/:id', requireRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER'), updateTask);
+router.delete('/tasks/:id', requireRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER'), deleteTask);
 router.post('/tasks/:id/comments', addTaskComment);
 
 // Daily Site Reports (DPR)
@@ -178,17 +208,28 @@ router.put('/dpr/:id/approve', requireRole('OWNER', 'PROJECT_MANAGER'), approveD
 // Expenses & Petty Cash
 router.get('/expenses/petty-cash', getPettyCashAccounts);
 router.post('/expenses/petty-cash', requireRole('OWNER', 'ACCOUNTS_MANAGER'), createPettyCashAccount);
+router.delete('/expenses/petty-cash/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deletePettyCashAccount);
 router.post('/expenses/petty-cash/transactions', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER'), recordPettyCashTxn);
+router.put('/expenses/petty-cash/transactions/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER'), updatePettyCashTxn);
+router.delete('/expenses/petty-cash/transactions/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deletePettyCashTxn);
 router.get('/expenses', getExpenses);
 router.post('/expenses', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER'), createExpense);
+router.put('/expenses/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER'), updateExpense);
+router.delete('/expenses/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), deleteExpense);
 
 // Client Billing & Receipts
 router.get('/billing/clients', getClients);
 router.post('/billing/clients', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), createClient);
+router.put('/billing/clients/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), updateClient);
+router.delete('/billing/clients/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteClient);
 router.get('/billing/invoices', getClientInvoices);
 router.post('/billing/invoices', requireRole('OWNER', 'ACCOUNTS_MANAGER'), createClientInvoice);
+router.put('/billing/invoices/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), updateClientInvoice);
+router.delete('/billing/invoices/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteClientInvoice);
 router.get('/billing/receipts', getClientReceipts);
 router.post('/billing/receipts', requireRole('OWNER', 'ACCOUNTS_MANAGER'), recordClientReceipt);
+router.put('/billing/receipts/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), updateClientReceipt);
+router.delete('/billing/receipts/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteClientReceipt);
 
 // Double-Entry Accounting Reports (Restricted to OWNER, ACCOUNTS_MANAGER, AUDITOR)
 router.get('/accounts/coa', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), getChartOfAccounts);

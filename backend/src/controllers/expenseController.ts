@@ -224,3 +224,146 @@ export const createExpense = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateExpense = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const {
+      projectId,
+      siteId,
+      category,
+      description,
+      amountBeforeTax,
+      taxAmount,
+      paymentMethod,
+      paidTo,
+      invoiceReceiptNo,
+      receiptUrl,
+      expenseDate,
+      status,
+    } = req.body;
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Expense not found.' });
+    }
+
+    const sub = amountBeforeTax !== undefined ? Number(amountBeforeTax) : existing.amountBeforeTax;
+    const tax = taxAmount !== undefined ? Number(taxAmount) : existing.taxAmount;
+    const total = sub + tax;
+
+    const updated = await prisma.expense.update({
+      where: { id },
+      data: {
+        projectId: projectId !== undefined ? (projectId || null) : existing.projectId,
+        siteId: siteId !== undefined ? (siteId || null) : existing.siteId,
+        category: category || existing.category,
+        description: description || existing.description,
+        amountBeforeTax: sub,
+        taxAmount: tax,
+        totalAmount: total,
+        paymentMethod: paymentMethod || existing.paymentMethod,
+        paidTo: paidTo || existing.paidTo,
+        invoiceReceiptNo: invoiceReceiptNo !== undefined ? invoiceReceiptNo : existing.invoiceReceiptNo,
+        receiptUrl: receiptUrl !== undefined ? receiptUrl : existing.receiptUrl,
+        expenseDate: expenseDate ? new Date(expenseDate) : existing.expenseDate,
+        status: status || existing.status,
+      },
+      include: {
+        project: { select: { code: true, name: true } },
+        site: { select: { code: true, name: true } },
+        createdBy: { select: { name: true, role: true } },
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_EXPENSE', 'EXPENSE', id, { expenseNumber: updated.expenseNumber, total }, req.ip);
+
+    return res.json({ success: true, expense: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteExpense = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Expense not found.' });
+    }
+
+    // Delete linked journal entries
+    await prisma.journalEntry.deleteMany({
+      where: { referenceType: 'EXPENSE', referenceId: id },
+    });
+
+    await prisma.expense.delete({ where: { id } });
+
+    await logAudit(req.user?.id, 'DELETE_EXPENSE', 'EXPENSE', id, { expenseNumber: existing.expenseNumber }, req.ip);
+
+    return res.json({ success: true, message: 'Expense deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updatePettyCashTxn = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { description, recipient, voucherNo, txnDate } = req.body;
+
+    const existing = await prisma.pettyCashTransaction.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Voucher transaction not found.' });
+    }
+
+    const updated = await prisma.pettyCashTransaction.update({
+      where: { id },
+      data: {
+        description: description !== undefined ? description : existing.description,
+        recipient: recipient !== undefined ? recipient : existing.recipient,
+        voucherNo: voucherNo !== undefined ? voucherNo : existing.voucherNo,
+        txnDate: txnDate ? new Date(txnDate) : existing.txnDate,
+      },
+    });
+
+    return res.json({ success: true, transaction: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deletePettyCashTxn = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const txn = await prisma.pettyCashTransaction.findUnique({ where: { id } });
+    if (!txn) {
+      return res.status(404).json({ success: false, message: 'Voucher transaction not found.' });
+    }
+
+    const account = await prisma.pettyCashAccount.findUnique({ where: { id: txn.pettyCashAccountId } });
+    if (account) {
+      const adjustedBal = txn.txnType === 'TOP_UP' ? account.currentBalance - txn.amount : account.currentBalance + txn.amount;
+      await prisma.pettyCashAccount.update({
+        where: { id: account.id },
+        data: { currentBalance: Math.max(0, adjustedBal) },
+      });
+    }
+
+    await prisma.pettyCashTransaction.delete({ where: { id } });
+
+    return res.json({ success: true, message: 'Voucher deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deletePettyCashAccount = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    await prisma.pettyCashAccount.delete({ where: { id } });
+    return res.json({ success: true, message: 'Petty cash account deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

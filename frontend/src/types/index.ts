@@ -281,6 +281,9 @@ export interface Worker {
   dailyWageRate: number;
   overtimeHourlyRate: number;
   paymentMethod: string;
+  photoUrl?: string;
+  documentUrl?: string;
+  documentName?: string;
   projectId?: string;
   project?: { code: string; name: string };
 }
@@ -425,6 +428,7 @@ export interface Client {
   email?: string;
   billingAddress: string;
   gstin?: string;
+  pan?: string;
 }
 
 export interface ClientInvoice {

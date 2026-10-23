@@ -10,11 +10,27 @@ export const getSuppliers = async (req: Request, res: Response) => {
         _count: {
           select: { purchaseOrders: true, invoices: true, payments: true },
         },
+        invoices: {
+          where: { balanceDue: { gt: 0 } },
+          select: { id: true, balanceDue: true, status: true },
+        },
       },
       orderBy: { name: 'asc' },
     });
 
-    return res.json({ success: true, suppliers });
+    const formatted = suppliers.map((s) => {
+      const openInvoicesSum = s.invoices.reduce((sum, inv) => sum + inv.balanceDue, 0);
+      // Ensure currentBalance accurately reflects unpaid invoices if any are open
+      const currentPayable = openInvoicesSum > 0 ? Math.max(openInvoicesSum, s.currentBalance) : s.currentBalance;
+      return {
+        ...s,
+        currentBalance: Math.round(currentPayable * 100) / 100,
+        unpaidInvoicesCount: s.invoices.length,
+        unpaidInvoicesSum: openInvoicesSum,
+      };
+    });
+
+    return res.json({ success: true, suppliers: formatted });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -105,7 +121,7 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
     const lineItemsData = items.map((it: any) => {
       const qty = Number(it.orderQty);
       const price = Number(it.unitPrice);
-      const taxRate = Number(it.taxPercent) || 18.0;
+      const taxRate = it.taxPercent !== undefined && it.taxPercent !== '' ? Number(it.taxPercent) : 18.0;
       const lineSubtotal = qty * price;
       const lineTax = (lineSubtotal * taxRate) / 100;
       const lineTotal = lineSubtotal + lineTax;
@@ -150,6 +166,131 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
     await logAudit(req.user?.id, 'CREATE_PO', 'PURCHASE_ORDER', po.id, { poNumber, totalAmount }, req.ip);
 
     return res.status(201).json({ success: true, purchaseOrder: po });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updatePurchaseOrder = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { supplierId, deliveryDueDate, termsConditions, freightCharges, items } = req.body;
+
+    const existingPO: any = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: { items: true, grns: true },
+    });
+
+    if (!existingPO) {
+      return res.status(404).json({ success: false, message: 'Purchase Order not found' });
+    }
+
+    let subtotal = 0;
+    let totalTax = 0;
+
+    const lineItemsData = (items && Array.isArray(items) && items.length > 0 ? items : existingPO.items).map((it: any) => {
+      const qty = Number(it.orderQty);
+      const price = Number(it.unitPrice);
+      const taxRate = it.taxPercent !== undefined && it.taxPercent !== '' ? Number(it.taxPercent) : 0;
+      const lineSubtotal = qty * price;
+      const lineTax = (lineSubtotal * taxRate) / 100;
+      const lineTotal = lineSubtotal + lineTax;
+
+      subtotal += lineSubtotal;
+      totalTax += lineTax;
+
+      return {
+        materialId: it.materialId,
+        orderQty: qty,
+        unitPrice: price,
+        taxPercent: taxRate,
+        taxAmount: lineTax,
+        totalAmount: lineTotal,
+      };
+    });
+
+    const freight = freightCharges !== undefined ? Number(freightCharges) : existingPO.freightCharges;
+    const totalAmount = subtotal + totalTax + freight;
+
+    const updatedPO = await prisma.$transaction(async (tx) => {
+      // If new items were provided, replace POLineItems
+      if (items && Array.isArray(items) && items.length > 0) {
+        await tx.pOLineItem.deleteMany({
+          where: { purchaseOrderId: id },
+        });
+
+        await tx.pOLineItem.createMany({
+          data: lineItemsData.map((li: any) => ({
+            ...li,
+            purchaseOrderId: id,
+          })),
+        });
+      }
+
+      return tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          supplierId: supplierId || existingPO.supplierId,
+          deliveryDueDate: deliveryDueDate ? new Date(deliveryDueDate) : existingPO.deliveryDueDate,
+          termsConditions: termsConditions !== undefined ? termsConditions : existingPO.termsConditions,
+          freightCharges: freight,
+          subtotal,
+          taxAmount: totalTax,
+          totalAmount,
+        },
+        include: {
+          project: { select: { id: true, code: true, name: true } },
+          supplier: { select: { id: true, code: true, name: true, phone: true, gstin: true } },
+          items: {
+            include: { material: { select: { code: true, name: true, unit: true } } },
+          },
+        },
+      });
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_PO', 'PURCHASE_ORDER', id, { totalAmount }, req.ip);
+
+    return res.json({ success: true, purchaseOrder: updatedPO });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deletePurchaseOrder = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    const po: any = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: { grns: true, invoices: true },
+    });
+
+    if (!po) {
+      return res.status(404).json({ success: false, message: 'Purchase Order not found' });
+    }
+
+    if (po.grns && po.grns.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete PO ${po.poNumber} because goods have already been received via ${po.grns.length} GRN(s). Please remove linked GRNs first.`,
+      });
+    }
+
+    if (po.invoices && po.invoices.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete PO ${po.poNumber} because supplier invoices are linked to it.`,
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.pOLineItem.deleteMany({ where: { purchaseOrderId: id } }),
+      prisma.purchaseOrder.delete({ where: { id } }),
+    ]);
+
+    await logAudit(req.user?.id, 'DELETE_PO', 'PURCHASE_ORDER', id, { poNumber: po.poNumber }, req.ip);
+
+    return res.json({ success: true, message: `Purchase Order ${po.poNumber} deleted successfully.` });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -439,11 +580,60 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
     const paymentNumber = `PMT-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
     const payment = await prisma.$transaction(async (tx) => {
+      let resolvedInvoiceId = invoiceId || null;
+
+      if (resolvedInvoiceId) {
+        const inv = await tx.supplierInvoice.findUnique({ where: { id: resolvedInvoiceId } });
+        if (inv) {
+          const newPaid = inv.paidAmount + paymentAmount;
+          const newBal = Math.max(0, inv.totalAmount - newPaid);
+          const newStatus = newBal === 0 ? 'PAID' : 'PARTIALLY_PAID';
+
+          await tx.supplierInvoice.update({
+            where: { id: resolvedInvoiceId },
+            data: {
+              paidAmount: newPaid,
+              balanceDue: newBal,
+              status: newStatus,
+            },
+          });
+        }
+      } else {
+        // Automatically allocate payment to supplier's open unpaid invoices (FIFO)
+        const openInvoices = await tx.supplierInvoice.findMany({
+          where: { supplierId, balanceDue: { gt: 0 } },
+          orderBy: { invoiceDate: 'asc' },
+        });
+
+        let remaining = paymentAmount;
+        for (const inv of openInvoices) {
+          if (remaining <= 0) break;
+          const apply = Math.min(remaining, inv.balanceDue);
+          const newPaid = inv.paidAmount + apply;
+          const newBal = Math.max(0, inv.totalAmount - newPaid);
+          const newStatus = newBal === 0 ? 'PAID' : 'PARTIALLY_PAID';
+
+          await tx.supplierInvoice.update({
+            where: { id: inv.id },
+            data: {
+              paidAmount: newPaid,
+              balanceDue: newBal,
+              status: newStatus,
+            },
+          });
+
+          if (!resolvedInvoiceId) {
+            resolvedInvoiceId = inv.id;
+          }
+          remaining -= apply;
+        }
+      }
+
       const pmt = await tx.supplierPayment.create({
         data: {
           paymentNumber,
           supplierId,
-          invoiceId: invoiceId || null,
+          invoiceId: resolvedInvoiceId,
           paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
           amount: paymentAmount,
           paymentMethod,
@@ -457,25 +647,6 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
         where: { id: supplierId },
         data: { currentBalance: { decrement: paymentAmount } },
       });
-
-      // Update invoice if linked
-      if (invoiceId) {
-        const inv = await tx.supplierInvoice.findUnique({ where: { id: invoiceId } });
-        if (inv) {
-          const newPaid = inv.paidAmount + paymentAmount;
-          const newBal = Math.max(0, inv.totalAmount - newPaid);
-          const newStatus = newBal === 0 ? 'PAID' : 'PARTIALLY_PAID';
-
-          await tx.supplierInvoice.update({
-            where: { id: invoiceId },
-            data: {
-              paidAmount: newPaid,
-              balanceDue: newBal,
-              status: newStatus,
-            },
-          });
-        }
-      }
 
       return pmt;
     });

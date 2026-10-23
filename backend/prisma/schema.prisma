@@ -136,6 +136,7 @@ model Project {
   labourAttendances  LabourAttendance[]
   workers            Worker[]
   workerAdvances     WorkerAdvance[]
+  wagePayments       WagePayment[]
   clientInvoices     ClientInvoice[]
   clientReceipts     ClientReceipt[]
   equipmentLogs      EquipmentLog[]
@@ -639,7 +640,9 @@ model Worker {
   paymentMethod   String   @default("CASH") // CASH, BANK_TRANSFER, UPI
   bankAccountNo   String?
   bankIfsc        String?
-  emergencyPhone  String?
+  photoUrl        String?
+  documentUrl     String?
+  documentName    String?
   projectId       String?
   project         Project? @relation(fields: [projectId], references: [id])
   isActive        Boolean  @default(true)
@@ -648,6 +651,7 @@ model Worker {
 
   attendances     LabourAttendance[]
   advances        WorkerAdvance[]
+  wagePayments    WagePayment[]
 }
 
 model Subcontractor {
@@ -697,6 +701,21 @@ model WorkerAdvance {
   reason      String?
   status      String   @default("PENDING") // PENDING, RECOVERED
   createdAt   DateTime @default(now())
+}
+
+model WagePayment {
+  id            String   @id @default(uuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerId      String?
+  worker        Worker?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  amount        Float
+  paymentDate   DateTime @default(now())
+  paymentMethod String   // CASH, BANK_TRANSFER, UPI, PETTY_CASH
+  referenceNo   String?
+  wagePeriod    String?
+  narration     String?
+  createdAt     DateTime @default(now())
 }
 
 // -------------------------------------------------------------

@@ -53,6 +53,7 @@ class ApiService {
   // Projects
   getProjects = (params: string = '') => this.request<any>(`/projects${params ? `?${params}` : ''}`);
   getProjectById = (id: string) => this.request<any>(`/projects/${id}`);
+  getProjectDailyShareReport = (id: string) => this.request<any>(`/projects/${id}/daily-share-report`);
   createProject = (data: any) => this.request<any>('/projects', { method: 'POST', body: JSON.stringify(data) });
   updateProject = (id: string, data: any) => this.request<any>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   createSite = (projectId: string, data: any) => this.request<any>(`/projects/${projectId}/sites`, { method: 'POST', body: JSON.stringify(data) });
@@ -80,6 +81,8 @@ class ApiService {
   createSupplier = (data: any) => this.request<any>('/procurement/suppliers', { method: 'POST', body: JSON.stringify(data) });
   getPurchaseOrders = (params: string = '') => this.request<any>(`/procurement/purchase-orders${params ? `?${params}` : ''}`);
   createPurchaseOrder = (data: any) => this.request<any>('/procurement/purchase-orders', { method: 'POST', body: JSON.stringify(data) });
+  updatePurchaseOrder = (id: string, data: any) => this.request<any>(`/procurement/purchase-orders/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deletePurchaseOrder = (id: string) => this.request<any>(`/procurement/purchase-orders/${id}`, { method: 'DELETE' });
   getGRNs = (params: string = '') => this.request<any>(`/procurement/grn${params ? `?${params}` : ''}`);
   createGRN = (data: any) => this.request<any>('/procurement/grn', { method: 'POST', body: JSON.stringify(data) });
   getSupplierInvoices = (params: string = '') => this.request<any>(`/procurement/invoices${params ? `?${params}` : ''}`);
@@ -88,16 +91,23 @@ class ApiService {
 
   // Labour
   getWorkers = (params: string = '') => this.request<any>(`/labour/workers${params ? `?${params}` : ''}`);
-  createWorker = (data: any) => this.request<any>('/labour/workers', { method: 'POST', body: JSON.stringify(data) });
+  getNextWorkerCode = () => this.request<any>('/labour/next-worker-code');
+  createWorker = (data: any) =>
+    this.request<any>('/labour/workers', {
+      method: 'POST',
+      body: data instanceof FormData ? data : JSON.stringify(data),
+    });
   getDailyAttendance = (date: string, projectId: string) => this.request<any>(`/labour/attendance?date=${date}&projectId=${projectId}`);
   saveBulkAttendance = (data: any) => this.request<any>('/labour/attendance/bulk', { method: 'POST', body: JSON.stringify(data) });
   getMusterRoll = (params: string = '') => this.request<any>(`/labour/muster-roll${params ? `?${params}` : ''}`);
   getSubcontractors = () => this.request<any>('/labour/subcontractors');
+  recordWagePayment = (data: any) => this.request<any>('/labour/payout', { method: 'POST', body: JSON.stringify(data) });
 
   // Tasks & DPR
   getTasks = (params: string = '') => this.request<any>(`/tasks${params ? `?${params}` : ''}`);
   createTask = (data: any) => this.request<any>('/tasks', { method: 'POST', body: JSON.stringify(data) });
   updateTask = (id: string, data: any) => this.request<any>(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deleteTask = (id: string) => this.request<any>(`/tasks/${id}`, { method: 'DELETE' });
   addTaskComment = (id: string, comment: string) => this.request<any>(`/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ comment }) });
   getDailyReports = (params: string = '') => this.request<any>(`/dpr${params ? `?${params}` : ''}`);
   getDailyReportById = (id: string) => this.request<any>(`/dpr/${id}`);
@@ -107,17 +117,28 @@ class ApiService {
   // Expenses & Petty Cash
   getPettyCashAccounts = (projectId?: string) => this.request<any>(`/expenses/petty-cash${projectId ? `?projectId=${projectId}` : ''}`);
   createPettyCashAccount = (data: any) => this.request<any>('/expenses/petty-cash', { method: 'POST', body: JSON.stringify(data) });
+  deletePettyCashAccount = (id: string) => this.request<any>(`/expenses/petty-cash/${id}`, { method: 'DELETE' });
   recordPettyCashTxn = (data: any) => this.request<any>('/expenses/petty-cash/transactions', { method: 'POST', body: JSON.stringify(data) });
+  updatePettyCashTxn = (id: string, data: any) => this.request<any>(`/expenses/petty-cash/transactions/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deletePettyCashTxn = (id: string) => this.request<any>(`/expenses/petty-cash/transactions/${id}`, { method: 'DELETE' });
   getExpenses = (params: string = '') => this.request<any>(`/expenses${params ? `?${params}` : ''}`);
   createExpense = (data: any) => this.request<any>('/expenses', { method: 'POST', body: JSON.stringify(data) });
+  updateExpense = (id: string, data: any) => this.request<any>(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deleteExpense = (id: string) => this.request<any>(`/expenses/${id}`, { method: 'DELETE' });
 
   // Client Billing & Receipts
   getClients = () => this.request<any>('/billing/clients');
   createClient = (data: any) => this.request<any>('/billing/clients', { method: 'POST', body: JSON.stringify(data) });
+  updateClient = (id: string, data: any) => this.request<any>(`/billing/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deleteClient = (id: string) => this.request<any>(`/billing/clients/${id}`, { method: 'DELETE' });
   getClientInvoices = (params: string = '') => this.request<any>(`/billing/invoices${params ? `?${params}` : ''}`);
   createClientInvoice = (data: any) => this.request<any>('/billing/invoices', { method: 'POST', body: JSON.stringify(data) });
+  updateClientInvoice = (id: string, data: any) => this.request<any>(`/billing/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deleteClientInvoice = (id: string) => this.request<any>(`/billing/invoices/${id}`, { method: 'DELETE' });
   getClientReceipts = (params: string = '') => this.request<any>(`/billing/receipts${params ? `?${params}` : ''}`);
   recordClientReceipt = (data: any) => this.request<any>('/billing/receipts', { method: 'POST', body: JSON.stringify(data) });
+  updateClientReceipt = (id: string, data: any) => this.request<any>(`/billing/receipts/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deleteClientReceipt = (id: string) => this.request<any>(`/billing/receipts/${id}`, { method: 'DELETE' });
 
   // Accounts & Financials
   getCOA = () => this.request<any>('/accounts/coa');

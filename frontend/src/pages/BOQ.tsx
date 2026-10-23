@@ -157,15 +157,16 @@ export const BOQ: React.FC = () => {
       {/* Project Selector & Category Filter Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-2 w-full sm:w-auto">
-          <label className="text-xs font-bold text-slate-500 whitespace-nowrap">Project:</label>
+          <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Project:</label>
           <select
             value={projectId}
             onChange={(e) => {
               setProjectId(e.target.value);
               setSelectedProjectId(e.target.value);
             }}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-bold text-slate-800 focus:outline-none"
+            className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
           >
+            {projects.length === 0 && <option value="">Loading projects...</option>}
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 [{p.code}] {p.name}
@@ -179,7 +180,7 @@ export const BOQ: React.FC = () => {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none"
+            className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[200px] sm:min-w-[240px] cursor-pointer transition"
           >
             <option value="">All Cost Categories</option>
             <option value="EARTHWORK">Earthwork & Excavation</option>

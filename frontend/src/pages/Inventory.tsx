@@ -19,7 +19,7 @@ import {
 
 export const Inventory: React.FC = () => {
   const { hasRole } = useAuth();
-  const { projects } = useProject();
+  const { projects, selectedProjectId, setSelectedProjectId } = useProject();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [requisitions, setRequisitions] = useState<MaterialRequisition[]>([]);
@@ -195,7 +195,10 @@ export const Inventory: React.FC = () => {
 
           {hasRole('OWNER', 'STOREKEEPER') && (
             <button
-              onClick={() => setShowIssueModal(true)}
+              onClick={() => {
+                setIssueForm((prev) => ({ ...prev, projectId: selectedProjectId || prev.projectId || (projects[0]?.id || '') }));
+                setShowIssueModal(true);
+              }}
               className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition"
             >
               <ArrowRightLeft className="w-4 h-4" />
@@ -231,6 +234,24 @@ export const Inventory: React.FC = () => {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Active Filter Indicator */}
+      {selectedProjectId && (
+        <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 rounded-xl text-xs text-amber-900 font-semibold mb-3">
+          <div className="flex items-center space-x-2">
+            <span className="text-amber-800">Filtered by active project:</span>
+            <span className="font-bold bg-amber-500/20 px-2 py-0.5 rounded text-amber-950">
+              {projects.find((p) => p.id === selectedProjectId)?.name || selectedProjectId}
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedProjectId('')}
+            className="text-amber-900 hover:text-amber-950 font-bold underline text-xs cursor-pointer"
+          >
+            Show All Projects (Clear Filter)
+          </button>
         </div>
       )}
 
