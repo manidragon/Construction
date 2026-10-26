@@ -14,8 +14,13 @@ import {
   Receipt,
   FileText,
   Landmark,
+  Building,
   Truck,
   FolderArchive,
+  Settings,
+  ShieldCheck,
+  Crown,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -37,24 +42,73 @@ interface NavGroup {
   items: NavItem[];
 }
 
+const getDashboardLabel = (role?: string) => {
+  switch (role) {
+    case 'PROJECT_MANAGER':
+      return 'PM Execution Dashboard';
+    case 'SITE_ENGINEER':
+      return 'Site Ops Dashboard';
+    case 'ACCOUNTS_MANAGER':
+      return 'Finance & Accounts Dashboard';
+    case 'PURCHASE_MANAGER':
+      return 'Procurement Dashboard';
+    case 'STOREKEEPER':
+      return 'Stores & Inventory Dashboard';
+    case 'HR_MANAGER':
+      return 'Workforce & Labour Dashboard';
+    case 'AUDITOR':
+      return 'Audit & Compliance Dashboard';
+    case 'OWNER':
+    case 'TENANT_ADMIN':
+    default:
+      return 'Executive Owner Dashboard';
+  }
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
 
   const navigation: NavGroup[] = [
     {
       group: 'Core Enterprise',
       items: [
         {
-          name: 'Owner Dashboard',
+          name: getDashboardLabel(user?.role),
           path: '/',
           icon: LayoutDashboard,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'HR_MANAGER', 'AUDITOR'],
+        },
+        {
+          name: 'Company Settings',
+          path: '/company-settings',
+          icon: Settings,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'],
+          badge: 'BRANDING',
         },
         {
           name: 'Projects & Sites',
           path: '/projects',
           icon: Building2,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'HR_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'AUDITOR'],
+        },
+      ],
+    },
+    {
+      group: 'Sales & Client Commercials',
+      items: [
+        {
+          name: 'Leads & Pipeline',
+          path: '/leads',
+          icon: Users,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER'],
+          badge: 'PIPELINE',
+        },
+        {
+          name: 'Client Quotations',
+          path: '/quotations',
+          icon: FileText,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER'],
+          badge: 'CLIENT',
         },
       ],
     },
@@ -62,22 +116,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       group: 'Site Engineering & Ops',
       items: [
         {
-          name: 'BOQ & Estimation',
+          name: 'Internal BOQ (Company)',
           path: '/boq',
           icon: Calculator,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          badge: 'INTERNAL',
         },
         {
           name: 'Tasks & Milestones',
           path: '/tasks',
           icon: CheckSquare,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
         },
         {
           name: 'Daily Site Reports (DPR)',
           path: '/dpr',
           icon: ClipboardList,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'AUDITOR'],
         },
       ],
     },
@@ -88,13 +143,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           name: 'Materials & Inventory',
           path: '/inventory',
           icon: Boxes,
-          roles: ['OWNER', 'STOREKEEPER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'STOREKEEPER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'AUDITOR'],
         },
         {
           name: 'Procurement & Vendors',
           path: '/procurement',
           icon: ShoppingBag,
-          roles: ['OWNER', 'PURCHASE_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER', 'STOREKEEPER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PURCHASE_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER', 'STOREKEEPER', 'AUDITOR'],
         },
       ],
     },
@@ -105,7 +160,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           name: 'Labour Muster Roll',
           path: '/labour',
           icon: Users,
-          roles: ['OWNER', 'HR_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'HR_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+        },
+        {
+          name: 'Daily Shift Logger',
+          path: '/attendance',
+          icon: Users,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'HR_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER'],
+          badge: 'LIVE',
         },
       ],
     },
@@ -116,19 +178,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           name: 'Expenses & Petty Cash',
           path: '/expenses',
           icon: Receipt,
-          roles: ['OWNER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER', 'AUDITOR'],
         },
         {
           name: 'Clients & Billing (RA Bills)',
           path: '/billing',
           icon: FileText,
-          roles: ['OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER', 'AUDITOR'],
         },
         {
           name: 'Double-Entry Accounting',
           path: '/accounts',
           icon: Landmark,
-          roles: ['OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'],
+        },
+        {
+          name: 'Office Expenses & Staff',
+          path: '/office',
+          icon: Building,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER', 'HR_MANAGER', 'AUDITOR'],
         },
       ],
     },
@@ -139,13 +207,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           name: 'Plant & Equipment',
           path: '/equipment',
           icon: Truck,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'STOREKEEPER', 'SITE_ENGINEER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'STOREKEEPER', 'SITE_ENGINEER', 'AUDITOR'],
         },
         {
           name: 'Document Repository',
           path: '/documents',
           icon: FolderArchive,
-          roles: ['OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'HR_MANAGER', 'AUDITOR'],
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'HR_MANAGER', 'AUDITOR'],
+        },
+        {
+          name: 'Recycle Bin',
+          path: '/recycle-bin',
+          icon: Trash2,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER', 'SITE_ENGINEER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'HR_MANAGER', 'AUDITOR'],
+          badge: 'VAULT',
         },
       ],
     },
@@ -163,20 +238,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
       {/* Sidebar container */}
       <aside
-        className={`fixed lg:static top-0 bottom-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-transform duration-200 ease-in-out ${
+        id="sidebar-navigation-menu"
+        className={`fixed lg:static top-0 bottom-0 left-0 z-30 lg:z-10 w-64 h-full shrink-0 min-h-0 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-transform duration-200 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Mobile Header */}
-        <div className="lg:hidden flex items-center justify-between p-4 border-b border-slate-800 text-white">
+        <div className="lg:hidden shrink-0 flex items-center justify-between p-4 border-b border-slate-800 text-white">
           <span className="font-extrabold text-base tracking-wide text-white">APEX<span className="text-amber-400">BUILD</span></span>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-slate-800 text-slate-400">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Navigation list */}
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 custom-scrollbar">
+        {/* Navigation list - Independent Scroll Container */}
+        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 custom-scrollbar min-h-0">
           {navigation.map((group, idx) => {
             // Filter items user has permission to see
             const visibleItems = group.items.filter((item) => hasRole(...item.roles));
@@ -226,10 +302,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           })}
         </div>
 
-        {/* Footer info */}
-        <div className="p-3 border-t border-slate-800 text-[11px] text-slate-400 text-center">
-          <p className="font-medium text-slate-300">Apex Buildtech ERP</p>
-          <p className="text-[10px] text-slate-400">Asia/Kolkata (IST) • ₹ INR</p>
+        {/* Footer info - Fixed at bottom */}
+        <div className="shrink-0 p-3 border-t border-slate-800 text-[11px] text-slate-400 bg-slate-900/95">
+          <div className="flex items-center justify-between">
+            <div className="truncate font-medium text-slate-200" title={user?.company?.name || 'Workspace'}>
+              {user?.company?.name || 'Nearlook ERP'}
+            </div>
+            {user?.company?.status === 'TRIAL' ? (
+              <span className="bg-amber-400/20 text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                TRIAL
+              </span>
+            ) : user?.company?.status === 'EXPIRED' ? (
+              <span className="bg-red-500/20 text-red-300 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                EXPIRED
+              </span>
+            ) : (
+              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                ACTIVE
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500 mt-0.5">{user?.email || 'Logged in'}</p>
         </div>
       </aside>
     </>

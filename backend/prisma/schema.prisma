@@ -14,22 +14,50 @@ datasource db {
 // -------------------------------------------------------------
 
 model Company {
-  id              String   @id @default(uuid())
-  name            String
-  code            String   @unique
-  gstin           String?
-  pan             String?
-  address         String
-  city            String
-  state           String
-  pincode         String
-  phone           String
-  email           String
-  currencySymbol  String   @default("₹")
-  fiscalYearStart Int      @default(4) // April
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  users           User[]
+  id                        String   @id @default(uuid())
+  name                      String
+  companyName               String?
+  code                      String   @unique
+  ownerEmail                String?
+  adminPassword             String?
+  databasePath              String?
+  status                    String   @default("ACTIVE") // ACTIVE, TRIAL, EXPIRED, SUSPENDED
+  trialStartDate            DateTime? @default(now())
+  trialEndDate              DateTime?
+  planType                  String   @default("FREE_TRIAL") // FREE_TRIAL, STARTER, PRO, ENTERPRISE
+  whatsappApiKey            String?
+  whatsappPhoneNumberId      String?
+  whatsappBusinessAccountId String?
+  useSharedGateway          Boolean  @default(true)
+  logoUrl                   String?
+  businessAddress           String?
+  invoiceFooterNotes        String?
+  gstin                     String?
+  pan                       String?
+  address                   String
+  city                      String
+  state                     String
+  pincode                   String
+  phone                     String
+  email                     String
+  currencySymbol            String   @default("₹")
+  fiscalYearStart           Int      @default(4) // April
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  users                     User[]
+  clients                   Client[]
+  leads                     Lead[]
+  projects                  Project[]
+  quotations                Quotation[]
+  invoices                  ClientInvoice[]
+  tasks                     Task[]
+  workers                   Worker[]
+  expenses                  Expense[]
+  whatsappLogs              WhatsAppLog[]
+  dropdownOptions           DropdownOption[]
+  activityLogs              ActivityLog[]
+  recycleBinItems           RecycleBinItem[]
 }
 
 model User {
@@ -40,7 +68,7 @@ model User {
   email            String            @unique
   passwordHash     String
   phone            String?
-  role             String            // OWNER, PROJECT_MANAGER, SITE_ENGINEER, ACCOUNTS_MANAGER, PURCHASE_MANAGER, STOREKEEPER, HR_MANAGER, AUDITOR
+  role             String            // SUPER_ADMIN, TENANT_ADMIN, OWNER, PROJECT_MANAGER, SITE_ENGINEER, ACCOUNTS_MANAGER, STAFF, AUDITOR
   designation      String?
   isActive         Boolean           @default(true)
   createdAt        DateTime          @default(now())
@@ -62,6 +90,8 @@ model User {
   notifications    Notification[]
   taskAssignments  Task[]
   taskComments     TaskComment[]
+  leadsAssignedAsPM Lead[] @relation("LeadAssignedPM")
+  whatsappLogsSent WhatsAppLog[]     @relation("WhatsAppSender")
 }
 
 model AuditLog {
@@ -143,6 +173,17 @@ model Project {
   documents          DocumentAttachment[]
   changeOrders       ContractChangeOrder[]
   journalLines       JournalLine[]
+  convertedFromLeadId String?  @unique
+  convertedFromLead   Lead?    @relation("LeadProject", fields: [convertedFromLeadId], references: [id])
+  advancePaymentRequired Float @default(0)
+  advancePaymentReceived Float @default(0)
+  advancePaymentConfirmed Boolean @default(true)
+  advancePaymentConfirmedBy String?
+  advancePaymentConfirmedAt DateTime?
+  advancePaymentReference String?
+  quotations          Quotation[]
+  tenantId            String?
+  tenant              Company?  @relation(fields: [tenantId], references: [id])
 }
 
 model Site {
@@ -193,17 +234,23 @@ model ProjectMember {
 }
 
 model ContractChangeOrder {
-  id            String   @id @default(uuid())
-  projectId     String
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  orderNumber   String   @unique
-  description   String
-  amountDelta   Float    // Positive or negative
-  timeDeltaDays Int      @default(0)
-  status        String   @default("APPROVED") // PENDING, APPROVED, REJECTED
-  approvedBy    String?
-  approvedAt    DateTime?
-  createdAt     DateTime @default(now())
+  id               String    @id @default(uuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  orderNumber      String    @unique
+  title            String?
+  description      String
+  scopeType        String    @default("DESIGN_VARIATION") // CLIENT_REQUEST, DESIGN_VARIATION, SPECIFICATION_CHANGE, SITE_CONDITION
+  requestedBy      String?   // Client, Architect, Contractor, Interior Designer
+  amountDelta      Float     // Positive or negative
+  timeDeltaDays    Int       @default(0)
+  swatchRenderUrl  String?
+  clientSignOffUrl String?
+  status           String    @default("APPROVED") // PENDING, APPROVED, REJECTED
+  approvedBy       String?
+  approvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 // -------------------------------------------------------------
@@ -211,27 +258,35 @@ model ContractChangeOrder {
 // -------------------------------------------------------------
 
 model BOQItem {
-  id                 String   @id @default(uuid())
-  projectId          String
-  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  itemCode           String
-  description        String
-  category           String   // EARTHWORK, CONCRETE, STEEL, MASONRY, PLASTERING, FLOORING, PAINTING, PLUMBING, ELECTRICAL, FINISHING
-  unit               String   // SQMT, CUMT, RFT, TONNE, BAG, NOS, SQFT, KGS
-  estimatedQty       Float    @default(0)
-  materialUnitCost   Float    @default(0)
-  labourUnitCost     Float    @default(0)
-  equipmentUnitCost  Float    @default(0)
-  subcontractUnitCost Float   @default(0)
-  otherUnitCost      Float    @default(0)
-  unitRate           Float    @default(0)
-  estimatedTotal     Float    @default(0)
-  actualQtyCompleted Float    @default(0)
-  actualExpenditure  Float    @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  projectId            String
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  itemCode             String
+  description          String
+  category             String   // FALSE_CEILING, CARPENTRY_JOINERY, MODULAR_KITCHENS, ELECTRICAL_LIGHTING, PLUMBING_SANITARYWARE, FLOORING_TILING, PAINTING_WALLPAPERS, SOFT_FURNISHINGS, GLASS_ALUMINUM, HVAC_AC, CUSTOM_MILLWORK, CONCRETE, STEEL, EARTHWORK, MASONRY, PLASTERING, FINISHING
+  unit                 String   // SQFT, RFT, NOS, LS, SHEETS, SETS, SQMT, CUMT, TONNE, BAG, KGS
+  estimatedQty         Float    @default(0)
+  materialUnitCost     Float    @default(0)
+  labourUnitCost       Float    @default(0)
+  equipmentUnitCost    Float    @default(0)
+  subcontractUnitCost  Float    @default(0)
+  otherUnitCost        Float    @default(0)
+  unitRate             Float    @default(0)
+  estimatedTotal       Float    @default(0)
+  actualQtyCompleted   Float    @default(0)
+  actualExpenditure    Float    @default(0)
+  materialSwatchUrl    String?
+  designRenderUrl      String?
+  clientApprovalStatus String   @default("APPROVED") // PENDING, APPROVED, REJECTED, VARIATION_REQUESTED
+  clientSignOffDoc     String?
+  clientSignOffDate    DateTime?
+  scopeVariationNotes  String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  invoiceItems       InvoiceItem[]
+  invoiceItems         InvoiceItem[]
+  tasks                Task[]
+  expenses             Expense[]
 }
 
 model BudgetRevision {
@@ -252,31 +307,41 @@ model BudgetRevision {
 // -------------------------------------------------------------
 
 model Task {
-  id            String    @id @default(uuid())
-  projectId     String
-  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  siteId        String?
-  site          Site?     @relation(fields: [siteId], references: [id])
-  phaseId       String?
-  phase         Phase?    @relation(fields: [phaseId], references: [id])
-  title         String
-  description   String?
-  assignedToId  String?
-  assignedUser  User?     @relation(fields: [assignedToId], references: [id])
-  startDate     DateTime
-  dueDate       DateTime
-  priority      String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
-  plannedQty    Float     @default(0)
-  completedQty  Float     @default(0)
-  unit          String?
-  estimatedCost Float     @default(0)
-  actualCost    Float     @default(0)
-  status        String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, PENDING_APPROVAL, COMPLETED, DELAYED, ON_HOLD
-  dependencies  String?   // Comma separated task IDs
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  projectId            String
+  project              Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  siteId               String?
+  site                 Site?     @relation(fields: [siteId], references: [id])
+  phaseId              String?
+  phase                Phase?    @relation(fields: [phaseId], references: [id])
+  boqItemId            String?
+  boqItem              BOQItem?  @relation(fields: [boqItemId], references: [id])
+  title                String
+  description          String?
+  assignedToId         String?
+  assignedUser         User?     @relation(fields: [assignedToId], references: [id])
+  startDate            DateTime
+  dueDate              DateTime
+  priority             String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  plannedQty           Float     @default(0)
+  completedQty         Float     @default(0)
+  unit                 String?
+  estimatedCost        Float     @default(0)
+  actualCost           Float     @default(0)
+  status               String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, PENDING_APPROVAL, COMPLETED, DELAYED, ON_HOLD
+  dependencies         String?   // Comma separated task IDs
+  materialSwatchUrl    String?
+  designRenderUrl      String?
+  clientSignOffDoc     String?
+  clientApprovalStatus String?   @default("PENDING") // PENDING, APPROVED, REJECTED
+  isScopeVariation     Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  comments      TaskComment[]
+  comments             TaskComment[]
+  expenses             Expense[]
+  tenantId             String?
+  tenant               Company?  @relation(fields: [tenantId], references: [id])
 }
 
 model TaskComment {
@@ -652,6 +717,8 @@ model Worker {
   attendances     LabourAttendance[]
   advances        WorkerAdvance[]
   wagePayments    WagePayment[]
+  tenantId        String?
+  tenant          Company? @relation(fields: [tenantId], references: [id])
 }
 
 model Subcontractor {
@@ -676,7 +743,8 @@ model LabourAttendance {
   site             Site?    @relation(fields: [siteId], references: [id])
   workerId         String
   worker           Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  attendanceStatus String   // PRESENT, ABSENT, HALF_DAY, LEAVE, HOLIDAY
+  attendanceStatus String   // PRESENT, ABSENT, HALF_DAY, LEAVE, HOLIDAY, ON_SITE
+  checkInTime      String?  // e.g. "09:00 AM"
   regularHours     Float    @default(8)
   overtimeHours    Float    @default(0)
   workActivity     String?
@@ -685,6 +753,7 @@ model LabourAttendance {
   totalWageEarned  Float    @default(0)
   isVerified       Boolean  @default(true)
   supervisorName   String?
+  notes            String?
   createdAt        DateTime @default(now())
 
   @@unique([date, workerId, projectId])
@@ -764,7 +833,11 @@ model Expense {
   project          Project? @relation(fields: [projectId], references: [id])
   siteId           String?
   site             Site?    @relation(fields: [siteId], references: [id])
-  category         String   // TRANSPORT, FUEL, FOOD_ACCOMMODATION, EQUIPMENT_RENTAL, REPAIRS, ELECTRICITY_WATER, SAFETY_EQUIPMENT, ADMIN_PERMITS, MISC
+  taskId           String?
+  task             Task?    @relation(fields: [taskId], references: [id])
+  boqItemId        String?
+  boqItem          BOQItem? @relation(fields: [boqItemId], references: [id])
+  category         String   // TRANSPORT, FUEL, DIRECT_MATERIAL, SUBCONTRACTOR, PETTY_CASH, FOOD_ACCOMMODATION, EQUIPMENT_RENTAL, REPAIRS, ELECTRICITY_WATER, SAFETY_EQUIPMENT, ADMIN_PERMITS, INTERIOR_FITOUT, MISC
   description      String
   amountBeforeTax  Float
   taxAmount        Float    @default(0)
@@ -781,6 +854,8 @@ model Expense {
   approvedBy       User?    @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
   expenseDate      DateTime @default(now())
   createdAt        DateTime @default(now())
+  tenantId         String?
+  tenant           Company? @relation(fields: [tenantId], references: [id])
 }
 
 // -------------------------------------------------------------
@@ -803,6 +878,8 @@ model Client {
 
   invoices       ClientInvoice[]
   receipts       ClientReceipt[]
+  tenantId       String?
+  tenant         Company?        @relation(fields: [tenantId], references: [id])
 }
 
 model ClientInvoice {
@@ -829,11 +906,17 @@ model ClientInvoice {
   balanceDue         Float           @default(0)
   status             String          @default("APPROVED") // DRAFT, SUBMITTED, APPROVED, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED
   certificationNotes String?
+  quotationId        String?
+  quotation          Quotation?      @relation("QuotationInvoices", fields: [quotationId], references: [id])
+  milestoneName      String?
+  isFinalHandover    Boolean         @default(false)
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
   items              InvoiceItem[]
   receipts           ClientReceipt[]
+  tenantId           String?
+  tenant             Company?        @relation(fields: [tenantId], references: [id])
 }
 
 model InvoiceItem {
@@ -993,4 +1076,272 @@ model DocumentAttachment {
   referenceId     String?
   uploadedById    String?
   createdAt       DateTime @default(now())
+}
+
+// -------------------------------------------------------------
+// Office Staff, Overheads & Corporate Ledger
+// -------------------------------------------------------------
+
+model OfficeStaff {
+  id               String               @id @default(uuid())
+  staffCode        String               @unique // e.g. STF-001
+  name             String
+  roleCategory     String               @default("SUPPORT_STAFF") // MANAGEMENT, ACCOUNTS_FINANCE, OPERATIONS_ENGINEERING, ADMIN_OFFICE, SUPPORT_STAFF
+  designation      String               // e.g. "Managing Director", "Senior Accountant", "Office Boy", "Cleaner / Housekeeping", "Security Guard", "Driver"
+  phone            String
+  email            String?
+  address          String
+  idDocumentType   String?              @default("AADHAR") // AADHAR, PAN, VOTER_ID, PASSPORT, AGREEMENT
+  idDocumentNumber String?
+  documentUrl      String?              // Uploaded document proof
+  photoUrl         String?
+  joiningDate          DateTime             @default(now())
+  fixedSalary          Float                @default(0) // Fixed monthly CTC / Gross salary
+  basicSalary          Float                @default(0) // Basic pay component
+  hra                  Float                @default(0) // House Rent Allowance
+  allowances           Float                @default(0) // Other special / conveyance allowances
+  pfNumber             String?              // PF UAN / Member ID
+  pfEmployeePercent    Float                @default(0) // Employee PF contribution % (e.g. 12%)
+  pfEmployerPercent    Float                @default(0) // Employer PF contribution % (e.g. 12%)
+  esiNumber            String?              // ESI Insurance IP Number
+  esiPercent           Float                @default(0) // ESI deduction % (e.g. 0.75%)
+  professionalTax      Float                @default(0) // Monthly PT (e.g. 200)
+  tdsDeduction         Float                @default(0) // Monthly TDS / Tax deduction
+  standardWorkingDays  Int                  @default(26) // Standard monthly working days (e.g. 26 or 30)
+  paidLeavesAllowed    Int                  @default(1) // Paid / casual leaves allowed per month without LOP
+  panNumber            String?              // Income Tax PAN
+  documentName         String?              // Primary uploaded document label
+  documentsJson        String?              // JSON array of uploaded documents: [{ name, type, url, uploadDate }]
+  paymentMode          String               @default("BANK_TRANSFER") // CASH, BANK_TRANSFER, UPI
+  bankName             String?
+  bankAccountNo        String?
+  bankIfsc             String?
+  upiId                String?
+  isActive             Boolean              @default(true)
+  notes                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  salaryPayments   StaffSalaryPayment[]
+  attendances      StaffAttendance[]
+}
+
+model StaffAttendance {
+  id               String      @id @default(uuid())
+  date             DateTime
+  staffId          String
+  staff            OfficeStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  attendanceStatus String      // PRESENT, ABSENT, HALF_DAY, LEAVE, HOLIDAY, PAID_LEAVE, ON_SITE
+  checkInTime      String?     // e.g. "09:00 AM"
+  regularHours     Float       @default(8)
+  overtimeHours    Float       @default(0)
+  notes            String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([date, staffId])
+}
+
+model StaffSalaryPayment {
+  id               String      @id @default(uuid())
+  paymentNumber    String      @unique // e.g. SAL-2024-001
+  staffId          String
+  staff            OfficeStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  monthYear        String      // e.g. "October 2024" or "2024-10"
+  disbursementDate DateTime    @default(now())
+  basicSalary      Float
+  bonus            Float       @default(0)
+  deductions       Float       @default(0)
+  netPaid          Float
+  paymentMethod    String      @default("BANK_TRANSFER") // CASH, BANK_TRANSFER, UPI, CHEQUE
+  referenceNo      String?     // UTR / Cheque # / Cash Voucher
+  receiptUrl       String?
+  notes            String?
+  status           String      @default("PAID")
+  createdAt        DateTime    @default(now())
+}
+
+model OfficeExpense {
+  id            String   @id @default(uuid())
+  expenseNumber String   @unique // e.g. OFF-2024-001
+  category      String   // RENT, ELECTRICITY_WATER, INTERNET_PHONE, OFFICE_SUPPLIES_PANTRY, SOFTWARE_SUBSCRIPTION, REPAIRS_MAINTENANCE, LEGAL_AUDIT, TRAVEL_CONVEYANCE, MISC
+  title         String
+  description   String?
+  expenseDate   DateTime @default(now())
+  amount        Float
+  paymentMethod String   @default("BANK_TRANSFER") // CASH, BANK_TRANSFER, UPI, CHEQUE
+  paidTo        String
+  referenceNo   String?
+  receiptUrl    String?
+  periodMonth   String?  // e.g. "October 2024"
+  status        String   @default("PAID")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// -------------------------------------------------------------
+// Lead Generation Pipeline & BOQ Quotation Engine
+// -------------------------------------------------------------
+
+model Lead {
+  id                       String      @id @default(uuid())
+  leadNumber               String      @unique // e.g. LEAD-2026-001
+  clientName               String
+  contactNumber            String
+  email                    String?
+  siteAddress              String
+  city                     String?
+  state                    String?
+  projectType              String      // RESIDENTIAL_INTERIOR, COMMERCIAL_FITOUT, FULL_VILLA_CONSTRUCTION, RENOVATION
+  budgetRange              String      // 10L_25L, 25L_50L, 50L_1CR, 1CR_2.5CR, 2.5CR_PLUS
+  source                   String      // WEBSITE, INSTAGRAM, REFERRAL, ARCHITECT_REFERRAL, WALKIN, GOOGLE_ADS, PROPERTY_EXPO, OTHER
+  stage                    String      @default("NEW_LEAD")
+  // Stages: NEW_LEAD, SITE_VISIT_SCHEDULED, SITE_MEASUREMENT_COMPLETED, DESIGN_CONCEPT_DISCUSSION, BOQ_QUOTATION_SHARED, NEGOTIATION, LEAD_WON, LEAD_LOST
+  lostReason               String?
+  assignedTeam             String?     // DESIGN_TEAM, EXECUTION_TEAM, SALES_TEAM
+  assignedProjectManagerId String?
+  assignedProjectManager   User?       @relation("LeadAssignedPM", fields: [assignedProjectManagerId], references: [id])
+  siteVisitDate            DateTime?
+  siteVisitNotes           String?     // Confidential: restricted to Admin/OWNER & assigned PM
+  clientBudgetDiscussion   String?     // Confidential: restricted to Admin/OWNER & assigned PM
+
+  convertedProjectId       String?     @unique
+  convertedProject         Project?    @relation("LeadProject")
+
+  quotations               Quotation[]
+  tenantId                 String?
+  tenant                   Company?    @relation(fields: [tenantId], references: [id])
+
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+}
+
+model Quotation {
+  id              String          @id @default(uuid())
+  quotationNumber String          @unique // e.g. QUOT-2026-001
+  leadId          String?
+  lead            Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  projectId       String?
+  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  clientName      String
+  clientPhone     String
+  clientEmail     String?
+  siteAddress     String
+  projectType     String          // RESIDENTIAL_INTERIOR, COMMERCIAL_FITOUT, FULL_VILLA_CONSTRUCTION, RENOVATION
+  status          String          @default("DRAFT") // DRAFT, SHARED, ACCEPTED, REJECTED, CONVERTED
+
+  subtotal        Float           @default(0)
+  gstMode         String          @default("EXCLUSIVE") // EXCLUSIVE (+18%) or INCLUSIVE (18%)
+  gstPercent      Float           @default(18.0)
+  gstAmount       Float           @default(0) // Internal tax liability
+  totalAmount     Float           @default(0) // Grand total payable by client
+
+  penaltyTerms    String?         @default("Delayed milestone payments will attract a 2% weekly interest charge")
+  milestoneTerms  String?         // JSON array of milestone breakdown
+  notes           String?
+  sharedVia       String?         // WHATSAPP, EMAIL, BOTH
+  sharedAt        DateTime?
+  validUntil      DateTime?
+  createdById     String?
+
+  items           QuotationItem[]
+  invoices        ClientInvoice[] @relation("QuotationInvoices")
+  tenantId        String?
+  tenant          Company?        @relation(fields: [tenantId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model QuotationItem {
+  id              String    @id @default(uuid())
+  quotationId     String
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  areaRoom        String    // Living Room, Master Bedroom, Kitchen Modular Units, Civil Work, Electrical, Plumbing, etc.
+  workDescription String    // Work Description / Material Specification (e.g. 19mm BWR Plywood, Laminate finish, Brand names)
+  unit            String    // SQFT, RFT, NOS, LS
+  quantity        Float     @default(0)
+  rate            Float     @default(0)
+  totalAmount     Float     @default(0)
+  orderIndex      Int       @default(0)
+}
+
+// -------------------------------------------------------------
+// WhatsApp Outbound Logs & Tracking
+// -------------------------------------------------------------
+
+model WhatsAppLog {
+  id              String   @id @default(uuid())
+  tenantId        String?
+  tenant          Company? @relation(fields: [tenantId], references: [id])
+  recipientPhone  String
+  recipientName   String?
+  messageType     String   // QUOTATION_SUMMARY, DAILY_DPR, INVOICE_ALERT, TRIAL_WELCOME, TEST_PING, CUSTOM
+  messageBody     String
+  status          String   @default("SENT") // SENT, DELIVERED, FAILED
+  gatewayUsed     String   @default("SHARED_GATEWAY") // SHARED_GATEWAY, TENANT_GATEWAY
+  externalMsgId   String?
+  errorMessage    String?
+  sentById        String?
+  sentBy          User?    @relation("WhatsAppSender", fields: [sentById], references: [id])
+  createdAt       DateTime @default(now())
+}
+
+// -------------------------------------------------------------
+// Universal Operational Architecture: Dynamic Dropdowns & Activity Logs
+// -------------------------------------------------------------
+
+model DropdownOption {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Company  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category   String   // LeadSource, ServiceType, TaskPriority, ProjectStatus, WorkerRole, ExpenseCategory, etc.
+  label      String
+  value      String
+  isCustom   Boolean  @default(false)
+  orderIndex Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, category, value])
+  @@index([tenantId, category])
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  tenantId    String?
+  tenant      Company? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String?
+  userName    String?
+  entityType  String   // Lead, Project, Quotation, ClientInvoice, Task, Attendance, Dropdown
+  entityId    String
+  entityTitle String?
+  action      String   // STATUS_CHANGE, CREATE, UPDATE, BULK_ATTENDANCE
+  fromStatus  String?
+  toStatus    String?
+  message     String
+  metadata    String?  // JSON string
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, entityType])
+  @@index([tenantId, entityId])
+}
+
+model RecycleBinItem {
+  id            String   @id @default(uuid())
+  tenantId      String?
+  tenant        Company? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entityType    String   // Quotation, Lead, Project, Task, BOQItem, Expense, Material, PurchaseOrder, DailyReport, ClientInvoice
+  entityId      String
+  itemNumber    String?  // e.g. QUOT-2026-001, LEAD-2026-002, PRJ-2026-003, EXP-..., PO-...
+  title         String   // e.g. "Sanjay & Sunita Singhania"
+  description   String?  // Short context or financial summary
+  data          String   // Full JSON stringified object including all sub-items/relations
+  deletedById   String?
+  deletedByName String?
+  deletedAt     DateTime @default(now())
+
+  @@index([tenantId, entityType])
+  @@index([tenantId, deletedAt])
 }

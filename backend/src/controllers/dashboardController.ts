@@ -43,7 +43,7 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     const totalContractValue = projects.reduce((sum, p) => sum + p.contractValue, 0);
     const totalApprovedBudget = projects.reduce((sum, p) => sum + p.approvedBudget, 0);
 
-    // Client Billing & Collections
+    // Client Billing & Collections & Tax Compliance
     const clientInvoices = await prisma.clientInvoice.findMany({
       where: projectId ? { projectId: String(projectId) } : {},
     });
@@ -54,6 +54,32 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     });
     const totalMoneyReceived = clientReceipts.reduce((sum, rcp) => sum + rcp.amount, 0);
     const outstandingReceivables = Math.max(0, totalClientBilling - totalMoneyReceived);
+
+    // MODULE 4 & MODULE 2: Tax Compliance & Internal GST Tax Liability Payable
+    // Billed GST Tax Liability
+    const totalBilledTaxLiability = clientInvoices.reduce((sum, inv) => sum + (inv.gstAmount || 0), 0);
+    // Realized / Collected GST Tax Liability Payable (Proportional to cash collected on taxable bills)
+    const totalCollectedTaxLiability = Math.round(
+      clientInvoices.reduce((sum, inv) => {
+        if (!inv.gstAmount || inv.gstAmount <= 0) return sum;
+        const ratio = inv.netInvoiceAmount > 0 ? Math.min(1, (inv.paidAmount || 0) / inv.netInvoiceAmount) : 0;
+        return sum + (inv.gstAmount * ratio);
+      }, 0)
+    );
+    const pendingTaxLiability = Math.max(0, totalBilledTaxLiability - totalCollectedTaxLiability);
+
+    // Leads & Quotations Metrics
+    const leads = await prisma.lead.findMany();
+    const totalLeads = leads.length;
+    const leadsWon = leads.filter((l) => l.stage === 'LEAD_WON').length;
+    const leadsLost = leads.filter((l) => l.stage === 'LEAD_LOST').length;
+    const activeLeads = leads.filter((l) => l.stage !== 'LEAD_WON' && l.stage !== 'LEAD_LOST').length;
+    const boqSharedLeads = leads.filter((l) => l.stage === 'BOQ_QUOTATION_SHARED').length;
+
+    const quotations = await prisma.quotation.findMany();
+    const totalQuotations = quotations.length;
+    const totalQuotationValue = quotations.reduce((sum, q) => sum + (q.totalAmount || 0), 0);
+    const totalInternalTaxLiability = Math.round(quotations.reduce((sum, q) => sum + (q.gstAmount || 0), 0));
 
     // Supplier Payables
     const suppliers = await prisma.supplier.findMany();
@@ -93,7 +119,8 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     const boqItems = await prisma.bOQItem.findMany({
       where: projectId ? { projectId: String(projectId) } : {},
     });
-    const actualExpenditureToDate = boqItems.reduce((sum, b) => sum + (b.actualExpenditure || 0), 0) + totalExpenses + totalLabourCost + totalMaterialsCost;
+    // Incurred site costs to date (Expenses + Labour + Materials). BOQ is tracking/reference only.
+    const actualExpenditureToDate = totalExpenses + totalLabourCost + totalMaterialsCost;
 
     // 3. Operational Counts & Alerts
     const pendingRequisitions = await prisma.materialRequisition.count({
@@ -121,6 +148,40 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
       return totalStock <= m.minStockLevel;
     });
 
+    // Role-specific operational counts
+    const totalWorkersCount = await prisma.worker.count();
+    const totalTasksCount = await prisma.task.count(projectId ? { where: { projectId: String(projectId) } } : undefined);
+    const activeTasksCount = await prisma.task.count({
+      where: {
+        status: 'IN_PROGRESS',
+        ...(projectId ? { projectId: String(projectId) } : {}),
+      },
+    });
+    const completedTasksCount = await prisma.task.count({
+      where: {
+        status: 'COMPLETED',
+        ...(projectId ? { projectId: String(projectId) } : {}),
+      },
+    });
+    const totalDPRCount = await prisma.dailySiteReport.count(projectId ? { where: { projectId: String(projectId) } } : undefined);
+    const pendingPOCount = await prisma.purchaseOrder.count({
+      where: {
+        status: 'DRAFT',
+        ...(projectId ? { projectId: String(projectId) } : {}),
+      },
+    });
+
+    const pendingRequisitionsList = await prisma.materialRequisition.findMany({
+      where: { status: 'PENDING', ...(projectId ? { projectId: String(projectId) } : {}) },
+      include: {
+        project: { select: { code: true, name: true } },
+        requestedBy: { select: { name: true } },
+        items: { include: { material: { select: { name: true, unit: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
     // 4. Project-wise Budget Utilization & Profitability
     const projectProfitability = projects.map((p) => {
       const pInvoices = p.clientInvoices.reduce((sum, inv) => sum + inv.netInvoiceAmount, 0);
@@ -129,7 +190,8 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
       const pExpCost = p.expenses.reduce((sum, e) => sum + e.totalAmount, 0);
       const pMatCost = (p.purchaseOrders || []).reduce((sum, po) => sum + (po.totalAmount || 0), 0);
       const pLabCost = (p.labourAttendances || []).reduce((sum, att) => sum + (att.totalWageEarned || 0), 0);
-      const pActualCost = pBoqCost + pExpCost + pMatCost + pLabCost;
+      // Actual incurred site cost consists of direct expenses, labour wages, and POs. BOQ is reference only.
+      const pActualCost = pExpCost + pMatCost + pLabCost;
       const pBudgetUtilization = p.approvedBudget > 0 ? (pActualCost / p.approvedBudget) * 100 : 0;
       
       // Realized / Projected Profit = (Billed Revenue if billed, else Contract Value) - Actual Cost
@@ -204,6 +266,36 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
         supplierPayables,
         labourLiabilities: 0,
         materialStockValue,
+        // MODULE 4 & MODULE 2: Tax Compliance & Lead/Quotation Metrics
+        totalCollectedTaxLiability,
+        totalBilledTaxLiability,
+        pendingTaxLiability,
+        totalQuotationValue,
+        totalInternalTaxLiability,
+        totalMaterialsCount: materials.length,
+        totalLabourCost,
+        totalExpenses,
+        totalMaterialsCost,
+        totalSuppliersCount: suppliers.length,
+        totalWorkersCount,
+        totalTasksCount,
+        activeTasksCount,
+        completedTasksCount,
+        totalDPRCount,
+        totalPOCount: purchaseOrders.length,
+        pendingPOCount,
+        leadsSummary: {
+          totalLeads,
+          activeLeads,
+          leadsWon,
+          leadsLost,
+          boqSharedLeads,
+        },
+        quotationsSummary: {
+          totalQuotations,
+          totalValue: totalQuotationValue,
+          totalGstLiability: totalInternalTaxLiability,
+        },
         pendingRequisitions,
         pendingApprovalsCount,
         overdueTasksCount,
@@ -217,6 +309,7 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
         minStockLevel: m.minStockLevel,
         currentStock: m.stockBalances.reduce((a, b) => a + b.currentQty, 0),
       })),
+      pendingRequisitionsList,
       projectProfitability,
       cashFlowTrend,
       upcomingDeadlines,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   HardHat,
   ShieldCheck,
@@ -13,7 +13,10 @@ import {
   Users,
   Eye,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Building2,
+  Clock,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -26,18 +29,55 @@ interface DemoRole {
   icon: any;
   color: string;
   badge: string;
+  password?: string;
+  targetRoute?: string;
 }
 
 const DEMO_ROLES: DemoRole[] = [
   {
+    role: 'SUPER_ADMIN',
+    name: 'Nearlook Super Admin',
+    email: 'superadmin@nearlook.com',
+    password: 'SuperAdmin@123',
+    targetRoute: '/superadmin',
+    title: 'SaaS Platform Super Administrator',
+    description: 'System-wide command: create tenants, extend trials, status freeze & global analytics',
+    icon: Sparkles,
+    color: 'from-purple-500 to-indigo-600',
+    badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+  },
+  {
     role: 'OWNER',
     name: 'Rajesh Sharma',
     email: 'owner@apexbuild.com',
-    title: 'Managing Director / Owner',
-    description: 'Complete ERP command: financials, P&L, approval overrides, executive KPIs',
+    targetRoute: '/dashboard',
+    title: 'Managing Director / Owner (Apex Buildtech)',
+    description: 'Active Enterprise Tenant: financials, P&L, approval overrides, executive KPIs',
     icon: ShieldCheck,
     color: 'from-amber-500 to-amber-600',
     badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  },
+  {
+    role: 'TENANT_ADMIN',
+    name: 'Kabir Singhania',
+    email: 'admin@skyline.com',
+    targetRoute: '/dashboard',
+    title: 'Trial Owner (Skyline Urban - 10 Days Left)',
+    description: 'Active 14-day trial: shows trial countdown banner, live trial status, full operations',
+    icon: Clock,
+    color: 'from-sky-500 to-blue-600',
+    badge: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+  },
+  {
+    role: 'EXPIRED_TRIAL',
+    name: 'Ananya Roy',
+    email: 'owner@starlight.com',
+    targetRoute: '/dashboard',
+    title: 'Expired Trial Owner (Starlight Interiors)',
+    description: 'Expired trial testing: demonstrates middleware lockout, upgrade banner & modal',
+    icon: ShieldAlert,
+    color: 'from-rose-500 to-slate-700',
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
   },
   {
     role: 'PROJECT_MANAGER',
@@ -127,7 +167,11 @@ export const Login: React.FC = () => {
 
     try {
       await login(email, password);
-      navigate('/dashboard');
+      if (email === 'superadmin@nearlook.com') {
+        navigate('/superadmin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Invalid credentials. Please verify your email and password.');
     } finally {
@@ -135,15 +179,16 @@ export const Login: React.FC = () => {
     }
   };
 
-  const handleQuickDemoLogin = async (demoEmail: string) => {
+  const handleQuickDemoLogin = async (demoRole: DemoRole) => {
     setError(null);
     setLoading(true);
-    setEmail(demoEmail);
-    setPassword('Password@123');
+    const pass = demoRole.password || 'Password@123';
+    setEmail(demoRole.email);
+    setPassword(pass);
 
     try {
-      await login(demoEmail, 'Password@123');
-      navigate('/dashboard');
+      await login(demoRole.email, pass);
+      navigate(demoRole.targetRoute || '/dashboard');
     } catch (err: any) {
       setError(err.message || 'Quick login failed');
     } finally {
@@ -177,9 +222,18 @@ export const Login: React.FC = () => {
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 font-mono">
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>GST / RERA / Schedule-III Compliant</span>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/signup"
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold text-xs flex items-center gap-1.5 transition"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Start 14-Day Free Trial</span>
+          </Link>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 font-mono">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>GST / RERA / Schedule-III Compliant</span>
+          </div>
         </div>
       </header>
 
@@ -190,7 +244,7 @@ export const Login: React.FC = () => {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-xs text-amber-400 mb-3">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Full-Spectrum Construction Cloud</span>
+              <span>Full-Spectrum Multi-Tenant Construction Cloud</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
               Site Operations, BOQ Costing & Real Double-Entry Accounts.
@@ -232,7 +286,7 @@ export const Login: React.FC = () => {
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="block text-slate-300 font-semibold">Password</label>
-                  <span className="text-[11px] text-slate-500">Default: Password@123</span>
+                  <span className="text-[11px] text-slate-500">Default: Password@123 (SuperAdmin: SuperAdmin@123)</span>
                 </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
@@ -255,6 +309,20 @@ export const Login: React.FC = () => {
                 {loading ? 'Authenticating...' : 'Sign In to Workspace'}
                 <ArrowRight className="w-4 h-4" />
               </button>
+
+              <div className="pt-4 border-t border-slate-800 text-center">
+                <p className="text-xs text-slate-400">
+                  New Construction or Interior Firm?
+                </p>
+                <Link
+                  to="/signup"
+                  className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-amber-400 hover:text-amber-300 transition group"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Start 14-Day Free Trial</span>
+                  <span className="group-hover:translate-x-1 transition">&rarr;</span>
+                </Link>
+              </div>
             </form>
           </div>
         </div>
@@ -269,22 +337,22 @@ export const Login: React.FC = () => {
                   Instant 1-Click Persona Login
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Click any role card below to login instantly with preloaded company data.
+                  Click any card below to test Super Admin, Active Trials, Expired Trials, or Site Roles.
                 </p>
               </div>
               <span className="font-mono text-[11px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
-                8 RBAC Roles
+                11 Multi-Tenant Personas
               </span>
             </div>
 
-            {/* Grid of 8 Enterprise Roles */}
+            {/* Grid of Enterprise Roles */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[520px] overflow-y-auto pr-1">
               {DEMO_ROLES.map((r) => {
                 const IconComponent = r.icon;
                 return (
                   <div
-                    key={r.role}
-                    onClick={() => handleQuickDemoLogin(r.email)}
+                    key={r.role + r.email}
+                    onClick={() => handleQuickDemoLogin(r)}
                     className="p-3.5 rounded-xl bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 transition cursor-pointer group flex flex-col justify-between"
                   >
                     <div>
@@ -325,8 +393,12 @@ export const Login: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 max-w-7xl mx-auto w-full px-6 py-4 text-center text-xs text-slate-600 border-t border-slate-900">
-        ApexBuild Infra ERP Platform • Double-Entry Accounting Engine • ISO 9001:2015 Civil Engineering Standard
+      <footer className="relative z-10 max-w-7xl mx-auto w-full px-6 py-4 text-center text-xs text-slate-600 border-t border-slate-900 flex flex-wrap items-center justify-center gap-2">
+        <span>ApexBuild Infra ERP Platform • Double-Entry Accounting Engine • Construction & Interior Operations</span>
+        <span className="hidden sm:inline text-slate-700">|</span>
+        <Link to="/platform-admin/login" className="text-slate-500 hover:text-indigo-400 font-semibold transition">
+          SaaS Platform Operator Portal ↗
+        </Link>
       </footer>
     </div>
   );

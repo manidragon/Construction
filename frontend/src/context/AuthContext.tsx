@@ -88,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasRole = (...roles: UserRole[]) => {
     if (!user) return false;
-    if (user.role === 'OWNER') return true; // Owner has all permissions
+    if (user.role === 'SUPER_ADMIN' || user.role === 'OWNER' || user.role === 'TENANT_ADMIN') return true; // Super Admin & Owners have all permissions
     return roles.includes(user.role);
   };
 

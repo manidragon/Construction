@@ -18,6 +18,9 @@ import {
   CheckCircle2,
   Share2,
   Users,
+  Edit2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
@@ -69,6 +72,90 @@ export const Projects: React.FC = () => {
     paymentTerms: 'Monthly Running Account (RA) Bills. Retention 5%, TDS 2%, GST 18%.',
     taxRatePercent: '18',
   });
+
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    status: 'ACTIVE',
+    description: '',
+    clientName: '',
+    clientContact: '',
+    clientEmail: '',
+    clientBillingAddr: '',
+    clientGstin: '',
+    siteAddress: '',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    projectType: 'RESIDENTIAL',
+    contractType: 'ITEM_RATE',
+    contractValue: '',
+    approvedBudget: '',
+    plannedStartDate: '',
+    plannedEndDate: '',
+    paymentTerms: '',
+    taxRatePercent: '18',
+  });
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const openEditProjectModal = (p: Project) => {
+    setEditingProject(p);
+    setEditFormData({
+      name: p.name,
+      status: p.status,
+      description: p.description || '',
+      clientName: p.clientName || '',
+      clientContact: p.clientContact || '',
+      clientEmail: p.clientEmail || '',
+      clientBillingAddr: p.clientBillingAddr || '',
+      clientGstin: p.clientGstin || '',
+      siteAddress: p.siteAddress || '',
+      city: p.city || 'Bengaluru',
+      state: p.state || 'Karnataka',
+      projectType: p.projectType || 'RESIDENTIAL',
+      contractType: p.contractType || 'ITEM_RATE',
+      contractValue: String(p.contractValue || ''),
+      approvedBudget: String(p.approvedBudget || ''),
+      plannedStartDate: p.plannedStartDate ? new Date(p.plannedStartDate).toISOString().split('T')[0] : '',
+      plannedEndDate: p.plannedEndDate ? new Date(p.plannedEndDate).toISOString().split('T')[0] : '',
+      paymentTerms: p.paymentTerms || '',
+      taxRatePercent: String(p.taxRatePercent || '18'),
+    });
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject) return;
+    try {
+      const res = await api.updateProject(editingProject.id, editFormData);
+      if (res.success) {
+        setEditingProject(null);
+        fetchProjects();
+        refreshProjects();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update project');
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!deletingProject) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await api.deleteProject(deletingProject.id);
+      if (res.success) {
+        setDeletingProject(null);
+        fetchProjects();
+        refreshProjects();
+      }
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete project');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const fetchClients = async () => {
     try {
@@ -122,7 +209,7 @@ export const Projects: React.FC = () => {
         setFormData((prev) => ({
           ...prev,
           clientName: newClient.companyName || newClient.name,
-          clientContact: newClient.contactPerson || newClient.phone || '',
+          clientContact: (newClient.phone ? newClient.phone.replace(/\s+/g, '') : '') || newClient.contactPerson || '',
           clientEmail: newClient.email || '',
           clientBillingAddr: newClient.billingAddress || '',
           clientGstin: newClient.gstin || '',
@@ -332,6 +419,34 @@ export const Projects: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Cash vs Bank Collections Breakdown */}
+                <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <span>Collections</span>
+                    <span className="text-slate-900 font-extrabold">Total: {formatCurrency(p.financials?.totalReceived || 0)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-emerald-50 border border-emerald-200/70 rounded-lg p-1.5 flex items-center justify-between">
+                      <div className="flex items-center space-x-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                        <span className="text-[10px] font-bold text-emerald-800">In Cash:</span>
+                      </div>
+                      <span className="text-[11px] font-extrabold text-emerald-950 font-mono">
+                        {formatCurrency(p.financials?.cashReceived || 0)}
+                      </span>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200/70 rounded-lg p-1.5 flex items-center justify-between">
+                      <div className="flex items-center space-x-1">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                        <span className="text-[10px] font-bold text-blue-800">In Bank:</span>
+                      </div>
+                      <span className="text-[11px] font-extrabold text-blue-950 font-mono">
+                        {formatCurrency(p.financials?.bankReceived || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Completion Progress Bar */}
                 <div className="mt-4">
                   <div className="flex items-center justify-between text-xs mb-1">
@@ -387,13 +502,36 @@ export const Projects: React.FC = () => {
                   </button>
                 </div>
 
-                <Link
-                  to={`/projects/${p.id}`}
-                  className="font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1"
-                >
-                  <span>Open Project</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                <div className="flex items-center space-x-1.5">
+                  {hasRole('OWNER', 'PROJECT_MANAGER') && (
+                    <button
+                      onClick={() => openEditProjectModal(p)}
+                      className="p-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 transition"
+                      title="Edit Project"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {hasRole('OWNER') && (
+                    <button
+                      onClick={() => {
+                        setDeletingProject(p);
+                        setDeleteError(null);
+                      }}
+                      className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/50 transition"
+                      title="Delete Project"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <Link
+                    to={`/projects/${p.id}`}
+                    className="font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1 ml-1"
+                  >
+                    <span>Open</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               </div>
             </div>
           ))}
@@ -476,7 +614,7 @@ export const Projects: React.FC = () => {
                       setFormData({
                         ...formData,
                         clientName: c.companyName || c.name,
-                        clientContact: c.contactPerson || c.phone || '',
+                        clientContact: (c.phone ? c.phone.replace(/\s+/g, '') : '') || c.contactPerson || '',
                         clientEmail: c.email || '',
                         clientBillingAddr: c.billingAddress || '',
                         clientGstin: c.gstin || '',
@@ -494,11 +632,11 @@ export const Projects: React.FC = () => {
                   ))}
                 </select>
                 <p className="text-[10px] text-slate-500 mt-1">
-                  Selecting a client automatically fills client name, GSTIN, contact person, email, and address.
+                  Selecting a client automatically fills client name, GSTIN, phone, email, and address.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Client Name *</label>
                   <input
@@ -511,12 +649,47 @@ export const Projects: React.FC = () => {
                   />
                 </div>
                 <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Client Phone (WhatsApp)</label>
+                  <input
+                    type="text"
+                    placeholder="+918056694739 or 9876543210"
+                    value={formData.clientContact}
+                    onChange={(e) => setFormData({ ...formData, clientContact: e.target.value.replace(/\s+/g, '') })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                  />
+                  <span className="text-[9px] text-slate-400 block mt-0.5">No spaces needed</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Client Email</label>
+                  <input
+                    type="email"
+                    placeholder="billing@client.com"
+                    value={formData.clientEmail}
+                    onChange={(e) => setFormData({ ...formData, clientEmail: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Client GSTIN</label>
                   <input
                     type="text"
                     placeholder="29AABCP1122K1Z9"
                     value={formData.clientGstin}
                     onChange={(e) => setFormData({ ...formData, clientGstin: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono uppercase"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Site Address & Location *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Plot No, Road, Locality, Coordinates"
+                    value={formData.siteAddress}
+                    onChange={(e) => setFormData({ ...formData, siteAddress: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
@@ -534,18 +707,6 @@ export const Projects: React.FC = () => {
                     <option value="RENOVATION">Renovation / Fitout</option>
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Site Address & Location *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Plot No, Road, Locality, Coordinates"
-                  value={formData.siteAddress}
-                  onChange={(e) => setFormData({ ...formData, siteAddress: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -704,11 +865,12 @@ export const Projects: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="+91 98450 11001"
+                    placeholder="+918056694739 or 9876543210"
                     value={clientForm.phone}
-                    onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value.replace(/\s+/g, '') })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   />
+                  <span className="text-[9px] text-slate-400 block mt-0.5">No spaces needed between numbers</span>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
@@ -774,6 +936,185 @@ export const Projects: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Project Modal */}
+      {editingProject && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full my-8 overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <div>
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider font-mono">
+                  {editingProject.code}
+                </span>
+                <h2 className="text-base font-bold text-slate-900">Edit Project Details</h2>
+              </div>
+              <button
+                onClick={() => setEditingProject(null)}
+                className="p-1 rounded-md hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProject} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Project Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
+                  <select
+                    value={editFormData.status}
+                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                  >
+                    <option value="PLANNING">Planning</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="ON_HOLD">On Hold</option>
+                    <option value="COMPLETED">Completed</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Contract Value (₹) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={editFormData.contractValue}
+                    onChange={(e) => setEditFormData({ ...editFormData, contractValue: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Approved Budget (₹) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={editFormData.approvedBudget}
+                    onChange={(e) => setEditFormData({ ...editFormData, approvedBudget: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Planned Start Date</label>
+                  <input
+                    type="date"
+                    value={editFormData.plannedStartDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, plannedStartDate: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Planned End Date</label>
+                  <input
+                    type="date"
+                    value={editFormData.plannedEndDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, plannedEndDate: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Site Address</label>
+                <input
+                  type="text"
+                  value={editFormData.siteAddress}
+                  onChange={(e) => setEditFormData({ ...editFormData, siteAddress: e.target.value })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-sm transition"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {deletingProject && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center space-x-3 text-red-600">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete Project?</h3>
+                <p className="text-xs text-slate-500 font-mono">[{deletingProject.code}] {deletingProject.name}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete this project? This will permanently remove the project and its configurations.
+              Projects with active financial transactions or invoices cannot be deleted.
+            </p>
+
+            {deleteError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="pt-2 flex items-center justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletingProject(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteProject}
+                className="px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl shadow-sm transition"
+              >
+                {isDeleting ? 'Deleting...' : 'Confirm Delete Project'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -17,6 +17,9 @@ import {
   X,
   FileCheck,
   Share2,
+  Edit2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
@@ -27,6 +30,18 @@ export const DailyReports: React.FC = () => {
   const [reports, setReports] = useState<DailySiteReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState<DailySiteReport | null>(null);
+
+  // Edit / Delete State
+  const [editingDpr, setEditingDpr] = useState<DailySiteReport | null>(null);
+  const [editDprForm, setEditDprForm] = useState({
+    weather: '',
+    workSummary: '',
+    delaysReason: '',
+    safetyIncidents: '',
+    issuesNoted: '',
+  });
+  const [deletingDpr, setDeletingDpr] = useState<DailySiteReport | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -95,6 +110,51 @@ export const DailyReports: React.FC = () => {
       }
     } catch (err: any) {
       alert(err.message || 'Approval failed');
+    }
+  };
+
+  const openEditDPR = (dpr: DailySiteReport) => {
+    setEditingDpr(dpr);
+    setEditDprForm({
+      weather: dpr.weather || '',
+      workSummary: dpr.workSummary || '',
+      delaysReason: dpr.delaysReason || '',
+      safetyIncidents: dpr.safetyIncidents || '',
+      issuesNoted: dpr.issuesNoted || '',
+    });
+  };
+
+  const handleUpdateDPR = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDpr) return;
+    try {
+      const res = await api.updateDailyReport(editingDpr.id, editDprForm);
+      if (res.success) {
+        setEditingDpr(null);
+        fetchDPRs();
+        if (selectedReport && selectedReport.id === editingDpr.id) {
+          setSelectedReport({ ...selectedReport, ...editDprForm });
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update DPR');
+    }
+  };
+
+  const handleDeleteDPR = async () => {
+    if (!deletingDpr) return;
+    setIsDeleting(true);
+    try {
+      const res = await api.deleteDailyReport(deletingDpr.id);
+      if (res.success) {
+        setDeletingDpr(null);
+        if (selectedReport?.id === deletingDpr.id) setSelectedReport(null);
+        fetchDPRs();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete DPR');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -196,11 +256,37 @@ export const DailyReports: React.FC = () => {
               {/* Header: Date & Status */}
               <div className="flex items-center justify-between">
                 <span className="font-bold text-xs text-slate-900">{formatDate(dpr.reportDate)}</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  dpr.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {dpr.status}
-                </span>
+                <div className="flex items-center space-x-1.5">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    dpr.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {dpr.status}
+                  </span>
+                  {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditDPR(dpr);
+                      }}
+                      className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition"
+                      title="Edit DPR"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {hasRole('OWNER', 'PROJECT_MANAGER') && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingDpr(dpr);
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition"
+                      title="Delete DPR"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center text-xs text-slate-500 mt-2 space-x-2">
@@ -371,17 +457,37 @@ export const DailyReports: React.FC = () => {
 
             {/* Actions */}
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <button
-                onClick={() => setSelectedReport(null)}
-                className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Close
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setSelectedReport(null)}
+                  className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Close
+                </button>
+                {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                  <button
+                    onClick={() => openEditDPR(selectedReport)}
+                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </button>
+                )}
+                {hasRole('OWNER', 'PROJECT_MANAGER') && (
+                  <button
+                    onClick={() => setDeletingDpr(selectedReport)}
+                    className="flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
 
               {selectedReport.status === 'SUBMITTED' && hasRole('OWNER', 'PROJECT_MANAGER') && (
                 <button
                   onClick={() => handleApprove(selectedReport.id)}
-                  className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
+                  className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition"
                 >
                   Approve DPR
                 </button>
@@ -462,6 +568,127 @@ export const DailyReports: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit DPR Modal */}
+      {editingDpr && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full my-8 p-5 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Edit Daily Progress Report</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">{formatDate(editingDpr.reportDate)}</p>
+              </div>
+              <button onClick={() => setEditingDpr(null)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateDPR} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Weather & Conditions</label>
+                <input
+                  type="text"
+                  value={editDprForm.weather}
+                  onChange={(e) => setEditDprForm({ ...editDprForm, weather: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Work Completed Summary *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={editDprForm.workSummary}
+                  onChange={(e) => setEditDprForm({ ...editDprForm, workSummary: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Delays & Obstacles (if any)</label>
+                <input
+                  type="text"
+                  value={editDprForm.delaysReason}
+                  onChange={(e) => setEditDprForm({ ...editDprForm, delaysReason: e.target.value })}
+                  placeholder="e.g. Rain stoppage, material delay..."
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Safety Record / Incidents</label>
+                <input
+                  type="text"
+                  value={editDprForm.safetyIncidents}
+                  onChange={(e) => setEditDprForm({ ...editDprForm, safetyIncidents: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Issues & Notes</label>
+                <input
+                  type="text"
+                  value={editDprForm.issuesNoted}
+                  onChange={(e) => setEditDprForm({ ...editDprForm, issuesNoted: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDpr(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete DPR Confirmation Modal */}
+      {deletingDpr && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-2 bg-rose-50 rounded-xl">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Delete Daily Report</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete the DPR for <strong className="text-slate-900">{formatDate(deletingDpr.reportDate)}</strong>? This will remove all associated labour and equipment logs for this day.
+            </p>
+            <div className="pt-2 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setDeletingDpr(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteDPR}
+                disabled={isDeleting}
+                className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -37,6 +37,9 @@ yarn-error.log*
 
 # Temporary & Updates
 New project code/
+project version 2/
+scratch/
+*.zip
 
 # OS & Editor
 .vscode/

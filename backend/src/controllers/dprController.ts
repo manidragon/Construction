@@ -170,3 +170,77 @@ export const approveDailyReport = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateDailyReport = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const {
+      weather,
+      temperature,
+      workSummary,
+      delaysReason,
+      safetyIncidents,
+      issuesNoted,
+      status,
+    } = req.body;
+
+    const existing = await prisma.dailySiteReport.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'DPR not found.' });
+    }
+
+    const updated = await prisma.dailySiteReport.update({
+      where: { id },
+      data: {
+        weather: weather !== undefined ? weather : existing.weather,
+        temperature: temperature !== undefined ? temperature : existing.temperature,
+        workSummary: workSummary !== undefined ? workSummary : existing.workSummary,
+        delaysReason: delaysReason !== undefined ? delaysReason : existing.delaysReason,
+        safetyIncidents: safetyIncidents !== undefined ? safetyIncidents : existing.safetyIncidents,
+        issuesNoted: issuesNoted !== undefined ? issuesNoted : existing.issuesNoted,
+        status: status !== undefined ? status : existing.status,
+      },
+      include: {
+        project: { select: { code: true, name: true } },
+        site: { select: { code: true, name: true } },
+        preparedBy: { select: { name: true, role: true } },
+        approvedBy: { select: { name: true } },
+        labourEntries: true,
+        materialEntries: true,
+        equipmentEntries: true,
+        photos: true,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_DPR', 'DAILY_SITE_REPORT', id, {}, req.ip);
+
+    return res.json({ success: true, report: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteDailyReport = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    const existing = await prisma.dailySiteReport.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'DPR not found.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.dPRLabourEntry.deleteMany({ where: { dprId: id } });
+      await tx.dPRMaterialEntry.deleteMany({ where: { dprId: id } });
+      await tx.dPREquipmentEntry.deleteMany({ where: { dprId: id } });
+      await tx.dPRPhoto.deleteMany({ where: { dprId: id } });
+      await tx.dailySiteReport.delete({ where: { id } });
+    });
+
+    await logAudit(req.user?.id, 'DELETE_DPR', 'DAILY_SITE_REPORT', id, {}, req.ip);
+
+    return res.json({ success: true, message: 'Daily Site Report deleted successfully.' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

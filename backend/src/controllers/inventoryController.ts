@@ -86,6 +86,71 @@ export const createMaterial = async (req: Request, res: Response) => {
   }
 };
 
+export const updateMaterial = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { name, category, brand, unit, standardPrice, minStockLevel, reorderQty, taxPercent } = req.body;
+
+    const existing = await prisma.material.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Material not found.' });
+    }
+
+    const updated = await prisma.material.update({
+      where: { id },
+      data: {
+        name: name !== undefined ? name : existing.name,
+        category: category || existing.category,
+        brand: brand !== undefined ? brand : existing.brand,
+        unit: unit || existing.unit,
+        standardPrice: standardPrice !== undefined ? Number(standardPrice) : existing.standardPrice,
+        minStockLevel: minStockLevel !== undefined ? Number(minStockLevel) : existing.minStockLevel,
+        reorderQty: reorderQty !== undefined ? Number(reorderQty) : existing.reorderQty,
+        taxPercent: taxPercent !== undefined ? Number(taxPercent) : existing.taxPercent,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_MATERIAL', 'MATERIAL', id, { name: updated.name }, req.ip);
+
+    return res.json({ success: true, material: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteMaterial = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.material.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { stockBalances: true, poLineItems: true, requisitionItems: true } },
+      },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Material not found.' });
+    }
+
+    if (existing._count.poLineItems > 0 || existing._count.requisitionItems > 0) {
+      // Soft-delete to preserve procurement audit history
+      await prisma.material.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      return res.json({ success: true, message: `Material '${existing.name}' archived successfully.` });
+    }
+
+    await prisma.stockBalance.deleteMany({ where: { materialId: id } });
+    await prisma.material.delete({ where: { id } });
+
+    await logAudit(req.user?.id, 'DELETE_MATERIAL', 'MATERIAL', id, { code: existing.code }, req.ip);
+
+    return res.json({ success: true, message: `Material '${existing.name}' deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const getWarehouses = async (req: Request, res: Response) => {
   try {
     const warehouses = await prisma.warehouse.findMany({
@@ -100,6 +165,89 @@ export const getWarehouses = async (req: Request, res: Response) => {
     });
 
     return res.json({ success: true, warehouses });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const createWarehouse = async (req: Request, res: Response) => {
+  try {
+    const { code, name, location, isSiteStore, contactPerson, projectId } = req.body;
+
+    if (!code || !name || !location) {
+      return res.status(400).json({ success: false, message: 'Code, name, and location are required.' });
+    }
+
+    const warehouse = await prisma.warehouse.create({
+      data: {
+        code,
+        name,
+        location,
+        isSiteStore: Boolean(isSiteStore),
+        contactPerson: contactPerson || null,
+        projectId: projectId || null,
+      },
+    });
+
+    await logAudit(req.user?.id, 'CREATE_WAREHOUSE', 'WAREHOUSE', warehouse.id, { code, name }, req.ip);
+
+    return res.status(201).json({ success: true, warehouse });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateWarehouse = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { name, location, isSiteStore, contactPerson, projectId } = req.body;
+
+    const existing = await prisma.warehouse.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Warehouse not found.' });
+    }
+
+    const updated = await prisma.warehouse.update({
+      where: { id },
+      data: {
+        name: name !== undefined ? name : existing.name,
+        location: location !== undefined ? location : existing.location,
+        isSiteStore: isSiteStore !== undefined ? Boolean(isSiteStore) : existing.isSiteStore,
+        contactPerson: contactPerson !== undefined ? contactPerson : existing.contactPerson,
+        projectId: projectId !== undefined ? projectId : existing.projectId,
+      },
+    });
+
+    return res.json({ success: true, warehouse: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteWarehouse = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.warehouse.findUnique({
+      where: { id },
+      include: {
+        balances: { where: { currentQty: { gt: 0 } } },
+      },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Warehouse not found.' });
+    }
+
+    if (existing.balances.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete warehouse with positive stock in inventory (${existing.balances.length} items present).`,
+      });
+    }
+
+    await prisma.stockBalance.deleteMany({ where: { warehouseId: id } });
+    await prisma.warehouse.delete({ where: { id } });
+
+    return res.json({ success: true, message: `Warehouse '${existing.name}' deleted successfully.` });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -200,6 +348,25 @@ export const approveRequisition = async (req: Request, res: Response) => {
     await logAudit(req.user?.id, `REQUISITION_${status}`, 'MATERIAL_REQUISITION', id, { status }, req.ip);
 
     return res.json({ success: true, requisition: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteRequisition = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.materialRequisition.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Requisition not found.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.requisitionItem.deleteMany({ where: { requisitionId: id } });
+      await tx.materialRequisition.delete({ where: { id } });
+    });
+
+    return res.json({ success: true, message: 'Requisition deleted successfully.' });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

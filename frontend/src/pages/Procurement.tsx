@@ -630,7 +630,12 @@ export const Procurement: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full my-8 p-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Generate Purchase Order (PO)</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Generate Purchase Order (PO)</h3>
+                <span className="text-[11px] text-amber-700 font-mono font-bold block mt-0.5">
+                  Sequential PO Ref: PO-{new Date().getFullYear()}-{String(purchaseOrders.length + 1).padStart(4, '0')}
+                </span>
+              </div>
               <button onClick={() => setShowPOModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -1469,14 +1474,35 @@ export const Procurement: React.FC = () => {
             </div>
             <form onSubmit={handleCreateInvoice} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Vendor Invoice # *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Vendor Invoice / Bill # *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selSupp = suppliers.find((s) => s.id === invForm.supplierId);
+                      const selPO = purchaseOrders.find((p) => p.id === invForm.purchaseOrderId);
+                      let autoNum = '';
+                      if (selPO) {
+                        autoNum = `BILL-${selPO.poNumber}`;
+                      } else {
+                        const suppTag = selSupp ? selSupp.name.trim().split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '') : 'SUP';
+                        autoNum = `BILL-${String(invoices.length + 1).padStart(2, '0')}-${suppTag}`;
+                      }
+                      setInvForm({ ...invForm, invoiceNumber: autoNum });
+                    }}
+                    className="text-[10px] text-amber-600 hover:text-amber-700 font-bold"
+                    title="Auto-fill sequential purchase bill number"
+                  >
+                    ⚡ Auto-Generate
+                  </button>
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. INV-BLJ-5510"
+                  placeholder="e.g. INV-BLJ-5510 or BILL-01-BALAJI"
                   value={invForm.invoiceNumber}
                   onChange={(e) => setInvForm({ ...invForm, invoiceNumber: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 />
               </div>
 
@@ -1501,10 +1527,14 @@ export const Procurement: React.FC = () => {
                     value={invForm.purchaseOrderId}
                     onChange={(e) => {
                       const selPO = purchaseOrders.find((p) => p.id === e.target.value);
+                      const selSupp = suppliers.find((s) => s.id === (selPO?.supplierId || invForm.supplierId));
+                      const suppTag = selSupp ? selSupp.name.trim().split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '') : 'SUP';
+                      const defaultBillNum = selPO ? `BILL-${selPO.poNumber}` : `BILL-${String(invoices.length + 1).padStart(2, '0')}-${suppTag}`;
                       setInvForm({
                         ...invForm,
                         purchaseOrderId: e.target.value,
                         supplierId: selPO?.supplierId || invForm.supplierId,
+                        invoiceNumber: invForm.invoiceNumber ? invForm.invoiceNumber : defaultBillNum,
                         subtotal: selPO ? String(selPO.subtotal) : invForm.subtotal,
                         taxAmount: selPO ? String(selPO.taxAmount) : invForm.taxAmount,
                       });

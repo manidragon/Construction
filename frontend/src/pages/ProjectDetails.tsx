@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
 import { formatCurrency, formatDate, formatPercent } from '../utils/formatters';
 import api from '../services/api';
 import {
@@ -21,10 +23,16 @@ import {
   Share2,
   FileText,
   Printer,
+  Sparkles,
+  Palette,
+  Image as ImageIcon,
+  ExternalLink,
 } from 'lucide-react';
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
 export const ProjectDetails: React.FC = () => {
+  const { user, hasRole } = useAuth();
+  const { setSelectedProjectId } = useProject();
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -40,10 +48,17 @@ export const ProjectDetails: React.FC = () => {
   const [showCOModal, setShowCOModal] = useState(false);
   const [coForm, setCoForm] = useState({
     orderNumber: '',
+    title: '',
     description: '',
+    scopeType: 'DESIGN_VARIATION',
+    requestedBy: 'Client',
     amountDelta: '',
     timeDeltaDays: '0',
+    swatchRenderUrl: '',
+    clientSignOffUrl: '',
   });
+
+  const [seedingPhases, setSeedingPhases] = useState(false);
 
   const fetchProject = async () => {
     if (!id) return;
@@ -64,6 +79,22 @@ export const ProjectDetails: React.FC = () => {
     fetchProject();
   }, [id]);
 
+  const handleSeedInteriorPhases = async () => {
+    if (!id) return;
+    setSeedingPhases(true);
+    try {
+      const res = await api.seedInteriorPhases(id);
+      if (res.success) {
+        alert(res.message || 'Interior lifecycle phases applied successfully!');
+        fetchProject();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to seed interior phases');
+    } finally {
+      setSeedingPhases(false);
+    }
+  };
+
   const handleCreateCO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
@@ -71,7 +102,17 @@ export const ProjectDetails: React.FC = () => {
       const res = await api.createChangeOrder(id, coForm);
       if (res.success) {
         setShowCOModal(false);
-        setCoForm({ orderNumber: '', description: '', amountDelta: '', timeDeltaDays: '0' });
+        setCoForm({
+          orderNumber: '',
+          title: '',
+          description: '',
+          scopeType: 'DESIGN_VARIATION',
+          requestedBy: 'Client',
+          amountDelta: '',
+          timeDeltaDays: '0',
+          swatchRenderUrl: '',
+          clientSignOffUrl: '',
+        });
         fetchProject();
       }
     } catch (err: any) {
@@ -110,6 +151,17 @@ export const ProjectDetails: React.FC = () => {
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Direct Link to Project Labour Wages & Muster Roll */}
+          <Link
+            to={`/labour?projectId=${project.id}&tab=musterRoll`}
+            onClick={() => setSelectedProjectId(project.id)}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition shadow-sm"
+            title="Open exact Labour Wages & Muster Roll Sheet for this project"
+          >
+            <HardHat className="w-3.5 h-3.5 text-slate-950" />
+            <span>Labour Wages Sheet ↗</span>
+          </Link>
+
           {/* Share Daily Report to Owner Button */}
           <button
             onClick={() => {
@@ -198,6 +250,36 @@ export const ProjectDetails: React.FC = () => {
               <strong className="text-xs sm:text-sm text-blue-900">{project.completionPercent}%</strong>
             </div>
           </div>
+
+          {/* Module 3 Kickoff Gate Status */}
+          {project.advancePaymentConfirmed === false && (
+            <div className="mt-4 p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-2.5">
+                <span className="text-lg">⚠️</span>
+                <div>
+                  <span className="font-extrabold text-xs text-amber-950 block">
+                    Kickoff Gate: Initial Advance Payment Awaiting Finance Confirmation
+                  </span>
+                  <span className="text-[11px] text-amber-900">
+                    Advance entry of ₹{project.advancePaymentRequired?.toLocaleString('en-IN') || '0'} must be verified by Finance Department before scheduling tasks or assigning site workforce.
+                  </span>
+                </div>
+              </div>
+              {hasRole('OWNER', 'ACCOUNTS_MANAGER') && (
+                <button
+                  onClick={async () => {
+                    if (window.confirm('Confirm advance payment and unlock execution schedules?')) {
+                      await api.confirmProjectAdvance(project.id);
+                      fetchProject();
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs whitespace-nowrap shadow-sm transition"
+                >
+                  Confirm Advance & Unlock
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tab Navigation */}
@@ -223,6 +305,17 @@ export const ProjectDetails: React.FC = () => {
               {t.label}
             </button>
           ))}
+
+          {/* Direct Tab to Labour Wages & Muster Roll */}
+          <Link
+            to={`/labour?projectId=${project.id}&tab=musterRoll`}
+            onClick={() => setSelectedProjectId(project.id)}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg text-amber-600 hover:text-amber-800 hover:bg-amber-50 transition whitespace-nowrap flex items-center space-x-1 border border-amber-200 ml-auto"
+            title="Open exact Labour Wages & Muster Roll page for this project"
+          >
+            <HardHat className="w-3.5 h-3.5 text-amber-600" />
+            <span>Labour Wages ({project.siteWorkforce?.length || 0}) ↗</span>
+          </Link>
         </div>
       </div>
 
@@ -283,6 +376,28 @@ export const ProjectDetails: React.FC = () => {
                 </div>
               </div>
 
+              {/* Collections: Cash vs Bank Split */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    <span className="text-xs text-slate-300 font-semibold">Cash Collected:</span>
+                  </div>
+                  <strong className="text-sm font-mono font-bold text-emerald-400">
+                    {formatCurrency(f.cashReceived || 0)}
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                    <span className="text-xs text-slate-300 font-semibold">Bank / Account Collected:</span>
+                  </div>
+                  <strong className="text-sm font-mono font-bold text-blue-400">
+                    {formatCurrency(f.bankReceived || 0)}
+                  </strong>
+                </div>
+              </div>
+
               {/* Cost Breakdown Details */}
               <div className="pt-3 border-t border-slate-800">
                 <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2">Cost Breakdown Details</p>
@@ -294,13 +409,21 @@ export const ProjectDetails: React.FC = () => {
                     </span>
                     <strong className="font-mono text-slate-200">{formatCurrency(f.materialsCost || 0)}</strong>
                   </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                    <span className="text-slate-400 flex items-center">
+                  <Link
+                    to={`/labour?projectId=${project.id}&tab=musterRoll`}
+                    onClick={() => setSelectedProjectId(project.id)}
+                    className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 hover:border-amber-400/40 border border-transparent transition group cursor-pointer"
+                    title="Click to view detailed Labour Wages & Muster Roll for this project"
+                  >
+                    <span className="text-slate-400 group-hover:text-amber-300 flex items-center transition">
                       <HardHat className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
                       Labour (Muster Roll)
                     </span>
-                    <strong className="font-mono text-slate-200">{formatCurrency(f.labourCost || 0)}</strong>
-                  </div>
+                    <div className="flex items-center space-x-1">
+                      <strong className="font-mono text-slate-200 group-hover:text-white transition">{formatCurrency(f.labourCost || 0)}</strong>
+                      <span className="text-[10px] text-amber-400 opacity-80 group-hover:opacity-100">→</span>
+                    </div>
+                  </Link>
                   <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
                     <span className="text-slate-400 flex items-center">
                       <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-rose-400" />
@@ -336,12 +459,23 @@ export const ProjectDetails: React.FC = () => {
               </div>
             </div>
 
-            {/* Construction Phases */}
+            {/* Execution Phases (Civil & Interior Fit-Out) */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 mb-4">Project Execution Phases</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-900">Project Execution Phases</h3>
+                <button
+                  type="button"
+                  onClick={handleSeedInteriorPhases}
+                  disabled={seedingPhases}
+                  className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition flex items-center space-x-1"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-600" />
+                  <span>{seedingPhases ? 'Applying...' : 'Apply Interior Lifecycle (6 Phases)'}</span>
+                </button>
+              </div>
               <div className="space-y-2">
                 {(project.phases || []).length === 0 ? (
-                  <p className="text-xs text-slate-400">Phase 1: Excavation & Substructure, Phase 2: Superstructure RCC, Phase 3: Finishing</p>
+                  <p className="text-xs text-slate-400">Click above to apply the standardized 6-Phase Interior Lifecycle workflow.</p>
                 ) : (
                   (project.phases || []).map((ph: any) => (
                     <div key={ph.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg text-xs">
@@ -351,7 +485,11 @@ export const ProjectDetails: React.FC = () => {
                         </span>
                         <span className="font-semibold text-slate-800">{ph.name}</span>
                       </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        ph.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                        ph.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' :
+                        'bg-slate-200 text-slate-700'
+                      }`}>
                         {ph.status}
                       </span>
                     </div>
@@ -428,6 +566,15 @@ export const ProjectDetails: React.FC = () => {
                     ))}
                   </div>
                 )}
+                <Link
+                  to={`/labour?projectId=${project.id}&tab=musterRoll`}
+                  onClick={() => setSelectedProjectId(project.id)}
+                  className="mt-3 flex items-center justify-center space-x-2 w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm transition hover:shadow cursor-pointer"
+                  title="Open the exact same Labour Wages & Muster Roll page pre-filtered for this project"
+                >
+                  <HardHat className="w-4 h-4 text-slate-950" />
+                  <span>View Project Labour Wages & Muster Roll →</span>
+                </Link>
               </div>
 
               {/* 3. Procurement Suppliers / Vendors */}
@@ -628,37 +775,89 @@ export const ProjectDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Tab Content 6: Change Orders */}
+      {/* Tab Content 6: Change Orders & Scope Variations */}
       {activeTab === 'changeOrders' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Contract Variation & Change Orders</h3>
-              <p className="text-xs text-slate-500">Approved modifications adjusting contract value and timelines</p>
+              <div className="flex items-center space-x-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  Scope Variation Tracker
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 mt-1">Contract Variations & Client Design Changes</h3>
+              <p className="text-xs text-slate-500">Track client-requested design deviations, material upgrades, and budget/timeline deltas</p>
             </div>
             <button
               onClick={() => setShowCOModal(true)}
-              className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition"
+              className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Change Order</span>
+              <Plus className="w-4 h-4" />
+              <span>Record Scope Variation / CO</span>
             </button>
           </div>
 
           <div className="space-y-3">
             {(project.changeOrders || []).length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No contract change orders recorded.</p>
+              <div className="text-center py-8 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-xs text-slate-400">No contract change orders or scope variations recorded for this project yet.</p>
+              </div>
             ) : (
               (project.changeOrders || []).map((co: any) => (
-                <div key={co.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-mono font-bold text-slate-800">{co.orderNumber}</span>
-                    <p className="text-slate-600 mt-0.5">{co.description}</p>
-                    <span className="text-[10px] text-slate-400">Approved by {co.approvedBy || 'Owner'} on {formatDate(co.approvedAt)}</span>
+                <div key={co.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {co.orderNumber}
+                      </span>
+                      <span className="font-bold text-slate-900 text-sm">
+                        {co.title || 'Scope Variation'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                        {co.scopeType ? co.scopeType.replace(/_/g, ' ') : 'DESIGN VARIATION'}
+                      </span>
+                      {co.requestedBy && (
+                        <span className="text-[10px] text-slate-500">
+                          Requested by: <strong className="text-slate-700">{co.requestedBy}</strong>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-600 mt-1 leading-relaxed">{co.description}</p>
+                    <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-slate-500">
+                      <span>Approved by: <strong className="text-slate-700">{co.approvedBy || 'Owner'}</strong> on {formatDate(co.approvedAt)}</span>
+                      {co.swatchRenderUrl && (
+                        <a
+                          href={co.swatchRenderUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center space-x-1 text-amber-700 font-bold hover:underline"
+                        >
+                          <Palette className="w-3.5 h-3.5" />
+                          <span>View Swatch / 3D Render</span>
+                          <ExternalLink className="w-3 h-3 ml-0.5" />
+                        </a>
+                      )}
+                      {co.clientSignOffUrl && (
+                        <a
+                          href={co.clientSignOffUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center space-x-1 text-blue-700 font-bold hover:underline"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Client Sign-Off Record</span>
+                          <ExternalLink className="w-3 h-3 ml-0.5" />
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-bold text-emerald-600 block text-sm">+{formatCurrency(co.amountDelta)}</span>
-                    <span className="text-[10px] text-slate-500">Time extension: {co.timeDeltaDays} days</span>
+                  <div className="text-left md:text-right shrink-0 border-t md:border-t-0 pt-2 md:pt-0">
+                    <span className={`font-extrabold text-base block ${co.amountDelta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {co.amountDelta >= 0 ? '+' : ''}{formatCurrency(co.amountDelta)}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Timeline Impact: {co.timeDeltaDays > 0 ? `+${co.timeDeltaDays} days` : '0 days'}
+                    </span>
                   </div>
                 </div>
               ))
@@ -701,50 +900,100 @@ export const ProjectDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Add Change Order Modal */}
+      {/* Add Change Order / Scope Variation Modal */}
       {showCOModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full my-8 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Record Approved Change Order</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Record Scope Variation / Change Order</h3>
+                <p className="text-[11px] text-slate-500">Client design changes, material specification modifications, and budget adjustments</p>
+              </div>
               <button onClick={() => setShowCOModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleCreateCO} className="mt-4 space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Order Ref No *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. CO-SKY-001"
-                  value={coForm.orderNumber}
-                  onChange={(e) => setCoForm({ ...coForm, orderNumber: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Order Ref No *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. CO-INT-001"
+                    value={coForm.orderNumber}
+                    onChange={(e) => setCoForm({ ...coForm, orderNumber: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Variation Type *</label>
+                  <select
+                    value={coForm.scopeType}
+                    onChange={(e) => setCoForm({ ...coForm, scopeType: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="DESIGN_VARIATION">Design Variation</option>
+                    <option value="CLIENT_REQUEST">Client Direct Request</option>
+                    <option value="SPECIFICATION_CHANGE">Material Spec Change</option>
+                    <option value="SITE_CONDITION">Site Condition / Fitment</option>
+                  </select>
+                </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Variation Title *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Living Room Italian Marble Upgrade"
+                    value={coForm.title}
+                    onChange={(e) => setCoForm({ ...coForm, title: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Requested By</label>
+                  <select
+                    value={coForm.requestedBy}
+                    onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="Client">Client</option>
+                    <option value="Interior Designer">Interior Designer</option>
+                    <option value="Architect">Architect</option>
+                    <option value="Project Manager">Project Manager</option>
+                    <option value="Site Engineer">Site Engineer</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Description *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Scope Description & Reason *</label>
                 <textarea
                   required
                   rows={2}
-                  placeholder="e.g. Additional basement sump tank and deep excavation"
+                  placeholder="Describe modified layout, updated finishes, and rationale for change..."
                   value={coForm.description}
                   onChange={(e) => setCoForm({ ...coForm, description: e.target.value })}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
                 />
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Value Delta (₹) *</label>
                   <input
                     type="number"
+                    step="any"
                     required
-                    placeholder="e.g. 1500000"
+                    placeholder="e.g. 150000"
                     value={coForm.amountDelta}
                     onChange={(e) => setCoForm({ ...coForm, amountDelta: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
                   />
+                  <span className="text-[10px] text-slate-400">Can be positive (addition) or negative (deduction)</span>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Time Delta (Days)</label>
@@ -752,10 +1001,35 @@ export const ProjectDetails: React.FC = () => {
                     type="number"
                     value={coForm.timeDeltaDays}
                     onChange={(e) => setCoForm({ ...coForm, timeDeltaDays: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
                   />
                 </div>
               </div>
+
+              <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/60 space-y-2">
+                <span className="text-[11px] font-bold text-amber-900 block">Design Swatch & Client Sign-Off Attachments</span>
+                <div>
+                  <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Swatch / 3D Render URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://... swatch or 3D render photo URL"
+                    value={coForm.swatchRenderUrl}
+                    onChange={(e) => setCoForm({ ...coForm, swatchRenderUrl: e.target.value })}
+                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Client Sign-Off Record / Document URL</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Client WhatsApp approval screenshot / signed document URL"
+                    value={coForm.clientSignOffUrl}
+                    onChange={(e) => setCoForm({ ...coForm, clientSignOffUrl: e.target.value })}
+                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                  />
+                </div>
+              </div>
+
               <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
                 <button
                   type="button"
@@ -768,7 +1042,7 @@ export const ProjectDetails: React.FC = () => {
                   type="submit"
                   className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
                 >
-                  Approve & Post CO
+                  Approve & Post Scope Variation
                 </button>
               </div>
             </form>

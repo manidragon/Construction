@@ -16,6 +16,9 @@ import {
   Eye,
   Edit2,
   Trash2,
+  Layers,
+  Link2,
+  TrendingUp,
 } from 'lucide-react';
 
 export const Expenses: React.FC = () => {
@@ -32,12 +35,19 @@ export const Expenses: React.FC = () => {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showVoucherModal, setShowVoucherModal] = useState(false);
 
+  // BOQ & Task Selection Data
+  const [projectBOQItems, setProjectBOQItems] = useState<any[]>([]);
+  const [projectTasks, setProjectTasks] = useState<any[]>([]);
+  const [loadingProjectLinks, setLoadingProjectLinks] = useState(false);
+
   // View / Edit / Delete States
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
   const [editExpForm, setEditExpForm] = useState<any>({
     projectId: '',
+    taskId: '',
+    boqItemId: '',
     category: 'FUEL',
     description: '',
     amountBeforeTax: '',
@@ -60,6 +70,8 @@ export const Expenses: React.FC = () => {
   // Forms
   const [expForm, setExpForm] = useState({
     projectId: '',
+    taskId: '',
+    boqItemId: '',
     category: 'FUEL',
     description: '',
     amountBeforeTax: '',
@@ -78,6 +90,27 @@ export const Expenses: React.FC = () => {
     voucherNo: '',
     description: '',
   });
+
+  const fetchProjectLinks = async (pId: string) => {
+    if (!pId) {
+      setProjectBOQItems([]);
+      setProjectTasks([]);
+      return;
+    }
+    setLoadingProjectLinks(true);
+    try {
+      const [boqRes, tasksRes] = await Promise.all([
+        api.getBOQ(pId).catch(() => ({ items: [] })),
+        api.getTasks(`projectId=${pId}`).catch(() => ({ tasks: [] })),
+      ]);
+      setProjectBOQItems(boqRes.items || []);
+      setProjectTasks(tasksRes.tasks || []);
+    } catch (err) {
+      console.error('Failed to load project BOQ/Tasks for expense:', err);
+    } finally {
+      setLoadingProjectLinks(false);
+    }
+  };
 
   useEffect(() => {
     setProjectId(selectedProjectId || '');
@@ -109,16 +142,44 @@ export const Expenses: React.FC = () => {
     fetchData();
   }, [projectId]);
 
+  const openCreateExpenseModal = () => {
+    const targetProjId = expForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
+    setExpForm({
+      projectId: targetProjId,
+      taskId: '',
+      boqItemId: '',
+      category: 'INTERIOR_FITOUT',
+      description: '',
+      amountBeforeTax: '',
+      taxAmount: '0',
+      paymentMethod: 'BANK_TRANSFER',
+      paidTo: '',
+      invoiceReceiptNo: '',
+      expenseDate: new Date().toISOString().split('T')[0],
+    });
+    if (targetProjId) {
+      fetchProjectLinks(targetProjId);
+    }
+    setShowExpenseModal(true);
+  };
+
   const handleCreateExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const targetProjId = expForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
-      const res = await api.createExpense({ ...expForm, projectId: targetProjId });
+      const res = await api.createExpense({
+        ...expForm,
+        projectId: targetProjId,
+        taskId: expForm.taskId || undefined,
+        boqItemId: expForm.boqItemId || undefined,
+      });
       if (res.success) {
         setShowExpenseModal(false);
         fetchData();
         setExpForm({
           projectId: '',
+          taskId: '',
+          boqItemId: '',
           category: 'FUEL',
           description: '',
           amountBeforeTax: '',
@@ -159,6 +220,8 @@ export const Expenses: React.FC = () => {
     setEditingExpense(e);
     setEditExpForm({
       projectId: e.projectId || '',
+      taskId: e.taskId || '',
+      boqItemId: e.boqItemId || '',
       category: e.category,
       description: e.description,
       amountBeforeTax: String(e.amountBeforeTax),
@@ -168,13 +231,20 @@ export const Expenses: React.FC = () => {
       invoiceReceiptNo: e.invoiceReceiptNo || '',
       expenseDate: e.expenseDate ? new Date(e.expenseDate).toISOString().split('T')[0] : '',
     });
+    if (e.projectId) {
+      fetchProjectLinks(e.projectId);
+    }
   };
 
   const handleUpdateExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingExpense) return;
     try {
-      const res = await api.updateExpense(editingExpense.id, editExpForm);
+      const res = await api.updateExpense(editingExpense.id, {
+        ...editExpForm,
+        taskId: editExpForm.taskId || null,
+        boqItemId: editExpForm.boqItemId || null,
+      });
       if (res.success) {
         setEditingExpense(null);
         fetchData();
@@ -256,7 +326,7 @@ export const Expenses: React.FC = () => {
                 Petty Cash Voucher
               </button>
               <button
-                onClick={() => setShowExpenseModal(true)}
+                onClick={openCreateExpenseModal}
                 className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
               >
                 <Plus className="w-4 h-4" />
@@ -330,6 +400,7 @@ export const Expenses: React.FC = () => {
                   <th className="py-3 px-3">Expense #</th>
                   <th className="py-3 px-3">Date</th>
                   <th className="py-3 px-3">Project</th>
+                  <th className="py-3 px-3">Linked BOQ / Task</th>
                   <th className="py-3 px-3">Category</th>
                   <th className="py-3 px-3">Description</th>
                   <th className="py-3 px-3">Paid To</th>
@@ -346,6 +417,31 @@ export const Expenses: React.FC = () => {
                     <td className="py-3 px-3 font-mono font-bold text-slate-700">{e.expenseNumber}</td>
                     <td className="py-3 px-3 text-slate-500">{formatDate(e.expenseDate)}</td>
                     <td className="py-3 px-3 font-semibold text-slate-800">{e.project?.name || 'General Office'}</td>
+                    <td className="py-3 px-3">
+                      {e.boqItem || e.task ? (
+                        <div className="space-y-1">
+                          {e.boqItem && (
+                            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <Layers className="w-2.5 h-2.5 text-indigo-500 shrink-0" />
+                              <span className="font-mono">[{e.boqItem.itemCode}]</span>
+                              <span className="max-w-[110px] truncate" title={e.boqItem.description}>
+                                {e.boqItem.description}
+                              </span>
+                            </div>
+                          )}
+                          {e.task && (
+                            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <Link2 className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                              <span className="max-w-[110px] truncate" title={e.task.title}>
+                                {e.task.title}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                         {e.category}
@@ -484,10 +580,13 @@ export const Expenses: React.FC = () => {
 
       {/* Record Direct Expense Modal */}
       {showExpenseModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 my-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Record Direct Site Expense</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Record Direct Site & Fit-Out Expense</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Link direct expenditure to Project, Task, and BOQ Line Item with live variance mapping.</p>
+              </div>
               <button onClick={() => setShowExpenseModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -498,7 +597,11 @@ export const Expenses: React.FC = () => {
                 <select
                   required
                   value={expForm.projectId || projectId || selectedProjectId || ''}
-                  onChange={(e) => setExpForm({ ...expForm, projectId: e.target.value })}
+                  onChange={(e) => {
+                    const pId = e.target.value;
+                    setExpForm({ ...expForm, projectId: pId, taskId: '', boqItemId: '' });
+                    fetchProjectLinks(pId);
+                  }}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
                 >
                   <option value="">Select Project</option>
@@ -510,6 +613,95 @@ export const Expenses: React.FC = () => {
                 </select>
               </div>
 
+              {/* Task & BOQ Linkage Section */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                    <Link2 className="w-3 h-3 text-amber-600" />
+                    <span>Link to Task (Optional)</span>
+                  </label>
+                  <select
+                    value={expForm.taskId}
+                    onChange={(e) => setExpForm({ ...expForm, taskId: e.target.value })}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="">-- No Task Assigned --</option>
+                    {projectTasks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title} ({t.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-indigo-600" />
+                    <span>Link to BOQ Line Item (Optional)</span>
+                  </label>
+                  <select
+                    value={expForm.boqItemId}
+                    onChange={(e) => setExpForm({ ...expForm, boqItemId: e.target.value })}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="">-- No BOQ Item Linked --</option>
+                    {projectBOQItems.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        [{b.itemCode}] {b.description.substring(0, 32)}...
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Real-time BOQ Variance Calculation Card */}
+              {(() => {
+                const selectedBOQ = projectBOQItems.find((b) => b.id === expForm.boqItemId);
+                if (!selectedBOQ) return null;
+                const est = selectedBOQ.estimatedTotal || 0;
+                const currSpent = selectedBOQ.actualExpenditure || 0;
+                const thisExp = Number(expForm.amountBeforeTax || 0) + Number(expForm.taxAmount || 0);
+                const projectedSpent = currSpent + thisExp;
+                const projectedVariance = est - projectedSpent;
+                const isOverrun = projectedVariance < 0;
+
+                return (
+                  <div className={`p-3 rounded-xl border text-xs transition space-y-2 ${isOverrun ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/70 border-emerald-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <TrendingUp className={`w-3.5 h-3.5 ${isOverrun ? 'text-rose-600' : 'text-emerald-600'}`} />
+                        <span className={isOverrun ? 'text-rose-900' : 'text-emerald-900'}>
+                          Real-Time BOQ Line Variance: [{selectedBOQ.itemCode}]
+                        </span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${isOverrun ? 'bg-rose-200 text-rose-800' : 'bg-emerald-200 text-emerald-800'}`}>
+                        {isOverrun ? 'Budget Overrun Alert' : 'Within Budget'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 truncate">{selectedBOQ.description}</p>
+                    <div className="grid grid-cols-4 gap-2 text-center pt-1 border-t border-slate-200/60">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Est Budget</span>
+                        <strong className="font-mono text-slate-800">{formatCurrency(est)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Current Spend</span>
+                        <strong className="font-mono text-slate-700">{formatCurrency(currSpent)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">+ This Expense</span>
+                        <strong className="font-mono text-amber-700">{formatCurrency(thisExp)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Variance Left</span>
+                        <strong className={`font-mono font-bold ${isOverrun ? 'text-rose-600' : 'text-emerald-700'}`}>
+                          {formatCurrency(projectedVariance)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Expense Category *</label>
@@ -518,6 +710,19 @@ export const Expenses: React.FC = () => {
                     onChange={(e) => setExpForm({ ...expForm, category: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   >
+                    <option value="INTERIOR_FITOUT">Interior Fit-Out & Finishes</option>
+                    <option value="CARPENTRY_JOINERY">Carpentry & Joinery</option>
+                    <option value="FALSE_CEILING">False Ceiling & Drywall</option>
+                    <option value="MODULAR_KITCHENS">Modular Kitchens & Cabinets</option>
+                    <option value="ELECTRICAL_LIGHTING">Electrical & Lighting</option>
+                    <option value="PLUMBING_SANITARYWARE">Plumbing & Sanitaryware</option>
+                    <option value="FLOORING_TILING">Flooring & Tiling</option>
+                    <option value="PAINTING_WALLPAPERS">Painting & Wallpapers</option>
+                    <option value="SOFT_FURNISHINGS">Soft Furnishings</option>
+                    <option value="GLASS_ALUMINUM">Glass & Aluminum Work</option>
+                    <option value="HVAC_AC">HVAC & Air Conditioning</option>
+                    <option value="DIRECT_MATERIAL">Direct Material Purchase</option>
+                    <option value="SUBCONTRACTOR">Subcontractor Payment</option>
                     <option value="FUEL">Fuel & Dewatering Diesel</option>
                     <option value="TRANSPORT">Transport & Vehicle Hire</option>
                     <option value="SAFETY_EQUIPMENT">Safety PPE & Gear</option>
@@ -549,7 +754,7 @@ export const Expenses: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 50 Litres Diesel for dewatering pump"
+                  placeholder="e.g. Italian marble adhesive & epoxy grout for master bedroom"
                   value={expForm.description}
                   onChange={(e) => setExpForm({ ...expForm, description: e.target.value })}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
@@ -561,7 +766,7 @@ export const Expenses: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. IOCL Petrol Outlet"
+                  placeholder="e.g. Asian Paints Depot / Tile Vendor"
                   value={expForm.paidTo}
                   onChange={(e) => setExpForm({ ...expForm, paidTo: e.target.value })}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
@@ -762,6 +967,39 @@ export const Expenses: React.FC = () => {
               </div>
             </div>
 
+            {/* BOQ & Task Mapping Card */}
+            {(viewingExpense.boqItem || viewingExpense.task) && (
+              <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 space-y-2 text-xs">
+                <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
+                  Linked BOQ Item & Task Allocation
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {viewingExpense.boqItem && (
+                    <div className="bg-white p-2.5 rounded-lg border border-indigo-100 space-y-1">
+                      <div className="flex items-center gap-1 font-bold text-slate-800">
+                        <Layers className="w-3 h-3 text-indigo-600" />
+                        <span className="font-mono">[{viewingExpense.boqItem.itemCode}]</span>
+                      </div>
+                      <p className="text-slate-600 text-[11px] line-clamp-2">{viewingExpense.boqItem.description}</p>
+                      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500">BOQ Budget: <strong className="font-mono text-slate-800">{formatCurrency(viewingExpense.boqItem.estimatedTotal || 0)}</strong></span>
+                        <span className="text-slate-500">Actual Spend: <strong className="font-mono text-indigo-700">{formatCurrency(viewingExpense.boqItem.actualExpenditure || 0)}</strong></span>
+                      </div>
+                    </div>
+                  )}
+                  {viewingExpense.task && (
+                    <div className="bg-white p-2.5 rounded-lg border border-amber-100 space-y-1">
+                      <div className="flex items-center gap-1 font-bold text-slate-800">
+                        <Link2 className="w-3 h-3 text-amber-600" />
+                        <span>{viewingExpense.task.title}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500">Assigned execution task under project work schedule</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
               <span className="text-[10px] text-slate-400 block font-medium mb-1">Description</span>
               <p className="text-slate-800 font-medium">{viewingExpense.description}</p>
@@ -806,14 +1044,14 @@ export const Expenses: React.FC = () => {
 
       {/* Edit Expense Modal */}
       {editingExpense && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 my-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider font-mono">
                   {editingExpense.expenseNumber}
                 </span>
-                <h3 className="text-sm font-bold text-slate-900">Edit Direct Expense</h3>
+                <h3 className="text-sm font-bold text-slate-900">Edit Direct Expense & Allocation</h3>
               </div>
               <button onClick={() => setEditingExpense(null)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -824,7 +1062,11 @@ export const Expenses: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project</label>
                 <select
                   value={editExpForm.projectId}
-                  onChange={(e) => setEditExpForm({ ...editExpForm, projectId: e.target.value })}
+                  onChange={(e) => {
+                    const pId = e.target.value;
+                    setEditExpForm({ ...editExpForm, projectId: pId, taskId: '', boqItemId: '' });
+                    fetchProjectLinks(pId);
+                  }}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
                 >
                   <option value="">General Office</option>
@@ -836,6 +1078,97 @@ export const Expenses: React.FC = () => {
                 </select>
               </div>
 
+              {/* Task & BOQ Linkage */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                    <Link2 className="w-3 h-3 text-amber-600" />
+                    <span>Link to Task (Optional)</span>
+                  </label>
+                  <select
+                    value={editExpForm.taskId}
+                    onChange={(e) => setEditExpForm({ ...editExpForm, taskId: e.target.value })}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="">-- No Task Assigned --</option>
+                    {projectTasks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title} ({t.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-indigo-600" />
+                    <span>Link to BOQ Line Item (Optional)</span>
+                  </label>
+                  <select
+                    value={editExpForm.boqItemId}
+                    onChange={(e) => setEditExpForm({ ...editExpForm, boqItemId: e.target.value })}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="">-- No BOQ Item Linked --</option>
+                    {projectBOQItems.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        [{b.itemCode}] {b.description.substring(0, 32)}...
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Real-time BOQ Variance Calculation Card for Edit */}
+              {(() => {
+                const selectedBOQ = projectBOQItems.find((b) => b.id === editExpForm.boqItemId);
+                if (!selectedBOQ) return null;
+                const est = selectedBOQ.estimatedTotal || 0;
+                // Subtract old expense if it was linked to the same BOQ item to calculate projected delta
+                const oldExpenseOnThisBOQ = editingExpense.boqItemId === selectedBOQ.id ? editingExpense.totalAmount : 0;
+                const baseSpent = (selectedBOQ.actualExpenditure || 0) - oldExpenseOnThisBOQ;
+                const newExpTotal = Number(editExpForm.amountBeforeTax || 0) + Number(editExpForm.taxAmount || 0);
+                const projectedSpent = baseSpent + newExpTotal;
+                const projectedVariance = est - projectedSpent;
+                const isOverrun = projectedVariance < 0;
+
+                return (
+                  <div className={`p-3 rounded-xl border text-xs transition space-y-2 ${isOverrun ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/70 border-emerald-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <TrendingUp className={`w-3.5 h-3.5 ${isOverrun ? 'text-rose-600' : 'text-emerald-600'}`} />
+                        <span className={isOverrun ? 'text-rose-900' : 'text-emerald-900'}>
+                          Reconciled BOQ Variance: [{selectedBOQ.itemCode}]
+                        </span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${isOverrun ? 'bg-rose-200 text-rose-800' : 'bg-emerald-200 text-emerald-800'}`}>
+                        {isOverrun ? 'Budget Overrun Alert' : 'Within Budget'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 truncate">{selectedBOQ.description}</p>
+                    <div className="grid grid-cols-4 gap-2 text-center pt-1 border-t border-slate-200/60">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Est Budget</span>
+                        <strong className="font-mono text-slate-800">{formatCurrency(est)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Net Other Spend</span>
+                        <strong className="font-mono text-slate-700">{formatCurrency(baseSpent)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Updated Expense</span>
+                        <strong className="font-mono text-amber-700">{formatCurrency(newExpTotal)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Variance Left</span>
+                        <strong className={`font-mono font-bold ${isOverrun ? 'text-rose-600' : 'text-emerald-700'}`}>
+                          {formatCurrency(projectedVariance)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Expense Category</label>
@@ -844,6 +1177,19 @@ export const Expenses: React.FC = () => {
                     onChange={(e) => setEditExpForm({ ...editExpForm, category: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   >
+                    <option value="INTERIOR_FITOUT">Interior Fit-Out & Finishes</option>
+                    <option value="CARPENTRY_JOINERY">Carpentry & Joinery</option>
+                    <option value="FALSE_CEILING">False Ceiling & Drywall</option>
+                    <option value="MODULAR_KITCHENS">Modular Kitchens & Cabinets</option>
+                    <option value="ELECTRICAL_LIGHTING">Electrical & Lighting</option>
+                    <option value="PLUMBING_SANITARYWARE">Plumbing & Sanitaryware</option>
+                    <option value="FLOORING_TILING">Flooring & Tiling</option>
+                    <option value="PAINTING_WALLPAPERS">Painting & Wallpapers</option>
+                    <option value="SOFT_FURNISHINGS">Soft Furnishings</option>
+                    <option value="GLASS_ALUMINUM">Glass & Aluminum Work</option>
+                    <option value="HVAC_AC">HVAC & Air Conditioning</option>
+                    <option value="DIRECT_MATERIAL">Direct Material Purchase</option>
+                    <option value="SUBCONTRACTOR">Subcontractor Payment</option>
                     <option value="FUEL">Fuel & Dewatering Diesel</option>
                     <option value="TRANSPORT">Transport & Vehicle Hire</option>
                     <option value="SAFETY_EQUIPMENT">Safety PPE & Gear</option>

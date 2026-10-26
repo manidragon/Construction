@@ -61,8 +61,8 @@ export const requireRole = (...allowedRoles: string[]) => {
       return res.status(401).json({ success: false, message: 'Authentication required.' });
     }
 
-    // OWNER has global permission to all modules
-    if (req.user.role === 'OWNER') {
+    // SUPER_ADMIN, OWNER, and TENANT_ADMIN have administrative permissions across relevant modules
+    if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'OWNER' || req.user.role === 'TENANT_ADMIN') {
       return next();
     }
 
@@ -75,6 +75,97 @@ export const requireRole = (...allowedRoles: string[]) => {
 
     next();
   };
+};
+
+/**
+ * Enforce database-level data isolation for queries based on logged-in user's tenantId
+ */
+export const getTenantFilter = (req: Request) => {
+  if (!req.user) return {};
+  if (req.user.role === 'SUPER_ADMIN') {
+    const requestedTenant = req.query.tenantId as string;
+    return requestedTenant ? { tenantId: requestedTenant } : {};
+  }
+  return { tenantId: req.user.companyId };
+};
+
+/**
+ * MODULE 3: Trial Expiration Middleware
+ * If a company's trial has expired (trialEndDate < currentDate or status === 'EXPIRED'),
+ * restrict write/mutation access and return a friendly trial expired response.
+ */
+export const checkTrialStatus = async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required.' });
+  }
+
+  // SUPER_ADMIN bypasses trial expiration
+  if (req.user.role === 'SUPER_ADMIN') {
+    return next();
+  }
+
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: req.user.companyId },
+      select: {
+        id: true,
+        name: true,
+        companyName: true,
+        status: true,
+        trialStartDate: true,
+        trialEndDate: true,
+        planType: true,
+        ownerEmail: true,
+      },
+    });
+
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Company tenant profile not found.' });
+    }
+
+    if (company.status === 'SUSPENDED') {
+      return res.status(403).json({
+        success: false,
+        accountSuspended: true,
+        message: 'Your company account has been suspended by the platform administrator. Please contact support.',
+      });
+    }
+
+    // Check trial expiration
+    const now = new Date();
+    const isExpired = company.status === 'EXPIRED' ||
+      (company.status === 'TRIAL' && company.trialEndDate && new Date(company.trialEndDate) < now);
+
+    if (isExpired) {
+      if (company.status !== 'EXPIRED') {
+        await prisma.company.update({
+          where: { id: company.id },
+          data: { status: 'EXPIRED' },
+        });
+      }
+
+      // Check if it's an exempt path like checking tenant status or profile
+      const exemptPaths = ['/auth/me', '/company/status', '/company/upgrade'];
+      const isExempt = exemptPaths.some((p) => req.path.endsWith(p));
+
+      if (!isExempt) {
+        return res.status(403).json({
+          success: false,
+          trialExpired: true,
+          companyName: company.companyName || company.name,
+          planType: company.planType,
+          trialEndDate: company.trialEndDate,
+          ownerEmail: company.ownerEmail,
+          message: 'Your trial has expired. Contact us to upgrade your subscription and unlock full access.',
+        });
+      }
+    }
+
+    next();
+  } catch (error: any) {
+    console.error('Error in checkTrialStatus middleware:', error);
+    next();
+  }
 };
 
 export const logAudit = async (

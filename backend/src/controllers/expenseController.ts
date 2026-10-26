@@ -121,6 +121,8 @@ export const getExpenses = async (req: Request, res: Response) => {
       include: {
         project: { select: { code: true, name: true } },
         site: { select: { code: true, name: true } },
+        task: { select: { id: true, title: true, estimatedCost: true, actualCost: true } },
+        boqItem: { select: { id: true, itemCode: true, description: true, category: true, unit: true, estimatedTotal: true, actualExpenditure: true } },
         createdBy: { select: { name: true, role: true } },
         approvedBy: { select: { name: true } },
       },
@@ -140,6 +142,8 @@ export const createExpense = async (req: Request, res: Response) => {
     const {
       projectId,
       siteId,
+      taskId,
+      boqItemId,
       category,
       description,
       amountBeforeTax,
@@ -167,6 +171,8 @@ export const createExpense = async (req: Request, res: Response) => {
         expenseNumber,
         projectId: projectId || null,
         siteId: siteId || null,
+        taskId: taskId || null,
+        boqItemId: boqItemId || null,
         category: category || 'MISC',
         description,
         amountBeforeTax: sub,
@@ -182,7 +188,30 @@ export const createExpense = async (req: Request, res: Response) => {
         approvedById: req.user?.id,
         expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
       },
+      include: {
+        project: { select: { code: true, name: true } },
+        site: { select: { code: true, name: true } },
+        task: { select: { id: true, title: true, estimatedCost: true, actualCost: true } },
+        boqItem: { select: { id: true, itemCode: true, description: true, category: true, unit: true, estimatedTotal: true, actualExpenditure: true } },
+        createdBy: { select: { name: true, role: true } },
+      },
     });
+
+    // Auto-update BOQ Item actualExpenditure if linked
+    if (boqItemId) {
+      await prisma.bOQItem.update({
+        where: { id: boqItemId },
+        data: { actualExpenditure: { increment: total } },
+      }).catch(err => console.error('Error incrementing BOQItem actualExpenditure:', err));
+    }
+
+    // Auto-update Task actualCost if linked
+    if (taskId) {
+      await prisma.task.update({
+        where: { id: taskId },
+        data: { actualCost: { increment: total } },
+      }).catch(err => console.error('Error incrementing Task actualCost:', err));
+    }
 
     // Auto post balanced journal entry:
     // Dr. Direct Project Expense / Overhead: sub
@@ -231,6 +260,8 @@ export const updateExpense = async (req: Request, res: Response) => {
     const {
       projectId,
       siteId,
+      taskId,
+      boqItemId,
       category,
       description,
       amountBeforeTax,
@@ -252,11 +283,68 @@ export const updateExpense = async (req: Request, res: Response) => {
     const tax = taxAmount !== undefined ? Number(taxAmount) : existing.taxAmount;
     const total = sub + tax;
 
+    const newBoqItemId = boqItemId !== undefined ? (boqItemId || null) : existing.boqItemId;
+    const newTaskId = taskId !== undefined ? (taskId || null) : existing.taskId;
+
+    // Reconcile BOQItem expenditure
+    if (existing.boqItemId === newBoqItemId) {
+      if (existing.boqItemId) {
+        const delta = total - existing.totalAmount;
+        if (delta !== 0) {
+          await prisma.bOQItem.update({
+            where: { id: existing.boqItemId },
+            data: { actualExpenditure: { increment: delta } },
+          }).catch(err => console.error('Error updating BOQItem delta:', err));
+        }
+      }
+    } else {
+      if (existing.boqItemId) {
+        await prisma.bOQItem.update({
+          where: { id: existing.boqItemId },
+          data: { actualExpenditure: { decrement: existing.totalAmount } },
+        }).catch(err => console.error('Error decrementing old BOQItem:', err));
+      }
+      if (newBoqItemId) {
+        await prisma.bOQItem.update({
+          where: { id: newBoqItemId },
+          data: { actualExpenditure: { increment: total } },
+        }).catch(err => console.error('Error incrementing new BOQItem:', err));
+      }
+    }
+
+    // Reconcile Task actualCost
+    if (existing.taskId === newTaskId) {
+      if (existing.taskId) {
+        const delta = total - existing.totalAmount;
+        if (delta !== 0) {
+          await prisma.task.update({
+            where: { id: existing.taskId },
+            data: { actualCost: { increment: delta } },
+          }).catch(err => console.error('Error updating Task actualCost delta:', err));
+        }
+      }
+    } else {
+      if (existing.taskId) {
+        await prisma.task.update({
+          where: { id: existing.taskId },
+          data: { actualCost: { decrement: existing.totalAmount } },
+        }).catch(err => console.error('Error decrementing old Task:', err));
+      }
+      if (newTaskId) {
+        await prisma.task.update({
+          where: { id: newTaskId },
+          data: { actualCost: { increment: total } },
+        }).catch(err => console.error('Error incrementing new Task:', err));
+      }
+    }
+
     const updated = await prisma.expense.update({
       where: { id },
       data: {
         projectId: projectId !== undefined ? (projectId || null) : existing.projectId,
         siteId: siteId !== undefined ? (siteId || null) : existing.siteId,
+        taskId: newTaskId,
+        boqItemId: newBoqItemId,
         category: category || existing.category,
         description: description || existing.description,
         amountBeforeTax: sub,
@@ -272,6 +360,8 @@ export const updateExpense = async (req: Request, res: Response) => {
       include: {
         project: { select: { code: true, name: true } },
         site: { select: { code: true, name: true } },
+        task: { select: { id: true, title: true, estimatedCost: true, actualCost: true } },
+        boqItem: { select: { id: true, itemCode: true, description: true, category: true, unit: true, estimatedTotal: true, actualExpenditure: true } },
         createdBy: { select: { name: true, role: true } },
       },
     });
@@ -290,6 +380,22 @@ export const deleteExpense = async (req: Request, res: Response) => {
     const existing = await prisma.expense.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Expense not found.' });
+    }
+
+    // Reconcile BOQ Item actualExpenditure
+    if (existing.boqItemId) {
+      await prisma.bOQItem.update({
+        where: { id: existing.boqItemId },
+        data: { actualExpenditure: { decrement: existing.totalAmount } },
+      }).catch(err => console.error('Error decrementing BOQItem actualExpenditure:', err));
+    }
+
+    // Reconcile Task actualCost
+    if (existing.taskId) {
+      await prisma.task.update({
+        where: { id: existing.taskId },
+        data: { actualCost: { decrement: existing.totalAmount } },
+      }).catch(err => console.error('Error decrementing Task actualCost:', err));
     }
 
     // Delete linked journal entries

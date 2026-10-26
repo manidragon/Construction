@@ -62,7 +62,7 @@ export const DailyReportShareModal: React.FC<DailyReportShareModalProps> = ({
         if (res.success && res.report) {
           setReportData(res.report);
           if (activeTab === 'client' && res.report.clientReport?.clientContact) {
-            setCustomPhone(res.report.clientReport.clientContact);
+            setCustomPhone(res.report.clientReport.clientContact.replace(/\s+/g, ''));
           } else {
             setCustomPhone('');
           }
@@ -80,7 +80,7 @@ export const DailyReportShareModal: React.FC<DailyReportShareModalProps> = ({
   useEffect(() => {
     if (reportData) {
       if (activeTab === 'client' && reportData.clientReport?.clientContact) {
-        setCustomPhone(reportData.clientReport.clientContact);
+        setCustomPhone(reportData.clientReport.clientContact.replace(/\s+/g, ''));
       } else {
         setCustomPhone('');
       }
@@ -93,11 +93,17 @@ export const DailyReportShareModal: React.FC<DailyReportShareModalProps> = ({
   const owner = reportData?.ownerReport;
   const client = reportData?.clientReport;
 
-  // Clean phone string
+  // Clean phone string for WhatsApp link (removes all spaces, standardizes 10-digit to 91XXXXXXXXXX)
   const cleanPhone = (phoneStr: string) => {
-    const digits = phoneStr.replace(/\D/g, '');
+    if (!phoneStr) return '';
+    let digits = phoneStr.replace(/\D/g, '');
     if (!digits) return '';
-    if (digits.length === 10) return `91${digits}`;
+    if (digits.length === 11 && digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    if (digits.length === 10) {
+      return `91${digits}`;
+    }
     return digits;
   };
 
@@ -765,11 +771,12 @@ export const DailyReportShareModal: React.FC<DailyReportShareModalProps> = ({
                     <input
                       type="text"
                       value={customPhone}
-                      onChange={(e) => setCustomPhone(e.target.value)}
+                      onChange={(e) => setCustomPhone(e.target.value.replace(/\s+/g, ''))}
                       placeholder="e.g. 9876543210"
-                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 w-36 font-mono"
+                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 w-44 font-mono font-bold text-slate-800"
                     />
                   </div>
+                  <span className="text-[9px] text-slate-400 block mt-0.5">No spaces needed between numbers</span>
                 </div>
               </div>
 

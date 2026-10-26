@@ -9,6 +9,14 @@ import apiRouter from './routes/api';
 
 dotenv.config();
 
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception logged:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection logged at:', promise, 'reason:', reason);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 

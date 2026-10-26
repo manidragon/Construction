@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
+import { moveToRecycleBin } from './recycleBinController';
 
 export const getProjects = async (req: Request, res: Response) => {
   try {
     const { status, type, search } = req.query;
 
-    const where: any = {};
+    const tenantFilter = getTenantFilter(req);
+    const where: any = { ...tenantFilter };
     if (status && typeof status === 'string') {
       where.status = status;
     }
@@ -26,6 +28,19 @@ export const getProjects = async (req: Request, res: Response) => {
       include: {
         sites: true,
         phases: true,
+        clientReceipts: {
+          select: {
+            amount: true,
+            paymentMethod: true,
+          },
+        },
+        clientInvoices: {
+          select: {
+            netInvoiceAmount: true,
+            paidAmount: true,
+            balanceDue: true,
+          },
+        },
         members: {
           include: {
             user: { select: { id: true, name: true, role: true, email: true } },
@@ -44,7 +59,30 @@ export const getProjects = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.json({ success: true, projects });
+    const enrichedProjects = projects.map((p) => {
+      const totalBilled = p.clientInvoices.reduce((sum, inv) => sum + inv.netInvoiceAmount, 0);
+      const totalReceived = p.clientReceipts.reduce((sum, rcp) => sum + rcp.amount, 0);
+      const cashReceived = p.clientReceipts
+        .filter((rcp) => rcp.paymentMethod === 'CASH')
+        .reduce((sum, rcp) => sum + rcp.amount, 0);
+      const bankReceived = p.clientReceipts
+        .filter((rcp) => rcp.paymentMethod !== 'CASH')
+        .reduce((sum, rcp) => sum + rcp.amount, 0);
+      const outstandingReceivable = Math.max(0, totalBilled - totalReceived);
+
+      return {
+        ...p,
+        financials: {
+          totalBilled,
+          totalReceived,
+          cashReceived,
+          bankReceived,
+          outstandingReceivable,
+        },
+      };
+    });
+
+    return res.json({ success: true, projects: enrichedProjects });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -115,13 +153,21 @@ export const getProjectById = async (req: Request, res: Response) => {
     // Compute comprehensive financial overview for this project
     const totalBilled = (project.clientInvoices as any[]).reduce((sum, inv) => sum + inv.netInvoiceAmount, 0);
     const totalReceived = (project.clientReceipts as any[]).reduce((sum, rcp) => sum + rcp.amount, 0);
+    const cashReceived = (project.clientReceipts as any[])
+      .filter((rcp) => rcp.paymentMethod === 'CASH')
+      .reduce((sum, rcp) => sum + rcp.amount, 0);
+    const bankReceived = (project.clientReceipts as any[])
+      .filter((rcp) => rcp.paymentMethod !== 'CASH')
+      .reduce((sum, rcp) => sum + rcp.amount, 0);
 
     const materialsCost = (project.purchaseOrders as any[]).reduce((sum, po) => sum + (po.totalAmount || 0), 0);
     const labourCost = (project.labourAttendances as any[]).reduce((sum, att) => sum + (att.totalWageEarned || 0), 0);
     const expensesCost = (project.expenses as any[]).reduce((sum, e) => sum + (e.totalAmount || 0), 0);
     const boqActualCost = (project.boqItems as any[]).reduce((sum, b) => sum + (b.actualExpenditure || 0), 0);
 
-    const actualCost = materialsCost + labourCost + expensesCost + boqActualCost;
+    // Only real monetary outflows are added to Total Incurred Cost: Site Expenses + Labour Wages (+ Material POs).
+    // BOQ is strictly for tracking / reference estimate and must NOT be added into incurred cost.
+    const actualCost = materialsCost + labourCost + expensesCost;
     const remainingBudget = Math.max(0, project.approvedBudget - actualCost);
     const budgetBurnPercent = project.approvedBudget > 0 ? (actualCost / project.approvedBudget) * 100 : 0;
     
@@ -188,6 +234,8 @@ export const getProjectById = async (req: Request, res: Response) => {
         financials: {
           totalBilled,
           totalReceived,
+          cashReceived,
+          bankReceived,
           outstandingReceivable: Math.max(0, totalBilled - totalReceived),
           materialsCost,
           labourCost,
@@ -239,13 +287,16 @@ export const createProject = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: `Project code '${code}' already exists.` });
     }
 
+    const tenantId = (req as any).user?.companyId || null;
+
     const project = await prisma.project.create({
       data: {
+        tenantId,
         code,
         name,
         description,
         clientName,
-        clientContact,
+        clientContact: clientContact ? String(clientContact).replace(/\s+/g, '').trim() : null,
         clientEmail,
         clientBillingAddr,
         clientGstin,
@@ -295,11 +346,33 @@ export const updateProject = async (req: Request, res: Response) => {
       actualStartDate,
       actualEndDate,
       paymentTerms,
+      clientName,
+      clientContact,
+      clientEmail,
+      clientBillingAddr,
+      clientGstin,
+      siteAddress,
     } = req.body;
 
     const data: any = {};
     if (name) data.name = name;
     if (description !== undefined) data.description = description;
+
+    // MODULE 4: Block final project handover if any payment dues remain outstanding
+    if (status === 'COMPLETED') {
+      const invoices = await prisma.clientInvoice.findMany({
+        where: { projectId: id, status: { not: 'CANCELLED' } },
+      });
+      const outstanding = invoices.reduce((sum, inv) => sum + inv.balanceDue, 0);
+      if (outstanding > 0) {
+        return res.status(400).json({
+          success: false,
+          handoverBlocked: true,
+          message: `Cannot mark project as COMPLETED / Handed Over: Client has outstanding milestone invoice dues of ₹${outstanding.toLocaleString('en-IN')}. All milestone dues must be cleared in full prior to final handover.`,
+        });
+      }
+    }
+
     if (status) data.status = status;
     if (completionPercent !== undefined) data.completionPercent = Number(completionPercent);
     if (contractValue !== undefined) data.contractValue = Number(contractValue);
@@ -307,6 +380,12 @@ export const updateProject = async (req: Request, res: Response) => {
     if (actualStartDate) data.actualStartDate = new Date(actualStartDate);
     if (actualEndDate) data.actualEndDate = new Date(actualEndDate);
     if (paymentTerms !== undefined) data.paymentTerms = paymentTerms;
+    if (clientName !== undefined) data.clientName = clientName;
+    if (clientContact !== undefined) data.clientContact = clientContact ? String(clientContact).replace(/\s+/g, '').trim() : null;
+    if (clientEmail !== undefined) data.clientEmail = clientEmail;
+    if (clientBillingAddr !== undefined) data.clientBillingAddr = clientBillingAddr;
+    if (clientGstin !== undefined) data.clientGstin = clientGstin;
+    if (siteAddress !== undefined) data.siteAddress = siteAddress;
 
     const updated = await prisma.project.update({
       where: { id },
@@ -316,6 +395,160 @@ export const updateProject = async (req: Request, res: Response) => {
     await logAudit(req.user?.id, 'UPDATE', 'PROJECT', id, data, req.ip);
 
     return res.json({ success: true, project: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/projects/:id/confirm-advance
+ * MODULE 3: Kickoff Gate - Finance confirms advance payment, unlocking execution schedules
+ */
+export const confirmProjectAdvancePayment = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { referenceNo, notes } = req.body;
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        clientInvoices: { where: { invoiceType: 'ADVANCE' } },
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found.' });
+    }
+
+    const updated = await prisma.project.update({
+      where: { id },
+      data: {
+        advancePaymentConfirmed: true,
+        advancePaymentConfirmedBy: req.user?.name || 'Finance Department',
+        advancePaymentConfirmedAt: new Date(),
+        ...(referenceNo && { advancePaymentReference: referenceNo }),
+      },
+    });
+
+    // Settle advance invoice and record receipt if needed
+    if (project.clientInvoices && project.clientInvoices.length > 0) {
+      for (const inv of project.clientInvoices) {
+        if (inv.balanceDue > 0) {
+          await prisma.clientInvoice.update({
+            where: { id: inv.id },
+            data: {
+              paidAmount: inv.netInvoiceAmount,
+              balanceDue: 0,
+              status: 'PAID',
+            },
+          });
+
+          const currentYear = new Date().getFullYear();
+          const rcpCount = await prisma.clientReceipt.count();
+          await prisma.clientReceipt.create({
+            data: {
+              receiptNumber: `RCP-${currentYear}-${String(rcpCount + 1).padStart(3, '0')}`,
+              projectId: project.id,
+              invoiceId: inv.id,
+              amount: inv.netInvoiceAmount,
+              paymentMethod: 'NEFT_RTGS',
+              referenceNo: referenceNo || `UTR-${Date.now().toString().slice(-6)}`,
+              notes: `Advance payment verified and confirmed by Finance (${req.user?.name || 'Admin'}). ${notes || ''}`,
+            },
+          });
+        }
+      }
+    }
+
+    await logAudit(req.user?.id, 'CONFIRM_ADVANCE_PAYMENT', 'PROJECT', project.id, {
+      projectCode: project.code,
+      confirmedBy: req.user?.name,
+    }, req.ip);
+
+    return res.json({
+      success: true,
+      message: 'Advance payment confirmed by Finance Department! Site schedules and task assignments are now unlocked.',
+      project: updated,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteProject = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    const existing = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            sites: true,
+            tasks: true,
+            boqItems: true,
+            clientInvoices: true,
+            clientReceipts: true,
+            purchaseOrders: true,
+            goodsReceiptNotes: true,
+            requisitions: true,
+            expenses: true,
+            wagePayments: true,
+            dailyReports: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Project not found.' });
+    }
+
+    const counts = existing._count;
+    const hasDependencies =
+      counts.tasks > 0 ||
+      counts.boqItems > 0 ||
+      counts.clientInvoices > 0 ||
+      counts.clientReceipts > 0 ||
+      counts.purchaseOrders > 0 ||
+      counts.goodsReceiptNotes > 0 ||
+      counts.requisitions > 0 ||
+      counts.expenses > 0 ||
+      counts.wagePayments > 0 ||
+      counts.dailyReports > 0;
+
+    if (hasDependencies) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete project with active operational and financial records (${counts.tasks} tasks, ${counts.boqItems} BOQ items, ${counts.clientInvoices} invoices, ${counts.expenses} expenses). Please remove dependent records or complete project archive first.`,
+      });
+    }
+
+    // Archive project to recycle bin before deleting
+    await moveToRecycleBin({
+      tenantId: existing.tenantId,
+      entityType: 'Project',
+      entityId: existing.id,
+      itemNumber: existing.code,
+      title: existing.name,
+      description: existing.description || `Project Code: ${existing.code}`,
+      data: existing,
+      user: req.user,
+    });
+
+    // Perform clean delete for clean/draft projects
+    await prisma.$transaction(async (tx) => {
+      await tx.phase.deleteMany({ where: { projectId: id } });
+      await tx.site.deleteMany({ where: { projectId: id } });
+      await tx.projectMember.deleteMany({ where: { projectId: id } });
+      await tx.budgetRevision.deleteMany({ where: { projectId: id } });
+      await tx.contractChangeOrder.deleteMany({ where: { projectId: id } });
+      await tx.project.delete({ where: { id } });
+    });
+
+    await logAudit(req.user?.id, 'DELETE', 'PROJECT', id, { code: existing.code, name: existing.name }, req.ip);
+
+    return res.json({ success: true, message: `Project '${existing.name}' (${existing.code}) deleted successfully.` });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -347,6 +580,63 @@ export const createSite = async (req: Request, res: Response) => {
   }
 };
 
+export const updateSite = async (req: Request, res: Response) => {
+  try {
+    const siteId = String(req.params.siteId || req.params.id);
+    const { name, code, location, supervisorName, contactPhone } = req.body;
+
+    const existing = await prisma.site.findUnique({ where: { id: siteId } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Site not found.' });
+    }
+
+    const updated = await prisma.site.update({
+      where: { id: siteId },
+      data: {
+        name: name !== undefined ? name : existing.name,
+        code: code !== undefined ? code : existing.code,
+        location: location !== undefined ? location : existing.location,
+        supervisorName: supervisorName !== undefined ? supervisorName : existing.supervisorName,
+        contactPhone: contactPhone !== undefined ? contactPhone : existing.contactPhone,
+      },
+    });
+
+    return res.json({ success: true, site: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteSite = async (req: Request, res: Response) => {
+  try {
+    const siteId = String(req.params.siteId || req.params.id);
+
+    const existing = await prisma.site.findUnique({
+      where: { id: siteId },
+      include: {
+        _count: { select: { tasks: true, dailyReports: true } },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Site not found.' });
+    }
+
+    if (existing._count.tasks > 0 || existing._count.dailyReports > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete site with active records (${existing._count.tasks} tasks, ${existing._count.dailyReports} DPRs).`,
+      });
+    }
+
+    await prisma.site.delete({ where: { id: siteId } });
+
+    return res.json({ success: true, message: `Site '${existing.name}' deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const createPhase = async (req: Request, res: Response) => {
   try {
     const projectId = String(req.params.projectId);
@@ -371,15 +661,30 @@ export const createPhase = async (req: Request, res: Response) => {
 export const createChangeOrder = async (req: Request, res: Response) => {
   try {
     const projectId = String(req.params.projectId);
-    const { orderNumber, description, amountDelta, timeDeltaDays } = req.body;
+    const {
+      orderNumber,
+      title,
+      description,
+      scopeType,
+      requestedBy,
+      amountDelta,
+      timeDeltaDays,
+      swatchRenderUrl,
+      clientSignOffUrl,
+    } = req.body;
 
     const changeOrder = await prisma.contractChangeOrder.create({
       data: {
         projectId,
-        orderNumber,
+        orderNumber: orderNumber || `CO-${Date.now().toString().slice(-6)}`,
+        title: title || 'Scope Variation',
         description,
+        scopeType: scopeType || 'DESIGN_VARIATION',
+        requestedBy: requestedBy || 'Client',
         amountDelta: Number(amountDelta) || 0,
         timeDeltaDays: Number(timeDeltaDays) || 0,
+        swatchRenderUrl: swatchRenderUrl || null,
+        clientSignOffUrl: clientSignOffUrl || null,
         status: 'APPROVED',
         approvedBy: req.user?.name || 'Owner',
         approvedAt: new Date(),
@@ -394,9 +699,131 @@ export const createChangeOrder = async (req: Request, res: Response) => {
       },
     });
 
-    await logAudit(req.user?.id, 'CREATE_CHANGE_ORDER', 'PROJECT', projectId, { orderNumber, amountDelta }, req.ip);
+    await logAudit(
+      req.user?.id,
+      'CREATE_CHANGE_ORDER',
+      'PROJECT',
+      projectId,
+      { orderNumber: changeOrder.orderNumber, amountDelta, scopeType: changeOrder.scopeType },
+      req.ip
+    );
 
     return res.status(201).json({ success: true, changeOrder });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateChangeOrder = async (req: Request, res: Response) => {
+  try {
+    const orderId = String(req.params.orderId || req.params.id);
+    const { title, description, scopeType, requestedBy, amountDelta, timeDeltaDays, swatchRenderUrl, clientSignOffUrl, status } = req.body;
+
+    const existing = await prisma.contractChangeOrder.findUnique({ where: { id: orderId } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Change order not found.' });
+    }
+
+    const newAmount = amountDelta !== undefined ? Number(amountDelta) : existing.amountDelta;
+    const diff = newAmount - existing.amountDelta;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const co = await tx.contractChangeOrder.update({
+        where: { id: orderId },
+        data: {
+          title: title !== undefined ? title : existing.title,
+          description: description !== undefined ? description : existing.description,
+          scopeType: scopeType || existing.scopeType,
+          requestedBy: requestedBy !== undefined ? requestedBy : existing.requestedBy,
+          amountDelta: newAmount,
+          timeDeltaDays: timeDeltaDays !== undefined ? Number(timeDeltaDays) : existing.timeDeltaDays,
+          swatchRenderUrl: swatchRenderUrl !== undefined ? swatchRenderUrl : existing.swatchRenderUrl,
+          clientSignOffUrl: clientSignOffUrl !== undefined ? clientSignOffUrl : existing.clientSignOffUrl,
+          status: status || existing.status,
+        },
+      });
+
+      if (diff !== 0) {
+        await tx.project.update({
+          where: { id: existing.projectId },
+          data: { contractValue: { increment: diff } },
+        });
+      }
+
+      return co;
+    });
+
+    return res.json({ success: true, changeOrder: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteChangeOrder = async (req: Request, res: Response) => {
+  try {
+    const orderId = String(req.params.orderId || req.params.id);
+    const existing = await prisma.contractChangeOrder.findUnique({ where: { id: orderId } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Change order not found.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id: existing.projectId },
+        data: { contractValue: { decrement: existing.amountDelta } },
+      });
+      await tx.contractChangeOrder.delete({ where: { id: orderId } });
+    });
+
+    return res.json({ success: true, message: `Change order '${existing.orderNumber}' deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const seedInteriorLifecyclePhases = async (req: Request, res: Response) => {
+  try {
+    const projectId = String(req.params.projectId);
+    const existing = await prisma.phase.findMany({ where: { projectId } });
+
+    const interiorPhases = [
+      { name: '1. Design & Concept Approval', sequence: 1 },
+      { name: '2. Material Selection & Specs', sequence: 2 },
+      { name: '3. BOQ Finalization', sequence: 3 },
+      { name: '4. Procurement / Factory Fabrication', sequence: 4 },
+      { name: '5. Site Execution / Installation', sequence: 5 },
+      { name: '6. Handover & Snag List', sequence: 6 },
+    ];
+
+    const createdPhases = [];
+    for (const p of interiorPhases) {
+      const match = existing.find(
+        (e) => e.name.toLowerCase() === p.name.toLowerCase() || e.sequence === p.sequence
+      );
+      if (!match) {
+        const cp = await prisma.phase.create({
+          data: {
+            projectId,
+            name: p.name,
+            sequence: p.sequence,
+            status: p.sequence === 1 ? 'IN_PROGRESS' : 'PENDING',
+          },
+        });
+        createdPhases.push(cp);
+      }
+    }
+
+    const allPhases = await prisma.phase.findMany({
+      where: { projectId },
+      orderBy: { sequence: 'asc' },
+    });
+
+    return res.json({
+      success: true,
+      message: `Interior lifecycle phases configured successfully (${createdPhases.length} added).`,
+      phases: allPhases,
+      createdCount: createdPhases.length,
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -419,6 +846,7 @@ export const getProjectDailyShareReport = async (req: Request, res: Response) =>
           orderBy: { dueDate: 'asc' },
         },
         clientInvoices: {
+          include: { client: true },
           orderBy: { invoiceDate: 'desc' },
         },
         clientReceipts: {
@@ -604,6 +1032,32 @@ export const getProjectDailyShareReport = async (req: Request, res: Response) =>
       ? unpaidInvoices[0].dueDate
       : project.plannedEndDate;
 
+    // Resolve matching Client record to guarantee latest phone and contact details without spaces
+    let resolvedClient: any = null;
+    const invWithClient = (project.clientInvoices as any[]).find((i) => i.client);
+    if (invWithClient?.client) {
+      resolvedClient = invWithClient.client;
+    } else if (project.clientName) {
+      resolvedClient = await prisma.client.findFirst({
+        where: {
+          OR: [
+            { name: project.clientName },
+            { companyName: project.clientName },
+          ],
+        },
+      });
+    }
+
+    const effectiveClientPhone = (resolvedClient?.phone || project.clientContact || '').replace(/\s+/g, '');
+
+    // Auto-sync project.clientContact if it was stale or had spaces
+    if (effectiveClientPhone && project.clientContact !== effectiveClientPhone) {
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { clientContact: effectiveClientPhone },
+      }).catch(() => {});
+    }
+
     return res.json({
       success: true,
       report: {
@@ -612,9 +1066,9 @@ export const getProjectDailyShareReport = async (req: Request, res: Response) =>
           code: project.code,
           name: project.name,
           siteAddress: project.siteAddress,
-          clientName: project.clientName,
-          clientContact: project.clientContact || '',
-          clientEmail: project.clientEmail || '',
+          clientName: resolvedClient?.name || project.clientName,
+          clientContact: effectiveClientPhone,
+          clientEmail: (resolvedClient?.email || project.clientEmail || '').trim(),
           projectType: project.projectType,
           status: project.status,
           completionPercent: project.completionPercent || 0,
@@ -662,9 +1116,9 @@ export const getProjectDailyShareReport = async (req: Request, res: Response) =>
           latestDPR: project.dailyReports?.[0] || null,
         },
         clientReport: {
-          clientName: project.clientName,
-          clientContact: project.clientContact || '',
-          clientEmail: project.clientEmail || '',
+          clientName: resolvedClient?.name || project.clientName,
+          clientContact: effectiveClientPhone,
+          clientEmail: (resolvedClient?.email || project.clientEmail || '').trim(),
           workingProgress: project.completionPercent || 0,
           totalPayment: contractValue,
           totalBilled,

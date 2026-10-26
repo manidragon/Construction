@@ -15,6 +15,8 @@ import {
   History,
   X,
   Warehouse as WarehouseIcon,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 
 export const Inventory: React.FC = () => {
@@ -64,6 +66,41 @@ export const Inventory: React.FC = () => {
     reorderQty: '50',
     taxPercent: '18',
   });
+
+  // Material Edit / Delete State
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+  const [editMaterialForm, setEditMaterialForm] = useState({
+    name: '',
+    category: '',
+    brand: '',
+    unit: '',
+    standardPrice: '',
+    minStockLevel: '',
+    reorderQty: '',
+  });
+  const [deletingMaterial, setDeletingMaterial] = useState<Material | null>(null);
+  const [isDeletingMaterial, setIsDeletingMaterial] = useState(false);
+
+  // Warehouse CRUD State
+  const [showAddWarehouseModal, setShowAddWarehouseModal] = useState(false);
+  const [warehouseForm, setWarehouseForm] = useState({
+    code: '',
+    name: '',
+    location: '',
+    isSiteStore: false,
+    contactPerson: '',
+    projectId: '',
+  });
+  const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
+  const [editWarehouseForm, setEditWarehouseForm] = useState({
+    name: '',
+    location: '',
+    isSiteStore: false,
+    contactPerson: '',
+    projectId: '',
+  });
+  const [deletingWarehouse, setDeletingWarehouse] = useState<Warehouse | null>(null);
+  const [isDeletingWarehouse, setIsDeletingWarehouse] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -165,6 +202,121 @@ export const Inventory: React.FC = () => {
       }
     } catch (err: any) {
       alert(err.message || 'Failed to create material');
+    }
+  };
+
+  const openEditMaterial = (m: Material) => {
+    setEditingMaterial(m);
+    setEditMaterialForm({
+      name: m.name,
+      category: m.category,
+      brand: m.brand || '',
+      unit: m.unit,
+      standardPrice: String(m.standardPrice || ''),
+      minStockLevel: String(m.minStockLevel || '10'),
+      reorderQty: String(m.reorderQty || '50'),
+    });
+  };
+
+  const handleUpdateMaterial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMaterial) return;
+    try {
+      const res = await api.updateMaterial(editingMaterial.id, {
+        ...editMaterialForm,
+        standardPrice: Number(editMaterialForm.standardPrice) || 0,
+        minStockLevel: Number(editMaterialForm.minStockLevel) || 0,
+        reorderQty: Number(editMaterialForm.reorderQty) || 0,
+      });
+      if (res.success) {
+        setEditingMaterial(null);
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update material');
+    }
+  };
+
+  const handleDeleteMaterial = async () => {
+    if (!deletingMaterial) return;
+    setIsDeletingMaterial(true);
+    try {
+      const res = await api.deleteMaterial(deletingMaterial.id);
+      if (res.success) {
+        setDeletingMaterial(null);
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete material');
+    } finally {
+      setIsDeletingMaterial(false);
+    }
+  };
+
+  const handleCreateWarehouse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await api.createWarehouse(warehouseForm);
+      if (res.success) {
+        setShowAddWarehouseModal(false);
+        setWarehouseForm({ code: '', name: '', location: '', isSiteStore: false, contactPerson: '', projectId: '' });
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to create warehouse');
+    }
+  };
+
+  const openEditWarehouse = (wh: Warehouse) => {
+    setEditingWarehouse(wh);
+    setEditWarehouseForm({
+      name: wh.name,
+      location: wh.location,
+      isSiteStore: wh.isSiteStore,
+      contactPerson: wh.contactPerson || '',
+      projectId: wh.projectId || '',
+    });
+  };
+
+  const handleUpdateWarehouse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWarehouse) return;
+    try {
+      const res = await api.updateWarehouse(editingWarehouse.id, editWarehouseForm);
+      if (res.success) {
+        setEditingWarehouse(null);
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update warehouse');
+    }
+  };
+
+  const handleDeleteWarehouse = async () => {
+    if (!deletingWarehouse) return;
+    setIsDeletingWarehouse(true);
+    try {
+      const res = await api.deleteWarehouse(deletingWarehouse.id);
+      if (res.success) {
+        setDeletingWarehouse(null);
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete warehouse');
+    } finally {
+      setIsDeletingWarehouse(false);
+    }
+  };
+
+  const handleDeleteRequisition = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this material requisition?')) return;
+    try {
+      const res = await api.deleteRequisition(id);
+      if (res.success) {
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete requisition');
     }
   };
 
@@ -308,6 +460,7 @@ export const Inventory: React.FC = () => {
                     <th className="py-3 px-3 text-right">Min Stock / Reorder</th>
                     <th className="py-3 px-3 text-right">Stock Valuation</th>
                     <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -347,6 +500,28 @@ export const Inventory: React.FC = () => {
                           </span>
                         )}
                       </td>
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex items-center justify-center space-x-1">
+                          {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
+                            <button
+                              onClick={() => openEditMaterial(m)}
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition"
+                              title="Edit Material"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {hasRole('OWNER', 'PURCHASE_MANAGER') && (
+                            <button
+                              onClick={() => setDeletingMaterial(m)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition"
+                              title="Delete Material"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -358,28 +533,62 @@ export const Inventory: React.FC = () => {
 
       {/* Tab 2: Stores & Warehouses */}
       {activeTab === 'stores' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {warehouses.map((wh) => (
-            <div key={wh.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                    {wh.code}
-                  </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    wh.isSiteStore ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-blue-50 text-blue-800 border border-blue-200'
-                  }`}>
-                    {wh.isSiteStore ? 'Site Store' : 'Central Warehouse'}
-                  </span>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">Stores & Warehouse Locations</h3>
+            {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
+              <button
+                onClick={() => setShowAddWarehouseModal(true)}
+                className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Warehouse / Store</span>
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {warehouses.map((wh) => (
+              <div key={wh.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                      {wh.code}
+                    </span>
+                    <div className="flex items-center space-x-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        wh.isSiteStore ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-blue-50 text-blue-800 border border-blue-200'
+                      }`}>
+                        {wh.isSiteStore ? 'Site Store' : 'Central Warehouse'}
+                      </span>
+                      {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
+                        <button
+                          onClick={() => openEditWarehouse(wh)}
+                          className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
+                          title="Edit Warehouse"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {hasRole('OWNER', 'PURCHASE_MANAGER') && (
+                        <button
+                          onClick={() => setDeletingWarehouse(wh)}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
+                          title="Delete Warehouse"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 mt-2">{wh.name}</h3>
+                  <p className="text-xs text-slate-500 mt-1">{wh.location}</p>
+                  {wh.contactPerson && (
+                    <p className="text-[11px] text-slate-600 mt-2 font-medium">In-Charge: {wh.contactPerson}</p>
+                  )}
                 </div>
-                <h3 className="text-base font-bold text-slate-900 mt-2">{wh.name}</h3>
-                <p className="text-xs text-slate-500 mt-1">{wh.location}</p>
-                {wh.contactPerson && (
-                  <p className="text-[11px] text-slate-600 mt-2 font-medium">In-Charge: {wh.contactPerson}</p>
-                )}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -418,22 +627,33 @@ export const Inventory: React.FC = () => {
                 </div>
 
                 {/* Actions */}
-                {r.status === 'PENDING' && hasRole('OWNER', 'PROJECT_MANAGER', 'STOREKEEPER') && (
-                  <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex items-center space-x-2 shrink-0">
+                  {r.status === 'PENDING' && hasRole('OWNER', 'PROJECT_MANAGER', 'STOREKEEPER') && (
+                    <>
+                      <button
+                        onClick={() => handleApproveReq(r.id, 'APPROVED')}
+                        className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleApproveReq(r.id, 'REJECTED')}
+                        className="px-3 py-1.5 text-xs font-bold bg-red-100 hover:bg-red-200 text-red-800 rounded-lg transition"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {hasRole('OWNER', 'PROJECT_MANAGER') && (
                     <button
-                      onClick={() => handleApproveReq(r.id, 'APPROVED')}
-                      className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
+                      onClick={() => handleDeleteRequisition(r.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                      title="Delete Requisition"
                     >
-                      Approve Requisition
+                      <Trash2 className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => handleApproveReq(r.id, 'REJECTED')}
-                      className="px-3 py-1.5 text-xs font-bold bg-red-100 hover:bg-red-200 text-red-800 rounded-lg transition"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -877,6 +1097,335 @@ export const Inventory: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Material Master Modal */}
+      {editingMaterial && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Edit Material Master</h3>
+                <p className="text-[11px] font-mono text-slate-500 mt-0.5">{editingMaterial.code}</p>
+              </div>
+              <button onClick={() => setEditingMaterial(null)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateMaterial} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Material Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editMaterialForm.name}
+                  onChange={(e) => setEditMaterialForm({ ...editMaterialForm, name: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Category *</label>
+                  <select
+                    value={editMaterialForm.category}
+                    onChange={(e) => setEditMaterialForm({ ...editMaterialForm, category: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  >
+                    <option value="CEMENT">Cement</option>
+                    <option value="STEEL">Steel Rebar</option>
+                    <option value="AGGREGATE">Aggregates / Sand</option>
+                    <option value="BRICK_BLOCK">Bricks & Blocks</option>
+                    <option value="PAINT">Paint & Primers</option>
+                    <option value="PLUMBING">Plumbing Pipes & Fittings</option>
+                    <option value="ELECTRICAL">Electrical Cables</option>
+                    <option value="FINISHING">Tiles & Stones</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Brand</label>
+                  <input
+                    type="text"
+                    value={editMaterialForm.brand}
+                    onChange={(e) => setEditMaterialForm({ ...editMaterialForm, brand: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Standard Price (₹)</label>
+                  <input
+                    type="number"
+                    value={editMaterialForm.standardPrice}
+                    onChange={(e) => setEditMaterialForm({ ...editMaterialForm, standardPrice: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Min Stock</label>
+                  <input
+                    type="number"
+                    value={editMaterialForm.minStockLevel}
+                    onChange={(e) => setEditMaterialForm({ ...editMaterialForm, minStockLevel: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Reorder Qty</label>
+                  <input
+                    type="number"
+                    value={editMaterialForm.reorderQty}
+                    onChange={(e) => setEditMaterialForm({ ...editMaterialForm, reorderQty: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingMaterial(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                >
+                  Update Material
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Material Confirmation Modal */}
+      {deletingMaterial && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-2 bg-rose-50 rounded-xl">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Delete Material</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete <strong className="text-slate-900">{deletingMaterial.name} ({deletingMaterial.code})</strong>? If linked to historical purchase orders or requisitions, it will be safely archived.
+            </p>
+            <div className="pt-2 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setDeletingMaterial(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMaterial}
+                disabled={isDeletingMaterial}
+                className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
+              >
+                {isDeletingMaterial ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Warehouse Modal */}
+      {showAddWarehouseModal && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900">Add Warehouse / Store</h3>
+              <button onClick={() => setShowAddWarehouseModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateWarehouse} className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Store Code *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. WH-MAIN-01"
+                    value={warehouseForm.code}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, code: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Type</label>
+                  <select
+                    value={warehouseForm.isSiteStore ? 'site' : 'central'}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, isSiteStore: e.target.value === 'site' })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                  >
+                    <option value="central">Central Warehouse</option>
+                    <option value="site">Site Store</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Store / Warehouse Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Central Yard Warehouse"
+                  value={warehouseForm.name}
+                  onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Location / Address *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sector 18, Industrial Area"
+                  value={warehouseForm.location}
+                  onChange={(e) => setWarehouseForm({ ...warehouseForm, location: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">In-Charge Contact Person</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Rajesh Sharma"
+                  value={warehouseForm.contactPerson}
+                  onChange={(e) => setWarehouseForm({ ...warehouseForm, contactPerson: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddWarehouseModal(false)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                >
+                  Save Warehouse
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Warehouse Modal */}
+      {editingWarehouse && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Edit Warehouse</h3>
+                <p className="text-[11px] font-mono text-slate-500 mt-0.5">{editingWarehouse.code}</p>
+              </div>
+              <button onClick={() => setEditingWarehouse(null)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateWarehouse} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Store / Warehouse Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editWarehouseForm.name}
+                  onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, name: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Location / Address *</label>
+                <input
+                  type="text"
+                  required
+                  value={editWarehouseForm.location}
+                  onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, location: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">In-Charge Contact Person</label>
+                <input
+                  type="text"
+                  value={editWarehouseForm.contactPerson}
+                  onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, contactPerson: e.target.value })}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingWarehouse(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Warehouse Confirmation Modal */}
+      {deletingWarehouse && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-2 bg-rose-50 rounded-xl">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Delete Warehouse</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete <strong className="text-slate-900">{deletingWarehouse.name} ({deletingWarehouse.code})</strong>? Deletion is blocked if any active stock balance exists in this store.
+            </p>
+            <div className="pt-2 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setDeletingWarehouse(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteWarehouse}
+                disabled={isDeletingWarehouse}
+                className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
+              >
+                {isDeletingWarehouse ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

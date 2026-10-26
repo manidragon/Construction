@@ -156,6 +156,151 @@ export const createWorker = async (req: Request, res: Response) => {
   }
 };
 
+export const getWorkerById = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const worker = await prisma.worker.findUnique({
+      where: { id },
+      include: {
+        project: { select: { id: true, code: true, name: true } },
+        attendances: {
+          take: 30,
+          orderBy: { date: 'desc' },
+        },
+        wagePayments: {
+          take: 20,
+          orderBy: { paymentDate: 'desc' },
+        },
+      },
+    });
+
+    if (!worker) {
+      return res.status(404).json({ success: false, message: 'Worker not found' });
+    }
+
+    return res.json({ success: true, worker });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateWorker = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    let {
+      workerCode,
+      name,
+      phone,
+      trade,
+      skillLevel,
+      dailyWageRate,
+      overtimeHourlyRate,
+      paymentMethod,
+      bankAccountNo,
+      bankIfsc,
+      projectId,
+      photoUrl,
+      documentUrl,
+      documentName,
+    } = req.body;
+
+    const existing = await prisma.worker.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Worker not found' });
+    }
+
+    // Process files if uploaded
+    if (req.files) {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      if (files['photo'] && files['photo'][0]) {
+        photoUrl = `/uploads/${files['photo'][0].filename}`;
+      }
+      if (files['document'] && files['document'][0]) {
+        documentUrl = `/uploads/${files['document'][0].filename}`;
+        if (!documentName) {
+          documentName = files['document'][0].originalname;
+        }
+      }
+    }
+
+    // If workerCode changed, check uniqueness
+    if (workerCode && workerCode !== existing.workerCode) {
+      const duplicate = await prisma.worker.findUnique({ where: { workerCode } });
+      if (duplicate && duplicate.id !== id) {
+        return res.status(400).json({ success: false, message: `Worker code ${workerCode} is already taken.` });
+      }
+    }
+
+    const updated = await prisma.worker.update({
+      where: { id },
+      data: {
+        ...(workerCode ? { workerCode: String(workerCode).trim() } : {}),
+        ...(name ? { name: String(name).trim() } : {}),
+        ...(phone !== undefined ? { phone: phone ? String(phone).trim() : null } : {}),
+        ...(trade ? { trade } : {}),
+        ...(skillLevel ? { skillLevel } : {}),
+        ...(dailyWageRate !== undefined ? { dailyWageRate: Number(dailyWageRate) } : {}),
+        ...(overtimeHourlyRate !== undefined ? { overtimeHourlyRate: Number(overtimeHourlyRate) } : {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(bankAccountNo !== undefined ? { bankAccountNo: bankAccountNo ? String(bankAccountNo).trim() : null } : {}),
+        ...(bankIfsc !== undefined ? { bankIfsc: bankIfsc ? String(bankIfsc).trim() : null } : {}),
+        ...(projectId !== undefined ? { projectId: projectId || null } : {}),
+        ...(photoUrl ? { photoUrl } : {}),
+        ...(documentUrl ? { documentUrl } : {}),
+        ...(documentName ? { documentName } : {}),
+      },
+      include: {
+        project: { select: { id: true, code: true, name: true } },
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_WORKER', 'WORKER', id, { workerCode: updated.workerCode, name: updated.name }, req.ip);
+
+    return res.json({ success: true, worker: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message || 'Failed to update worker.' });
+  }
+};
+
+export const deleteWorker = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.worker.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Worker not found' });
+    }
+
+    try {
+      await prisma.worker.delete({ where: { id } });
+    } catch (delErr) {
+      // If foreign key constraint prevents physical delete, soft delete
+      await prisma.worker.update({
+        where: { id },
+        data: { isActive: false },
+      });
+    }
+
+    await logAudit(req.user?.id, 'DELETE_WORKER', 'WORKER', id, { workerCode: existing.workerCode, name: existing.name }, req.ip);
+
+    return res.json({ success: true, message: `Worker ${existing.name} (${existing.workerCode}) deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message || 'Failed to delete worker.' });
+  }
+};
+
+export const normalizeAttendanceDate = (inputDate: string | Date): Date => {
+  const dateStr = typeof inputDate === 'string' ? inputDate.split('T')[0] : new Date(inputDate).toISOString().split('T')[0];
+  const [yr, mo, da] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(yr, mo - 1, da, 0, 0, 0, 0));
+};
+
+export const isFutureDate = (inputDate: string | Date): boolean => {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const dateStr = typeof inputDate === 'string' ? inputDate.split('T')[0] : new Date(inputDate).toISOString().split('T')[0];
+  return dateStr > todayStr;
+};
+
 export const getDailyAttendance = async (req: Request, res: Response) => {
   try {
     const { date, projectId, siteId } = req.query;
@@ -164,9 +309,8 @@ export const getDailyAttendance = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Date and project ID are required.' });
     }
 
-    const queryDate = new Date(date as string);
-    const startOfDay = new Date(queryDate.getFullYear(), queryDate.getMonth(), queryDate.getDate());
-    const endOfDay = new Date(queryDate.getFullYear(), queryDate.getMonth(), queryDate.getDate() + 1);
+    const startOfDay = normalizeAttendanceDate(date as string);
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 3600 * 1000);
 
     const attendances = await prisma.labourAttendance.findMany({
       where: {
@@ -201,7 +345,22 @@ export const saveBulkAttendance = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Date, project, and attendance records array are required.' });
     }
 
-    const attendanceDate = new Date(date);
+    // Future-date validation: PRESENT or HALF_DAY cannot be marked in advance
+    if (isFutureDate(date)) {
+      const invalid = records.find(
+        (r) => r.attendanceStatus === 'PRESENT' || r.attendanceStatus === 'HALF_DAY'
+      );
+      if (invalid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Future-date attendance cannot be marked as Present or Half-Day. Only planned Absence, Leave, or Holiday can be pre-recorded.',
+        });
+      }
+    }
+
+    const attendanceDate = normalizeAttendanceDate(date);
+    const windowStart = attendanceDate;
+    const windowEnd = new Date(attendanceDate.getTime() + 24 * 3600 * 1000);
 
     const results = await prisma.$transaction(async (tx) => {
       const saved: any[] = [];
@@ -224,42 +383,55 @@ export const saveBulkAttendance = async (req: Request, res: Response) => {
 
         const totalEarned = regularWage + otWage;
 
-        const att = await tx.labourAttendance.upsert({
+        // Check for existing record within this day window
+        const existingForDay = await tx.labourAttendance.findFirst({
           where: {
-            date_workerId_projectId: {
-              date: attendanceDate,
-              workerId: rec.workerId,
-              projectId,
+            workerId: rec.workerId,
+            projectId,
+            date: {
+              gte: windowStart,
+              lt: windowEnd,
             },
           },
-          update: {
-            siteId: siteId || null,
-            attendanceStatus: rec.attendanceStatus,
-            regularHours: rec.attendanceStatus === 'PRESENT' ? 8 : rec.attendanceStatus === 'HALF_DAY' ? 4 : 0,
-            overtimeHours: otHours,
-            workActivity: rec.workActivity || null,
-            wageCalculated: regularWage,
-            overtimeWage: otWage,
-            totalWageEarned: totalEarned,
-            isVerified: true,
-            supervisorName: req.user?.name || 'Supervisor',
-          },
-          create: {
-            date: attendanceDate,
-            projectId,
-            siteId: siteId || null,
-            workerId: rec.workerId,
-            attendanceStatus: rec.attendanceStatus,
-            regularHours: rec.attendanceStatus === 'PRESENT' ? 8 : rec.attendanceStatus === 'HALF_DAY' ? 4 : 0,
-            overtimeHours: otHours,
-            workActivity: rec.workActivity || null,
-            wageCalculated: regularWage,
-            overtimeWage: otWage,
-            totalWageEarned: totalEarned,
-            isVerified: true,
-            supervisorName: req.user?.name || 'Supervisor',
-          },
         });
+
+        let att;
+        if (existingForDay) {
+          att = await tx.labourAttendance.update({
+            where: { id: existingForDay.id },
+            data: {
+              date: attendanceDate,
+              siteId: siteId || null,
+              attendanceStatus: rec.attendanceStatus,
+              regularHours: rec.attendanceStatus === 'PRESENT' ? 8 : rec.attendanceStatus === 'HALF_DAY' ? 4 : 0,
+              overtimeHours: otHours,
+              workActivity: rec.workActivity || null,
+              wageCalculated: regularWage,
+              overtimeWage: otWage,
+              totalWageEarned: totalEarned,
+              isVerified: true,
+              supervisorName: req.user?.name || 'Supervisor',
+            },
+          });
+        } else {
+          att = await tx.labourAttendance.create({
+            data: {
+              date: attendanceDate,
+              projectId,
+              siteId: siteId || null,
+              workerId: rec.workerId,
+              attendanceStatus: rec.attendanceStatus,
+              regularHours: rec.attendanceStatus === 'PRESENT' ? 8 : rec.attendanceStatus === 'HALF_DAY' ? 4 : 0,
+              overtimeHours: otHours,
+              workActivity: rec.workActivity || null,
+              wageCalculated: regularWage,
+              overtimeWage: otWage,
+              totalWageEarned: totalEarned,
+              isVerified: true,
+              supervisorName: req.user?.name || 'Supervisor',
+            },
+          });
+        }
 
         saved.push(att);
       }
@@ -330,7 +502,6 @@ export const getMusterRoll = async (req: Request, res: Response) => {
     try {
       const wpWhere: any = {};
       if (projectId && typeof projectId === 'string') wpWhere.projectId = projectId;
-      if (workerId && typeof workerId === 'string') wpWhere.workerId = workerId;
       if (startDate || endDate) {
         wpWhere.paymentDate = {};
         if (startDate) wpWhere.paymentDate.gte = new Date(startDate as string);
@@ -426,22 +597,88 @@ export const getMusterRoll = async (req: Request, res: Response) => {
       });
     }
 
-    // Distribute wage payments
-    for (const wp of wagePayments) {
-      if (wp.workerId && workerSummary[wp.workerId]) {
+    // Separate individual worker payments and bulk payments
+    const individualPayments = wagePayments.filter((wp) => wp.workerId);
+    const bulkPayments = wagePayments.filter((wp) => !wp.workerId);
+
+    // 1. Distribute individual wage payments
+    for (const wp of individualPayments) {
+      if (workerSummary[wp.workerId]) {
         workerSummary[wp.workerId].wagesGiven += wp.amount;
         workerSummary[wp.workerId].paymentsList.push(wp);
       }
     }
 
-    // Calculate balance due for each worker
-    for (const wId of Object.keys(workerSummary)) {
-      workerSummary[wId].balanceDue = workerSummary[wId].grossWageEarned - workerSummary[wId].wagesGiven;
+    // 2. Distribute bulk wage payments across active project workers who earned wages
+    for (const bp of bulkPayments) {
+      let remainingToAllocate = bp.amount;
+
+      // Identify workers who have earned wages and still have remaining unpaid balance
+      const workersWithDue = Object.values(workerSummary).filter(
+        (w: any) => w.grossWageEarned > w.wagesGiven
+      );
+
+      const totalRemainingDue = workersWithDue.reduce(
+        (sum: number, w: any) => sum + (w.grossWageEarned - w.wagesGiven),
+        0
+      );
+
+      if (totalRemainingDue > 0 && remainingToAllocate > 0) {
+        for (const w of workersWithDue) {
+          const currentDue = (w as any).grossWageEarned - (w as any).wagesGiven;
+          let alloc = 0;
+          if (remainingToAllocate >= totalRemainingDue) {
+            alloc = currentDue;
+          } else {
+            alloc = Math.min(Math.round((currentDue / totalRemainingDue) * bp.amount), remainingToAllocate);
+          }
+
+          if (alloc > 0) {
+            (w as any).wagesGiven += alloc;
+            remainingToAllocate -= alloc;
+            (w as any).paymentsList.push({
+              ...bp,
+              amount: alloc,
+              isBulkAllocation: true,
+              narration: `${bp.narration || 'Bulk Payout'} [Portion Allocated: ₹${alloc}]`,
+            });
+          }
+        }
+      }
+
+      // If any bulk amount still remains, allocate across workers with positive attendance/earnings
+      if (remainingToAllocate > 0) {
+        const workers = Object.values(workerSummary);
+        if (workers.length > 0) {
+          const split = Math.round(remainingToAllocate / workers.length);
+          for (const w of workers) {
+            const alloc = Math.min(split, remainingToAllocate);
+            (w as any).wagesGiven += alloc;
+            remainingToAllocate -= alloc;
+            (w as any).paymentsList.push({
+              ...bp,
+              amount: alloc,
+              isBulkAllocation: true,
+              narration: `${bp.narration || 'Bulk Payout'} [Excess/Advance: ₹${alloc}]`,
+            });
+            if (remainingToAllocate <= 0) break;
+          }
+        }
+      }
     }
 
-    const records = Object.values(workerSummary);
+    // Calculate balance due for each worker
+    for (const wId of Object.keys(workerSummary)) {
+      workerSummary[wId].balanceDue = Math.max(0, workerSummary[wId].grossWageEarned - workerSummary[wId].wagesGiven);
+    }
+
+    let records = Object.values(workerSummary);
+    if (workerId && typeof workerId === 'string') {
+      records = records.filter((r: any) => r.worker?.id === workerId);
+    }
+
     const totalGross = records.reduce((sum, w: any) => sum + w.grossWageEarned, 0);
-    const totalGiven = wagePayments.reduce((sum, wp: any) => sum + wp.amount, 0);
+    const totalGiven = records.reduce((sum, w: any) => sum + w.wagesGiven, 0);
     const totalDaysWorked = records.reduce((sum, w: any) => sum + w.daysWorked, 0);
     const totalAbsentDays = records.reduce((sum, w: any) => sum + w.absentDays, 0);
 
@@ -553,4 +790,107 @@ export const recordWagePayment = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateAttendanceRecord = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { attendanceStatus, regularHours, overtimeHours, workActivity } = req.body;
+
+    const existing = await prisma.labourAttendance.findUnique({
+      where: { id },
+      include: { worker: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Attendance record not found.' });
+    }
+
+    const worker = existing.worker;
+    const status = attendanceStatus || existing.attendanceStatus;
+
+    if (isFutureDate(existing.date) && (status === 'PRESENT' || status === 'HALF_DAY')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Future-date attendance cannot be marked as Present or Half-Day. Only planned Leave or Holiday is permitted for future dates.',
+      });
+    }
+
+    const otHours = overtimeHours !== undefined ? Number(overtimeHours) : existing.overtimeHours;
+
+    let regularWage = 0;
+    let otWage = otHours * (worker ? worker.overtimeHourlyRate : 100);
+
+    if (status === 'PRESENT') {
+      regularWage = worker ? worker.dailyWageRate : 600;
+    } else if (status === 'HALF_DAY') {
+      regularWage = worker ? worker.dailyWageRate / 2 : 300;
+    } else {
+      otWage = 0;
+    }
+
+    const totalWageEarned = regularWage + otWage;
+
+    const updated = await prisma.labourAttendance.update({
+      where: { id },
+      data: {
+        attendanceStatus: status,
+        regularHours: regularHours !== undefined ? Number(regularHours) : (status === 'PRESENT' ? 8 : status === 'HALF_DAY' ? 4 : 0),
+        overtimeHours: otHours,
+        workActivity: workActivity !== undefined ? workActivity : existing.workActivity,
+        wageCalculated: regularWage,
+        overtimeWage: otWage,
+        totalWageEarned,
+      },
+      include: { worker: true },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_ATTENDANCE', 'LABOUR_ATTENDANCE', id, { status, totalWageEarned }, req.ip);
+
+    return res.json({ success: true, attendance: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteAttendanceRecord = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.labourAttendance.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Attendance record not found.' });
+    }
+
+    await prisma.labourAttendance.delete({ where: { id } });
+    await logAudit(req.user?.id, 'DELETE_ATTENDANCE', 'LABOUR_ATTENDANCE', id, {}, req.ip);
+
+    return res.json({ success: true, message: 'Attendance record deleted successfully.' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteWagePayment = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    const wp = await (prisma as any).wagePayment.findUnique({ where: { id } });
+    if (!wp) {
+      return res.status(404).json({ success: false, message: 'Wage payment not found.' });
+    }
+
+    if (wp.referenceNo) {
+      await prisma.journalEntry.deleteMany({
+        where: { entryNumber: wp.referenceNo },
+      });
+    }
+
+    await (prisma as any).wagePayment.delete({ where: { id } });
+    await logAudit(req.user?.id, 'DELETE_WAGE_PAYMENT', 'WAGE_PAYMENT', id, { amount: wp.amount }, req.ip);
+
+    return res.json({ success: true, message: 'Wage payout entry deleted and journal reversed.' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
-import { Task } from '../types';
+import { Task, BOQItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import api from '../services/api';
 import {
@@ -16,13 +16,22 @@ import {
   Eye,
   Edit2,
   Trash2,
+  Palette,
+  Image as ImageIcon,
+  ExternalLink,
+  FileText,
+  Sparkles,
+  Layers,
+  Zap,
 } from 'lucide-react';
+import DynamicSelect from '../components/common/DynamicSelect';
 
 export const Tasks: React.FC = () => {
-  const { hasRole } = useAuth();
+  const { user, hasRole } = useAuth();
   const { projects, selectedProjectId, setSelectedProjectId, refreshProjects } = useProject();
   const [projectId, setProjectId] = useState<string>(selectedProjectId || '');
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [projectBOQItems, setProjectBOQItems] = useState<BOQItem[]>([]);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -32,14 +41,20 @@ export const Tasks: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [taskForm, setTaskForm] = useState({
     projectId: '',
+    boqItemId: '',
     title: '',
     description: '',
     startDate: '',
     dueDate: '',
     priority: 'MEDIUM',
     plannedQty: '100',
-    unit: 'SQMT',
+    unit: 'SQFT',
     estimatedCost: '8000',
+    materialSwatchUrl: '',
+    designRenderUrl: '',
+    clientSignOffDoc: '',
+    clientApprovalStatus: 'APPROVED',
+    isScopeVariation: false,
   });
 
   // Edit / Delete Task States
@@ -48,16 +63,41 @@ export const Tasks: React.FC = () => {
   const [editTaskForm, setEditTaskForm] = useState<any>({
     title: '',
     description: '',
+    boqItemId: '',
     startDate: '',
     dueDate: '',
     priority: 'MEDIUM',
     plannedQty: '100',
     completedQty: '0',
-    unit: 'SQMT',
+    unit: 'SQFT',
     estimatedCost: '0',
     actualCost: '0',
     status: 'NOT_STARTED',
+    materialSwatchUrl: '',
+    designRenderUrl: '',
+    clientSignOffDoc: '',
+    clientApprovalStatus: 'APPROVED',
+    isScopeVariation: false,
   });
+
+  const [currentProject, setCurrentProject] = useState<any>(null);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [standardToast, setStandardToast] = useState<{
+    message: string;
+    whatsappStatus?: string;
+    entity: string;
+    success: boolean;
+  } | null>(null);
+
+  // Quick-Add Task Form State
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickPriority, setQuickPriority] = useState('MEDIUM');
+  const [quickStatus, setQuickStatus] = useState('NOT_STARTED');
+  const [quickAssignedTo, setQuickAssignedTo] = useState('');
+  const [quickDueDate, setQuickDueDate] = useState(
+    new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString().split('T')[0]
+  );
+  const [quickAdding, setQuickAdding] = useState(false);
 
   useEffect(() => {
     setProjectId(selectedProjectId || '');
@@ -81,19 +121,128 @@ export const Tasks: React.FC = () => {
     }
   };
 
+  const loadProjectDetails = async (projId: string) => {
+    try {
+      const res = await api.getProjectById(projId);
+      if (res.success) {
+        setCurrentProject(res.project);
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
     fetchTasks();
-  }, [projectId]);
+    const curProj = projectId || selectedProjectId;
+    if (curProj) {
+      loadProjectDetails(curProj);
+      api.getBOQ(curProj).then((res) => {
+        if (res.success) setProjectBOQItems(res.items || []);
+      }).catch(() => {});
+    }
+    // Load users for assignment
+    api.getUsers().then((res) => {
+      if (res.success && res.users) {
+        setUsersList(res.users);
+      }
+    }).catch(() => {});
+  }, [projectId, selectedProjectId]);
+
+  const handleConfirmAdvancePayment = async () => {
+    if (!currentProject) return;
+    try {
+      const res = await api.confirmProjectAdvance(currentProject.id, {
+        notes: 'Advance confirmed from Tasks screen by Finance officer',
+      });
+      if (res.success) {
+        alert('Advance payment confirmed by Finance! Project execution schedule and task creation unlocked.');
+        await loadProjectDetails(currentProject.id);
+        await refreshProjects();
+      }
+    } catch (err: any) {
+      alert(`Error confirming advance: ${err.message}`);
+    }
+  };
+
+  const handleSelectBOQItem = (boqId: string) => {
+    const boq = projectBOQItems.find((b) => b.id === boqId);
+    if (boq) {
+      setTaskForm((prev) => ({
+        ...prev,
+        boqItemId: boqId,
+        title: prev.title || `${boq.category.replace(/_/g, ' ')}: ${boq.description.slice(0, 45)}`,
+        description: prev.description || boq.description,
+        plannedQty: String(boq.estimatedQty),
+        unit: boq.unit,
+        estimatedCost: String(boq.estimatedTotal),
+        materialSwatchUrl: boq.materialSwatchUrl || prev.materialSwatchUrl,
+        designRenderUrl: boq.designRenderUrl || prev.designRenderUrl,
+        clientApprovalStatus: boq.clientApprovalStatus || 'APPROVED',
+        clientSignOffDoc: boq.clientSignOffDoc || prev.clientSignOffDoc,
+      }));
+    } else {
+      setTaskForm((prev) => ({ ...prev, boqItemId: '' }));
+    }
+  };
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
     try {
-      const res = await api.updateTask(taskId, { status: newStatus });
+      const res = await api.updateLifecycleStatus({
+        entityType: 'Task',
+        entityId: taskId,
+        toStatus: newStatus,
+      });
       if (res.success) {
+        setStandardToast({
+          message: res.message,
+          whatsappStatus: res.whatsappStatus,
+          entity: res.entity || 'Task',
+          success: true,
+        });
         fetchTasks();
         refreshProjects();
+        setTimeout(() => setStandardToast(null), 5000);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to update status');
+      setStandardToast({
+        message: err.message || 'Failed to update status',
+        entity: 'Task',
+        success: false,
+      });
+    }
+  };
+
+  const handleQuickAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickTitle.trim()) return;
+    try {
+      setQuickAdding(true);
+      const targetProjId = projectId || selectedProjectId || (projects[0]?.id || '');
+      const res = await api.quickAddTask({
+        title: quickTitle.trim(),
+        projectId: targetProjId,
+        assignedToId: quickAssignedTo || undefined,
+        priority: quickPriority,
+        status: quickStatus,
+        dueDate: quickDueDate,
+      });
+      if (res.success) {
+        setStandardToast({
+          message: res.message,
+          whatsappStatus: res.whatsappStatus,
+          entity: res.entity || 'Task',
+          success: true,
+        });
+        setQuickTitle('');
+        fetchTasks();
+        refreshProjects();
+        setTimeout(() => setStandardToast(null), 5000);
+      } else {
+        alert(res.message || 'Failed to quick-add task');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to quick-add task');
+    } finally {
+      setQuickAdding(false);
     }
   };
 
@@ -122,14 +271,20 @@ export const Tasks: React.FC = () => {
         refreshProjects();
         setTaskForm({
           projectId: '',
+          boqItemId: '',
           title: '',
           description: '',
           startDate: '',
           dueDate: '',
           priority: 'MEDIUM',
           plannedQty: '100',
-          unit: 'SQMT',
+          unit: 'SQFT',
           estimatedCost: '50000',
+          materialSwatchUrl: '',
+          designRenderUrl: '',
+          clientSignOffDoc: '',
+          clientApprovalStatus: 'APPROVED',
+          isScopeVariation: false,
         });
       }
     } catch (err: any) {
@@ -142,15 +297,21 @@ export const Tasks: React.FC = () => {
     setEditTaskForm({
       title: task.title,
       description: task.description || '',
+      boqItemId: task.boqItemId || '',
       startDate: task.startDate ? new Date(task.startDate).toISOString().split('T')[0] : '',
       dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
       priority: task.priority || 'MEDIUM',
       plannedQty: String(task.plannedQty || 0),
       completedQty: String(task.completedQty || 0),
-      unit: task.unit || 'SQMT',
+      unit: task.unit || 'SQFT',
       estimatedCost: String(task.estimatedCost || 0),
       actualCost: String(task.actualCost || 0),
       status: task.status || 'NOT_STARTED',
+      materialSwatchUrl: task.materialSwatchUrl || '',
+      designRenderUrl: task.designRenderUrl || '',
+      clientSignOffDoc: task.clientSignOffDoc || '',
+      clientApprovalStatus: task.clientApprovalStatus || 'APPROVED',
+      isScopeVariation: Boolean(task.isScopeVariation),
     });
   };
 
@@ -242,6 +403,148 @@ export const Tasks: React.FC = () => {
         </div>
       </div>
 
+      {/* MODULE 3: Project Kickoff Gate Warning Banner */}
+      {currentProject && currentProject.advancePaymentConfirmed === false && (
+        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-start space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 text-sm">
+              ⚠️
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-extrabold text-xs text-amber-950 uppercase tracking-wider">
+                  Module 3 Kickoff Gate: Execution Schedules & Site Tasks Locked
+                </h3>
+                <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  Pending Finance Confirmation
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 mt-1 leading-relaxed">
+                Initial advance booking payment of ₹<strong>{currentProject.advancePaymentRequired?.toLocaleString('en-IN') || '0'}</strong> for project "{currentProject.name}" has not yet been confirmed by the Finance Department. Site task scheduling and assignments remain locked.
+              </p>
+            </div>
+          </div>
+          {hasRole('OWNER', 'ACCOUNTS_MANAGER') && (
+            <button
+              onClick={handleConfirmAdvancePayment}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-1.5 shadow-sm shrink-0 transition"
+            >
+              <span>Confirm Advance & Unlock Kickoff</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Standardized Toast Banner */}
+      {standardToast && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-semibold shadow-sm animate-in fade-in ${
+            standardToast.success
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : 'bg-rose-50 border-rose-300 text-rose-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span>{standardToast.success ? '✅' : '⚠️'}</span>
+            <span>{standardToast.message}</span>
+            {standardToast.whatsappStatus && (
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${
+                  standardToast.whatsappStatus === 'Dispatched'
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}
+              >
+                WhatsApp: {standardToast.whatsappStatus}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setStandardToast(null)}
+            className="text-slate-400 hover:text-slate-600 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Operational Quick-Add Task Bar */}
+      {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+        <form
+          onSubmit={handleQuickAddTask}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center gap-3"
+        >
+          <div className="flex items-center gap-2 shrink-0 text-amber-500 font-bold text-xs uppercase tracking-wider">
+            <Zap className="w-4 h-4 fill-amber-500" />
+            <span>Quick Task:</span>
+          </div>
+
+          <div className="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              required
+              placeholder="Task Title (e.g. Living room electrical wiring & conduit laying...)"
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+            />
+          </div>
+
+          <div className="w-full md:w-44 shrink-0">
+            <select
+              value={quickAssignedTo}
+              onChange={(e) => setQuickAssignedTo(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+            >
+              <option value="">Assigned Staff...</option>
+              {usersList.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.role?.slice(0, 10)})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-full md:w-36 shrink-0">
+            <DynamicSelect
+              category="TaskPriority"
+              value={quickPriority}
+              onChange={setQuickPriority}
+              placeholder="Priority..."
+              className="!bg-slate-50 !border-slate-300 !text-slate-800 !py-2 !text-xs !rounded-xl"
+            />
+          </div>
+
+          <div className="w-full md:w-36 shrink-0">
+            <input
+              type="date"
+              value={quickDueDate}
+              onChange={(e) => setQuickDueDate(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+            />
+          </div>
+
+          <div className="w-full md:w-36 shrink-0">
+            <DynamicSelect
+              category="TaskStatus"
+              value={quickStatus}
+              onChange={setQuickStatus}
+              placeholder="Status..."
+              className="!bg-slate-50 !border-slate-300 !text-slate-800 !py-2 !text-xs !rounded-xl"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={quickAdding || !quickTitle.trim()}
+            className="shrink-0 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-sm disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{quickAdding ? 'Adding...' : 'Add Task'}</span>
+          </button>
+        </form>
+      )}
+
       {/* Project Selector Bar */}
       <div className="flex items-center space-x-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
         <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
@@ -284,21 +587,45 @@ export const Tasks: React.FC = () => {
                       className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-2 group"
                     >
                       <div className="flex items-center justify-between">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          task.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
-                          task.priority === 'HIGH' ? 'bg-amber-100 text-amber-800' :
-                          'bg-blue-100 text-blue-800'
-                        }`}>
-                          {task.priority}
-                        </span>
+                        <div className="flex items-center space-x-1">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            task.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
+                            task.priority === 'HIGH' ? 'bg-amber-100 text-amber-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {task.priority}
+                          </span>
+                          {task.boqItem && (
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200" title={`Linked BOQ: ${task.boqItem.description}`}>
+                              BOQ: {task.boqItem.itemCode}
+                            </span>
+                          )}
+                          {task.isScopeVariation && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                              Variation
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 flex items-center">
                           <Clock className="w-3 h-3 mr-0.5" />
                           {formatDate(task.dueDate)}
                         </span>
                       </div>
 
-                      <h4 className="text-xs font-bold text-slate-900 group-hover:text-amber-600 transition">
-                        {task.title}
+                      <h4 className="text-xs font-bold text-slate-900 group-hover:text-amber-600 transition flex items-center justify-between">
+                        <span>{task.title}</span>
+                        <div className="flex items-center space-x-1 shrink-0 ml-1">
+                          {task.materialSwatchUrl && (
+                            <span className="p-0.5 rounded bg-amber-50 text-amber-700" title="Material Swatch attached">
+                              <Palette className="w-3 h-3" />
+                            </span>
+                          )}
+                          {task.designRenderUrl && (
+                            <span className="p-0.5 rounded bg-blue-50 text-blue-700" title="3D Render attached">
+                              <ImageIcon className="w-3 h-3" />
+                            </span>
+                          )}
+                        </div>
                       </h4>
 
                       {task.description && (
@@ -325,12 +652,14 @@ export const Tasks: React.FC = () => {
                           value={task.status}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => handleStatusChange(task.id, e.target.value)}
-                          className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-slate-700"
+                          className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-slate-700 cursor-pointer hover:border-amber-400"
                         >
                           <option value="NOT_STARTED">Not Started</option>
                           <option value="IN_PROGRESS">In Progress</option>
                           <option value="PENDING_APPROVAL">Pending Review</option>
                           <option value="COMPLETED">Completed</option>
+                          <option value="DELAYED">Delayed</option>
+                          <option value="ON_HOLD">On Hold</option>
                         </select>
 
                         <div className="flex items-center space-x-0.5" onClick={(e) => e.stopPropagation()}>
@@ -397,13 +726,27 @@ export const Tasks: React.FC = () => {
                   <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
                     {task.completedQty} / {task.plannedQty} {task.unit}
                   </td>
-                  <td className="py-3 px-3 text-center">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
-                      task.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
-                    }`}>
-                      {task.status}
-                    </span>
+                  <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={task.status}
+                      onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg border focus:outline-none cursor-pointer ${
+                        task.status === 'COMPLETED'
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                          : task.status === 'IN_PROGRESS'
+                          ? 'bg-amber-50 border-amber-300 text-amber-800'
+                          : task.status === 'DELAYED'
+                          ? 'bg-rose-50 border-rose-300 text-rose-800'
+                          : 'bg-slate-100 border-slate-300 text-slate-700'
+                      }`}
+                    >
+                      <option value="NOT_STARTED">Not Started</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="PENDING_APPROVAL">Pending Review</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="DELAYED">Delayed</option>
+                      <option value="ON_HOLD">On Hold</option>
+                    </select>
                   </td>
                   <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center space-x-1">
@@ -462,6 +805,60 @@ export const Tasks: React.FC = () => {
                 <span>Estimated Cost: {formatCurrency(selectedTask.estimatedCost)}</span>
               </div>
             </div>
+
+            {/* Linked BOQ Item & Interior Attachments */}
+            {(selectedTask.boqItem || selectedTask.materialSwatchUrl || selectedTask.designRenderUrl || selectedTask.clientSignOffDoc || selectedTask.isScopeVariation) && (
+              <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-200/60 text-xs space-y-2">
+                {selectedTask.boqItem && (
+                  <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/40">
+                    <span className="text-slate-500 font-semibold">Linked BOQ Item:</span>
+                    <strong className="text-slate-900 font-mono">[{selectedTask.boqItem.itemCode}] {selectedTask.boqItem.description}</strong>
+                  </div>
+                )}
+                {selectedTask.isScopeVariation && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Classification:</span>
+                    <span className="px-2 py-0.5 rounded bg-amber-200 text-amber-900 font-bold text-[10px]">Client Scope Variation Task</span>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  {selectedTask.materialSwatchUrl && (
+                    <a
+                      href={selectedTask.materialSwatchUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center space-x-1 text-amber-700 font-bold hover:underline"
+                    >
+                      <Palette className="w-3.5 h-3.5" />
+                      <span>Material Swatch</span>
+                      <ExternalLink className="w-3 h-3 ml-0.5" />
+                    </a>
+                  )}
+                  {selectedTask.designRenderUrl && (
+                    <a
+                      href={selectedTask.designRenderUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center space-x-1 text-blue-700 font-bold hover:underline"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>3D Render</span>
+                      <ExternalLink className="w-3 h-3 ml-0.5" />
+                    </a>
+                  )}
+                  {selectedTask.clientSignOffDoc && (
+                    <span className="text-slate-600">
+                      Sign-off Record: <strong className="font-mono text-slate-800">{selectedTask.clientSignOffDoc}</strong>
+                    </span>
+                  )}
+                  {selectedTask.clientApprovalStatus && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                      Status: {selectedTask.clientApprovalStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Comments thread */}
             <div>
@@ -566,14 +963,31 @@ export const Tasks: React.FC = () => {
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Link to Approved BOQ Item (Optional)</label>
+                <select
+                  value={taskForm.boqItemId}
+                  onChange={(e) => handleSelectBOQItem(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                >
+                  <option value="">-- No BOQ Item Linked --</option>
+                  {projectBOQItems.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      [{b.itemCode}] {b.category.replace(/_/g, ' ')} - {b.description.slice(0, 45)} ({b.estimatedQty} {b.unit})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-slate-400">Selecting a BOQ item auto-populates title, quantity, budget, and design renders</span>
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Task Title *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 8th Floor Column Concreting"
+                  placeholder="e.g. False Ceiling Gypsum Grid Installation"
                   value={taskForm.title}
                   onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
                 />
               </div>
 
@@ -581,7 +995,7 @@ export const Tasks: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
                 <textarea
                   rows={2}
-                  placeholder="Scope, structural location, inspection checkpoints..."
+                  placeholder="Scope, specifications, installation checklist..."
                   value={taskForm.description}
                   onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
@@ -627,7 +1041,7 @@ export const Tasks: React.FC = () => {
                     type="text"
                     value={taskForm.unit}
                     onChange={(e) => setTaskForm({ ...taskForm, unit: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg uppercase"
                   />
                 </div>
                 <div>
@@ -642,6 +1056,73 @@ export const Tasks: React.FC = () => {
                     <option value="HIGH">High</option>
                     <option value="URGENT">Urgent</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Interior Design & Client Sign-Off Attachments */}
+              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/60 space-y-2">
+                <span className="text-[11px] font-bold text-amber-900 flex items-center space-x-1">
+                  <Palette className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Interior Design & Client Sign-Off Attachments</span>
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Material Swatch URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://... swatch link"
+                      value={taskForm.materialSwatchUrl}
+                      onChange={(e) => setTaskForm({ ...taskForm, materialSwatchUrl: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">3D Render URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://... 3D render link"
+                      value={taskForm.designRenderUrl}
+                      onChange={(e) => setTaskForm({ ...taskForm, designRenderUrl: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Approval Status</label>
+                    <select
+                      value={taskForm.clientApprovalStatus}
+                      onChange={(e) => setTaskForm({ ...taskForm, clientApprovalStatus: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    >
+                      <option value="APPROVED">APPROVED</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="VARIATION_REQUESTED">VARIATION REQUESTED</option>
+                      <option value="REJECTED">REJECTED</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Client Sign-Off Record</label>
+                    <input
+                      type="text"
+                      placeholder="Doc Ref / Email link"
+                      value={taskForm.clientSignOffDoc}
+                      onChange={(e) => setTaskForm({ ...taskForm, clientSignOffDoc: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="isScopeVariation"
+                    checked={taskForm.isScopeVariation}
+                    onChange={(e) => setTaskForm({ ...taskForm, isScopeVariation: e.target.checked })}
+                    className="rounded text-amber-500"
+                  />
+                  <label htmlFor="isScopeVariation" className="text-xs font-semibold text-slate-700">
+                    Mark as Client Scope Variation Task
+                  </label>
                 </div>
               </div>
 
@@ -795,6 +1276,73 @@ export const Tasks: React.FC = () => {
                     onChange={(e) => setEditTaskForm({ ...editTaskForm, actualCost: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
                   />
+                </div>
+              </div>
+
+              {/* Interior Design & Client Sign-Off Attachments */}
+              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/60 space-y-2">
+                <span className="text-[11px] font-bold text-amber-900 flex items-center space-x-1">
+                  <Palette className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Interior Design & Client Sign-Off Attachments</span>
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Material Swatch URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://... swatch link"
+                      value={editTaskForm.materialSwatchUrl}
+                      onChange={(e) => setEditTaskForm({ ...editTaskForm, materialSwatchUrl: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">3D Render URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://... 3D render link"
+                      value={editTaskForm.designRenderUrl}
+                      onChange={(e) => setEditTaskForm({ ...editTaskForm, designRenderUrl: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Approval Status</label>
+                    <select
+                      value={editTaskForm.clientApprovalStatus}
+                      onChange={(e) => setEditTaskForm({ ...editTaskForm, clientApprovalStatus: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    >
+                      <option value="APPROVED">APPROVED</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="VARIATION_REQUESTED">VARIATION REQUESTED</option>
+                      <option value="REJECTED">REJECTED</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-600 font-bold mb-0.5">Client Sign-Off Record</label>
+                    <input
+                      type="text"
+                      placeholder="Doc Ref / Email link"
+                      value={editTaskForm.clientSignOffDoc}
+                      onChange={(e) => setEditTaskForm({ ...editTaskForm, clientSignOffDoc: e.target.value })}
+                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="editIsScopeVariation"
+                    checked={editTaskForm.isScopeVariation}
+                    onChange={(e) => setEditTaskForm({ ...editTaskForm, isScopeVariation: e.target.checked })}
+                    className="rounded text-amber-500"
+                  />
+                  <label htmlFor="editIsScopeVariation" className="text-xs font-semibold text-slate-700">
+                    Mark as Client Scope Variation Task
+                  </label>
                 </div>
               </div>
 

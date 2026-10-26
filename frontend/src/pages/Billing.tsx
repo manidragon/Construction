@@ -16,7 +16,9 @@ import {
   Eye,
   Edit2,
   Trash2,
+  Share2,
 } from 'lucide-react';
+import { ReceiptShareModal } from '../components/ReceiptShareModal';
 
 export const Billing: React.FC = () => {
   const { hasRole } = useAuth();
@@ -29,6 +31,7 @@ export const Billing: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'clients'>('invoices');
   const [printInvoice, setPrintInvoice] = useState<ClientInvoice | null>(null);
+  const [sharingReceipt, setSharingReceipt] = useState<ClientReceipt | null>(null);
 
   // Modals
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -147,6 +150,94 @@ export const Billing: React.FC = () => {
     fetchData();
   }, [projectId]);
 
+  // Compute next sequential RA Bill number formatted with the project's identifier
+  // e.g. RA-01-SKYLINE -> RA-02-Greenfield -> RA-03-SKYLINE
+  const computeNextInvoiceNumber = (
+    targetProjId: string,
+    invoiceList: ClientInvoice[] = invoices,
+    projectList: any[] = projects
+  ) => {
+    let maxNum = 0;
+    for (const inv of invoiceList) {
+      if (!inv.invoiceNumber) continue;
+      const match =
+        inv.invoiceNumber.match(/^RA-(\d+)/i) ||
+        inv.invoiceNumber.match(/RA[^\d]*(\d+)/i) ||
+        inv.invoiceNumber.match(/(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+
+    const nextSeq = maxNum + 1;
+    const paddedSeq = String(nextSeq).padStart(2, '0');
+
+    const selProj = projectList.find((p) => p.id === targetProjId);
+    let projectTag = '';
+
+    if (selProj) {
+      // Derive project tag directly from the selected project's name
+      if (selProj.name) {
+        const words = selProj.name.trim().split(/\s+/);
+        let candidate = words[0];
+        if (['THE', 'A', 'AN'].includes(candidate.toUpperCase()) && words.length > 1) {
+          candidate = words[1];
+        }
+        const clean = candidate.replace(/[^a-zA-Z0-9]/g, '');
+        if (clean.toUpperCase() === 'SKYLINE') {
+          projectTag = 'SKYLINE';
+        } else {
+          projectTag = clean;
+        }
+      }
+
+      // Fallback to project code
+      if (!projectTag && selProj.code) {
+        projectTag = selProj.code.replace(/[^a-zA-Z0-9]/g, '');
+      }
+    }
+
+    return projectTag ? `RA-${paddedSeq}-${projectTag}` : `RA-${paddedSeq}`;
+  };
+
+  const openGenerateInvoiceModal = async () => {
+    const targetId = projectId || selectedProjectId || (projects[0]?.id || '');
+    const selP = projects.find((p) => p.id === targetId);
+    const matchedC = clients.find(
+      (c) => c.name === selP?.clientName || c.companyName === selP?.clientName
+    );
+    const initialBillNumber = computeNextInvoiceNumber(targetId, invoices, projects);
+
+    setInvForm({
+      ...invForm,
+      projectId: targetId,
+      clientId: matchedC?.id || '',
+      invoiceNumber: initialBillNumber,
+      subtotal: selP ? String(selP.contractValue) : invForm.subtotal,
+      retentionPercent: '5.0',
+      tdsPercent: '2.0',
+      gstPercent: '18.0',
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    });
+    setShowInvoiceModal(true);
+
+    // Also fetch from backend in background to guarantee database sync
+    try {
+      const res = await api.getNextInvoiceNumber(targetId);
+      if (res.success && res.nextInvoiceNumber) {
+        setInvForm((prev) => ({
+          ...prev,
+          invoiceNumber: res.nextInvoiceNumber,
+        }));
+      }
+    } catch (err) {
+      // keep initialBillNumber
+    }
+  };
+
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -165,12 +256,32 @@ export const Billing: React.FC = () => {
   const handleRecordReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const targetProjId = receiptForm.projectId || projectId || selectedProjectId || '';
-      const res = await api.recordClientReceipt({ ...receiptForm, projectId: targetProjId });
+      const selInv = invoices.find((inv) => inv.id === receiptForm.invoiceId);
+      const targetProjId =
+        receiptForm.projectId ||
+        selInv?.projectId ||
+        projectId ||
+        selectedProjectId ||
+        (projects[0]?.id || '');
+
+      const targetClientId =
+        receiptForm.clientId ||
+        selInv?.clientId ||
+        '';
+
+      const res = await api.recordClientReceipt({
+        ...receiptForm,
+        projectId: targetProjId,
+        clientId: targetClientId,
+      });
       if (res.success) {
         setShowReceiptModal(false);
         fetchData();
         refreshProjects();
+        // Immediately open the Share Receipt modal so user can share with client after the transaction
+        if (res.receipt) {
+          setSharingReceipt(res.receipt);
+        }
       }
     } catch (err: any) {
       alert(err.message || 'Failed to record receipt');
@@ -180,10 +291,26 @@ export const Billing: React.FC = () => {
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await api.createClient(clientForm);
+      const sanitized = {
+        ...clientForm,
+        phone: clientForm.phone ? clientForm.phone.replace(/\s+/g, '').trim() : '',
+      };
+      const res = await api.createClient(sanitized);
       if (res.success) {
         setShowClientModal(false);
+        setClientForm({
+          code: '',
+          name: '',
+          companyName: '',
+          contactPerson: '',
+          phone: '',
+          email: '',
+          billingAddress: '',
+          gstin: '',
+          pan: '',
+        });
         fetchData();
+        refreshProjects();
       }
     } catch (err: any) {
       alert(err.message || 'Failed to create client');
@@ -281,7 +408,7 @@ export const Billing: React.FC = () => {
       name: c.name,
       companyName: c.companyName || '',
       contactPerson: c.contactPerson || '',
-      phone: c.phone || '',
+      phone: c.phone ? c.phone.replace(/\s+/g, '') : '',
       email: c.email || '',
       billingAddress: c.billingAddress || '',
       gstin: c.gstin || '',
@@ -293,10 +420,15 @@ export const Billing: React.FC = () => {
     e.preventDefault();
     if (!editingClient) return;
     try {
-      const res = await api.updateClient(editingClient.id, editClientForm);
+      const sanitized = {
+        ...editClientForm,
+        phone: editClientForm.phone ? editClientForm.phone.replace(/\s+/g, '').trim() : '',
+      };
+      const res = await api.updateClient(editingClient.id, sanitized);
       if (res.success) {
         setEditingClient(null);
         fetchData();
+        refreshProjects();
       }
     } catch (err: any) {
       alert(err.message || 'Failed to update client');
@@ -310,6 +442,7 @@ export const Billing: React.FC = () => {
       if (res.success) {
         setDeletingClient(null);
         fetchData();
+        refreshProjects();
       }
     } catch (err: any) {
       alert(err.message || 'Failed to delete client');
@@ -333,31 +466,30 @@ export const Billing: React.FC = () => {
           {hasRole('OWNER', 'ACCOUNTS_MANAGER') && (
             <>
               <button
-                onClick={() => {
-                  const targetId = projectId || selectedProjectId || (projects[0]?.id || '');
-                  const selP = projects.find((p) => p.id === targetId);
-                  const matchedC = clients.find(
-                    (c) => c.name === selP?.clientName || c.companyName === selP?.clientName
-                  );
-                  setInvForm({
-                    ...invForm,
-                    projectId: targetId,
-                    clientId: matchedC?.id || '',
-                    subtotal: selP ? String(selP.contractValue) : invForm.subtotal,
-                    retentionPercent: '0',
-                    tdsPercent: '0',
-                    gstPercent: '0',
-                    dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                  });
-                  setShowInvoiceModal(true);
-                }}
+                onClick={openGenerateInvoiceModal}
                 className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
               >
                 <Plus className="w-4 h-4" />
                 <span>Generate RA Bill</span>
               </button>
               <button
-                onClick={() => setShowReceiptModal(true)}
+                onClick={() => {
+                  const targetProjId = projectId || selectedProjectId || (projects[0]?.id || '');
+                  const defaultInv = invoices.find(
+                    (i) => i.balanceDue > 0 && (!targetProjId || i.projectId === targetProjId)
+                  );
+                  setReceiptForm({
+                    clientId: defaultInv?.clientId || '',
+                    projectId: defaultInv?.projectId || targetProjId,
+                    invoiceId: defaultInv ? defaultInv.id : '',
+                    receiptDate: new Date().toISOString().split('T')[0],
+                    amount: defaultInv ? String(defaultInv.balanceDue) : '',
+                    paymentMethod: 'NEFT_RTGS',
+                    referenceNo: '',
+                    notes: '',
+                  });
+                  setShowReceiptModal(true);
+                }}
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
               >
                 Record Client Payment
@@ -569,6 +701,13 @@ export const Billing: React.FC = () => {
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center space-x-1">
                         <button
+                          onClick={() => setSharingReceipt(rcp)}
+                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                          title="Share Receipt with Client (WhatsApp / PDF)"
+                        >
+                          <Share2 className="w-4 h-4 text-emerald-600" />
+                        </button>
+                        <button
                           onClick={() => setViewingReceipt(rcp)}
                           className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
                           title="View Receipt Details"
@@ -670,18 +809,32 @@ export const Billing: React.FC = () => {
                 <select
                   required
                   value={invForm.projectId || projectId || selectedProjectId || ''}
-                  onChange={(e) => {
-                    const selProj = projects.find((p) => p.id === e.target.value);
+                  onChange={async (e) => {
+                    const newProjId = e.target.value;
+                    const selProj = projects.find((p) => p.id === newProjId);
                     const matchingClient = clients.find(
                       (c) => c.name === selProj?.clientName || c.companyName === selProj?.clientName
                     );
+                    const updatedBillNumber = computeNextInvoiceNumber(newProjId, invoices, projects);
                     setInvForm({
                       ...invForm,
-                      projectId: e.target.value,
+                      projectId: newProjId,
                       clientId: matchingClient?.id || invForm.clientId,
+                      invoiceNumber: updatedBillNumber,
                       subtotal: selProj ? String(selProj.contractValue) : invForm.subtotal,
                       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                     });
+
+                    // Background verify with backend
+                    try {
+                      const res = await api.getNextInvoiceNumber(newProjId);
+                      if (res.success && res.nextInvoiceNumber) {
+                        setInvForm((prev) => ({
+                          ...prev,
+                          invoiceNumber: res.nextInvoiceNumber,
+                        }));
+                      }
+                    } catch (err) {}
                   }}
                   className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
                 >
@@ -696,15 +849,32 @@ export const Billing: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">RA Bill # *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">RA Bill # *</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetProj = invForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
+                        const nextNum = computeNextInvoiceNumber(targetProj, invoices, projects);
+                        setInvForm({ ...invForm, invoiceNumber: nextNum });
+                      }}
+                      className="text-[10px] text-amber-600 hover:text-amber-700 font-bold flex items-center space-x-1"
+                      title="Reset to next sequential bill number"
+                    >
+                      <span>⚡ Auto-Number</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. RA-04-SKYLINE"
+                    placeholder="e.g. RA-01-SKYLINE"
                     value={invForm.invoiceNumber}
                     onChange={(e) => setInvForm({ ...invForm, invoiceNumber: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Auto-generated next sequential number with project name.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Client *</label>
@@ -837,6 +1007,7 @@ export const Billing: React.FC = () => {
                     setReceiptForm({
                       ...receiptForm,
                       invoiceId: e.target.value,
+                      projectId: selInv?.projectId || receiptForm.projectId,
                       clientId: selInv?.clientId || receiptForm.clientId,
                       amount: selInv ? String(selInv.balanceDue) : receiptForm.amount,
                     });
@@ -851,6 +1022,22 @@ export const Billing: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {receiptForm.invoiceId && (() => {
+                const selInv = invoices.find((inv) => inv.id === receiptForm.invoiceId);
+                return selInv ? (
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Project:</span>
+                      <strong className="text-slate-900">{selInv.project?.name}</strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Client:</span>
+                      <strong className="text-slate-800">{selInv.client?.name || 'Prestige Urban'}</strong>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -952,11 +1139,12 @@ export const Billing: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="+91 80 2559 1080"
+                    placeholder="+918056694739 or 9876543210"
                     value={clientForm.phone}
-                    onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value.replace(/\s+/g, '') })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">No spaces needed between numbers</span>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">GSTIN</label>
@@ -1450,6 +1638,17 @@ export const Billing: React.FC = () => {
             <div className="pt-2 border-t border-slate-100 flex justify-end space-x-2">
               <button
                 onClick={() => {
+                  const toShare = viewingReceipt;
+                  setViewingReceipt(null);
+                  setSharingReceipt(toShare);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center space-x-1 shadow-sm"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share Receipt</span>
+              </button>
+              <button
+                onClick={() => {
                   const toEdit = viewingReceipt;
                   setViewingReceipt(null);
                   openEditReceipt(toEdit);
@@ -1460,7 +1659,7 @@ export const Billing: React.FC = () => {
               </button>
               <button
                 onClick={() => setViewingReceipt(null)}
-                className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                className="px-4 py-1.5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-lg shadow-sm"
               >
                 Close
               </button>
@@ -1725,10 +1924,12 @@ export const Billing: React.FC = () => {
                   <input
                     type="text"
                     required
+                    placeholder="+918056694739 or 9876543210"
                     value={editClientForm.phone}
-                    onChange={(e) => setEditClientForm({ ...editClientForm, phone: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    onChange={(e) => setEditClientForm({ ...editClientForm, phone: e.target.value.replace(/\s+/g, '') })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-medium"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">No spaces needed between numbers</span>
                 </div>
               </div>
 
@@ -1823,6 +2024,13 @@ export const Billing: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Share Client Receipt Modal */}
+      <ReceiptShareModal
+        isOpen={!!sharingReceipt}
+        receipt={sharingReceipt}
+        onClose={() => setSharingReceipt(null)}
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { logAudit } from '../middleware/auth';
+import { moveToRecycleBin } from './recycleBinController';
 
 export const getBOQByProject = async (req: Request, res: Response) => {
   try {
@@ -62,6 +63,12 @@ export const createBOQItem = async (req: Request, res: Response) => {
       equipmentUnitCost,
       subcontractUnitCost,
       otherUnitCost,
+      materialSwatchUrl,
+      designRenderUrl,
+      clientApprovalStatus,
+      clientSignOffDoc,
+      clientSignOffDate,
+      scopeVariationNotes,
     } = req.body;
 
     const mat = Number(materialUnitCost) || 0;
@@ -79,8 +86,8 @@ export const createBOQItem = async (req: Request, res: Response) => {
         projectId,
         itemCode,
         description,
-        category: category || 'CIVIL_WORK',
-        unit: unit || 'NOS',
+        category: category || 'FALSE_CEILING',
+        unit: unit || 'SQFT',
         estimatedQty: qty,
         materialUnitCost: mat,
         labourUnitCost: lab,
@@ -89,6 +96,12 @@ export const createBOQItem = async (req: Request, res: Response) => {
         otherUnitCost: oth,
         unitRate,
         estimatedTotal,
+        materialSwatchUrl: materialSwatchUrl || null,
+        designRenderUrl: designRenderUrl || null,
+        clientApprovalStatus: clientApprovalStatus || 'APPROVED',
+        clientSignOffDoc: clientSignOffDoc || null,
+        clientSignOffDate: clientSignOffDate ? new Date(clientSignOffDate) : null,
+        scopeVariationNotes: scopeVariationNotes || null,
       },
     });
 
@@ -103,6 +116,126 @@ export const createBOQItem = async (req: Request, res: Response) => {
     await logAudit(req.user?.id, 'CREATE_BOQ_ITEM', 'BOQ', item.id, { itemCode, estimatedTotal }, req.ip);
 
     return res.status(201).json({ success: true, item });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateBOQItem = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const {
+      itemCode,
+      description,
+      category,
+      unit,
+      estimatedQty,
+      materialUnitCost,
+      labourUnitCost,
+      equipmentUnitCost,
+      subcontractUnitCost,
+      otherUnitCost,
+      actualQtyCompleted,
+      actualExpenditure,
+      materialSwatchUrl,
+      designRenderUrl,
+      clientApprovalStatus,
+      clientSignOffDoc,
+      clientSignOffDate,
+      scopeVariationNotes,
+    } = req.body;
+
+    const existing = await prisma.bOQItem.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'BOQ item not found' });
+    }
+
+    const mat = materialUnitCost !== undefined ? Number(materialUnitCost) : existing.materialUnitCost;
+    const lab = labourUnitCost !== undefined ? Number(labourUnitCost) : existing.labourUnitCost;
+    const eqp = equipmentUnitCost !== undefined ? Number(equipmentUnitCost) : existing.equipmentUnitCost;
+    const sub = subcontractUnitCost !== undefined ? Number(subcontractUnitCost) : existing.subcontractUnitCost;
+    const oth = otherUnitCost !== undefined ? Number(otherUnitCost) : existing.otherUnitCost;
+    const qty = estimatedQty !== undefined ? Number(estimatedQty) : existing.estimatedQty;
+
+    const unitRate = mat + lab + eqp + sub + oth;
+    const estimatedTotal = unitRate * qty;
+    const budgetDelta = estimatedTotal - existing.estimatedTotal;
+
+    const updated = await prisma.bOQItem.update({
+      where: { id },
+      data: {
+        itemCode: itemCode !== undefined ? itemCode : existing.itemCode,
+        description: description !== undefined ? description : existing.description,
+        category: category !== undefined ? category : existing.category,
+        unit: unit !== undefined ? unit : existing.unit,
+        estimatedQty: qty,
+        materialUnitCost: mat,
+        labourUnitCost: lab,
+        equipmentUnitCost: eqp,
+        subcontractUnitCost: sub,
+        otherUnitCost: oth,
+        unitRate,
+        estimatedTotal,
+        actualQtyCompleted: actualQtyCompleted !== undefined ? Number(actualQtyCompleted) : existing.actualQtyCompleted,
+        actualExpenditure: actualExpenditure !== undefined ? Number(actualExpenditure) : existing.actualExpenditure,
+        materialSwatchUrl: materialSwatchUrl !== undefined ? materialSwatchUrl : existing.materialSwatchUrl,
+        designRenderUrl: designRenderUrl !== undefined ? designRenderUrl : existing.designRenderUrl,
+        clientApprovalStatus: clientApprovalStatus !== undefined ? clientApprovalStatus : existing.clientApprovalStatus,
+        clientSignOffDoc: clientSignOffDoc !== undefined ? clientSignOffDoc : existing.clientSignOffDoc,
+        clientSignOffDate: clientSignOffDate !== undefined ? (clientSignOffDate ? new Date(clientSignOffDate) : null) : existing.clientSignOffDate,
+        scopeVariationNotes: scopeVariationNotes !== undefined ? scopeVariationNotes : existing.scopeVariationNotes,
+      },
+    });
+
+    if (budgetDelta !== 0) {
+      await prisma.project.update({
+        where: { id: existing.projectId },
+        data: {
+          approvedBudget: { increment: budgetDelta },
+        },
+      });
+    }
+
+    await logAudit(req.user?.id, 'UPDATE_BOQ_ITEM', 'BOQ', id, { itemCode: updated.itemCode, budgetDelta }, req.ip);
+
+    return res.json({ success: true, item: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteBOQItem = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.bOQItem.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'BOQ item not found' });
+    }
+
+    // Archive to Recycle Bin before deleting
+    await moveToRecycleBin({
+      entityType: 'BOQItem',
+      entityId: existing.id,
+      itemNumber: existing.itemCode,
+      title: `${existing.itemCode} - ${existing.description.substring(0, 40)}`,
+      description: existing.description,
+      data: existing,
+      user: req.user,
+    });
+
+    await prisma.bOQItem.delete({ where: { id } });
+
+    // Decrement project approved budget
+    await prisma.project.update({
+      where: { id: existing.projectId },
+      data: {
+        approvedBudget: { decrement: existing.estimatedTotal },
+      },
+    });
+
+    await logAudit(req.user?.id, 'DELETE_BOQ_ITEM', 'BOQ', id, { itemCode: existing.itemCode }, req.ip);
+
+    return res.json({ success: true, message: 'BOQ item deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

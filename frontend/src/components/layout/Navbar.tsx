@@ -9,19 +9,21 @@ import {
   ChevronDown,
   UserCheck,
   Menu,
+  Sparkles,
 } from 'lucide-react';
 
 interface NavbarProps {
   onToggleSidebar: () => void;
+  onOpenAI?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAI }) => {
   const { user, switchRole, logout } = useAuth();
   const { projects, selectedProjectId, setSelectedProjectId } = useProject();
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
 
   const rolesList: { role: UserRole; title: string; color: string }[] = [
-    { role: 'OWNER', title: '1. Company Owner / Super Admin', color: 'bg-purple-100 text-purple-800 border-purple-300' },
+    { role: 'OWNER', title: '1. Managing Director & Owner', color: 'bg-purple-100 text-purple-800 border-purple-300' },
     { role: 'PROJECT_MANAGER', title: '2. Project Manager (GM/PM)', color: 'bg-blue-100 text-blue-800 border-blue-300' },
     { role: 'SITE_ENGINEER', title: '3. Site Engineer / Supervisor', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
     { role: 'ACCOUNTS_MANAGER', title: '4. Accounts Manager / CA', color: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -31,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
     { role: 'AUDITOR', title: '8. Read-only Internal Auditor', color: 'bg-slate-100 text-slate-800 border-slate-300' },
   ];
 
-  const currentRoleInfo = rolesList.find((r) => r.role === user?.role) || rolesList[0];
+  const currentRoleInfo = rolesList.find((r) => r.role === user?.role || (user?.role === 'TENANT_ADMIN' && r.role === 'OWNER')) || rolesList[0];
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 px-4 py-2.5 flex items-center justify-between shadow-md">
@@ -81,8 +83,20 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
       </div>
 
       {/* Right: Demo Role Switcher & User Profile */}
-      <div className="flex items-center space-x-3">
-        {/* One-Click Role Switcher Dropdown */}
+      <div className="flex items-center space-x-2.5">
+        {/* AI Assistant Button */}
+        {onOpenAI && (
+          <button
+            onClick={onOpenAI}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 hover:opacity-95 transition"
+            title="Open AI Chatbot & Automation Engine"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+            <span className="hidden sm:inline">AI Bot</span>
+          </button>
+        )}
+
+        {/* Role Switcher Dropdown */}
         <div className="relative">
           <button
             onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
@@ -90,7 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
             title="Click to switch between any of the 8 enterprise roles"
           >
             <UserCheck className="w-3.5 h-3.5" />
-            <span className="font-semibold hidden sm:inline">{user?.role}</span>
+            <span className="font-semibold hidden sm:inline">{currentRoleInfo.title.replace(/^\d+\.\s*/, '')}</span>
             <ChevronDown className="w-3.5 h-3.5 opacity-70" />
           </button>
 
@@ -109,11 +123,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
                       setRoleDropdownOpen(false);
                     }}
                     className={`w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between hover:bg-slate-50 transition ${
-                      user?.role === r.role ? 'bg-amber-50 text-amber-900 font-bold' : 'text-slate-700'
+                      user?.role === r.role || (user?.role === 'TENANT_ADMIN' && r.role === 'OWNER')
+                        ? 'bg-amber-50 text-amber-900 font-bold'
+                        : 'text-slate-700'
                     }`}
                   >
                     <span>{r.title}</span>
-                    {user?.role === r.role && <span className="w-2 h-2 rounded-full bg-amber-500"></span>}
+                    {(user?.role === r.role || (user?.role === 'TENANT_ADMIN' && r.role === 'OWNER')) && (
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -124,11 +142,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         {/* User Badge */}
         <div className="hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800">
           <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-amber-400">
-            {user?.name.charAt(0) || 'U'}
+            {user?.name?.charAt(0) || 'U'}
           </div>
           <div className="text-left">
-            <p className="text-xs font-semibold leading-tight text-slate-200">{user?.name || 'Administrator'}</p>
-            <p className="text-[10px] text-slate-400 leading-tight">{user?.designation || user?.role}</p>
+            <p className="text-xs font-semibold leading-tight text-slate-200">{user?.name || 'User'}</p>
+            <p className="text-[10px] text-slate-400 leading-tight">
+              {user?.designation || currentRoleInfo.title.replace(/^\d+\.\s*/, '')}
+            </p>
           </div>
         </div>
 

@@ -72,6 +72,75 @@ export const createSupplier = async (req: Request, res: Response) => {
   }
 };
 
+export const updateSupplier = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { code, name, contactPerson, phone, email, address, city, gstin, pan, paymentTerms, bankName, bankAccountNo, bankIfsc, openingBalance } = req.body;
+
+    const existing = await prisma.supplier.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Supplier not found' });
+    }
+
+    const updated = await prisma.supplier.update({
+      where: { id },
+      data: {
+        code: code !== undefined ? String(code).trim() : existing.code,
+        name: name !== undefined ? String(name).trim() : existing.name,
+        contactPerson: contactPerson !== undefined ? (contactPerson ? String(contactPerson).trim() : null) : existing.contactPerson,
+        phone: phone !== undefined ? String(phone).trim() : existing.phone,
+        email: email !== undefined ? (email ? String(email).trim() : null) : existing.email,
+        address: address !== undefined ? String(address).trim() : existing.address,
+        city: city !== undefined ? String(city).trim() : existing.city,
+        gstin: gstin !== undefined ? (gstin ? String(gstin).trim() : null) : existing.gstin,
+        pan: pan !== undefined ? (pan ? String(pan).trim() : null) : existing.pan,
+        paymentTerms: paymentTerms !== undefined ? paymentTerms : existing.paymentTerms,
+        bankName: bankName !== undefined ? (bankName ? String(bankName).trim() : null) : existing.bankName,
+        bankAccountNo: bankAccountNo !== undefined ? (bankAccountNo ? String(bankAccountNo).trim() : null) : existing.bankAccountNo,
+        bankIfsc: bankIfsc !== undefined ? (bankIfsc ? String(bankIfsc).trim() : null) : existing.bankIfsc,
+        openingBalance: openingBalance !== undefined ? Number(openingBalance) : existing.openingBalance,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_SUPPLIER', 'SUPPLIER', id, { name: updated.name }, req.ip);
+
+    return res.json({ success: true, supplier: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteSupplier = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.supplier.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { purchaseOrders: true, invoices: true, payments: true } },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Supplier not found' });
+    }
+
+    if (existing._count.purchaseOrders > 0 || existing._count.invoices > 0 || existing._count.payments > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete supplier with active records (${existing._count.purchaseOrders} POs, ${existing._count.invoices} invoices, ${existing._count.payments} payments).`,
+      });
+    }
+
+    await prisma.supplier.delete({ where: { id } });
+    await logAudit(req.user?.id, 'DELETE_SUPPLIER', 'SUPPLIER', id, { name: existing.name }, req.ip);
+
+    return res.json({ success: true, message: `Supplier ${existing.name} deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
 export const getPurchaseOrders = async (req: Request, res: Response) => {
   try {
     const { projectId, status } = req.query;
@@ -678,3 +747,205 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateGoodsReceiptNote = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { deliveryNoteNo, vehicleNo, remarks } = req.body;
+
+    const existing = await prisma.goodsReceiptNote.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Goods Receipt Note not found' });
+    }
+
+    const updated = await prisma.goodsReceiptNote.update({
+      where: { id },
+      data: {
+        deliveryNoteNo: deliveryNoteNo !== undefined ? deliveryNoteNo : existing.deliveryNoteNo,
+        vehicleNo: vehicleNo !== undefined ? vehicleNo : existing.vehicleNo,
+        remarks: remarks !== undefined ? remarks : existing.remarks,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_GRN', 'GOODS_RECEIPT_NOTE', id, { grnNumber: updated.grnNumber }, req.ip);
+    return res.json({ success: true, grn: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteGoodsReceiptNote = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    const grn = await prisma.goodsReceiptNote.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!grn) {
+      return res.status(404).json({ success: false, message: 'Goods Receipt Note not found' });
+    }
+
+    // Rollback stock quantities from warehouse stock balances
+    await prisma.$transaction(async (tx) => {
+      for (const item of grn.items) {
+        if (item.acceptedQty > 0) {
+          const balance = await tx.stockBalance.findUnique({
+            where: {
+              warehouseId_materialId: {
+                warehouseId: grn.warehouseId,
+                materialId: item.materialId,
+              },
+            },
+          });
+
+          if (balance) {
+            const newQty = Math.max(0, balance.currentQty - item.acceptedQty);
+            await tx.stockBalance.update({
+              where: { id: balance.id },
+              data: {
+                currentQty: newQty,
+                totalValuation: newQty * balance.avgUnitCost,
+              },
+            });
+          }
+        }
+      }
+
+      // Delete stock ledger entries referencing this GRN
+      await tx.stockLedger.deleteMany({
+        where: { referenceNo: grn.grnNumber },
+      });
+
+      // Delete GRN items & GRN
+      await tx.gRNItem.deleteMany({ where: { grnId: id } });
+      await tx.goodsReceiptNote.delete({ where: { id } });
+    });
+
+    await logAudit(req.user?.id, 'DELETE_GRN', 'GOODS_RECEIPT_NOTE', id, { grnNumber: grn.grnNumber }, req.ip);
+    return res.json({ success: true, message: `GRN ${grn.grnNumber} deleted and stock balances reconciled successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateSupplierInvoice = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { invoiceDate, dueDate, status } = req.body;
+
+    const existing = await prisma.supplierInvoice.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Supplier invoice not found' });
+    }
+
+    const updated = await prisma.supplierInvoice.update({
+      where: { id },
+      data: {
+        invoiceDate: invoiceDate ? new Date(invoiceDate) : existing.invoiceDate,
+        dueDate: dueDate ? new Date(dueDate) : existing.dueDate,
+        status: status || existing.status,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_SUPPLIER_INVOICE', 'SUPPLIER_INVOICE', id, { invoiceNumber: updated.invoiceNumber }, req.ip);
+    return res.json({ success: true, invoice: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteSupplierInvoice = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await prisma.supplierInvoice.findUnique({
+      where: { id },
+      include: { payments: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Supplier invoice not found' });
+    }
+
+    if (existing.paidAmount > 0 || (existing.payments && existing.payments.length > 0)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete invoice ${existing.invoiceNumber} with payments recorded against it. Remove payments first.`,
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Revert supplier balance
+      await tx.supplier.update({
+        where: { id: existing.supplierId },
+        data: { currentBalance: { decrement: existing.totalAmount } },
+      });
+
+      // Remove journal entries
+      await tx.journalEntry.deleteMany({
+        where: { referenceType: 'SUPPLIER_INVOICE', referenceId: id },
+      });
+
+      await tx.supplierInvoice.delete({ where: { id } });
+    });
+
+    await logAudit(req.user?.id, 'DELETE_SUPPLIER_INVOICE', 'SUPPLIER_INVOICE', id, { invoiceNumber: existing.invoiceNumber }, req.ip);
+    return res.json({ success: true, message: `Supplier Invoice ${existing.invoiceNumber} deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteSupplierPayment = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const pmt = await prisma.supplierPayment.findUnique({
+      where: { id },
+    });
+
+    if (!pmt) {
+      return res.status(404).json({ success: false, message: 'Supplier payment not found' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Restore invoice balance if linked
+      if (pmt.invoiceId) {
+        const inv = await tx.supplierInvoice.findUnique({ where: { id: pmt.invoiceId } });
+        if (inv) {
+          const newPaid = Math.max(0, inv.paidAmount - pmt.amount);
+          const newBal = Math.max(0, inv.totalAmount - newPaid);
+          const newStatus = newPaid === 0 ? 'UNPAID' : 'PARTIALLY_PAID';
+
+          await tx.supplierInvoice.update({
+            where: { id: pmt.invoiceId },
+            data: {
+              paidAmount: newPaid,
+              balanceDue: newBal,
+              status: newStatus,
+            },
+          });
+        }
+      }
+
+      // Re-add payment amount to supplier's current balance
+      await tx.supplier.update({
+        where: { id: pmt.supplierId },
+        data: { currentBalance: { increment: pmt.amount } },
+      });
+
+      // Remove journal entry
+      await tx.journalEntry.deleteMany({
+        where: { referenceType: 'SUPPLIER_PAYMENT', referenceId: id },
+      });
+
+      await tx.supplierPayment.delete({ where: { id } });
+    });
+
+    await logAudit(req.user?.id, 'DELETE_SUPPLIER_PAYMENT', 'SUPPLIER_PAYMENT', id, { paymentNumber: pmt.paymentNumber }, req.ip);
+    return res.json({ success: true, message: `Supplier payment ${pmt.paymentNumber} deleted and balance restored.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+

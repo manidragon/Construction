@@ -26,6 +26,9 @@ export const createClient = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Client name is required.' });
     }
 
+    // Automatically remove spaces from contact number
+    const cleanedPhone = phone ? String(phone).replace(/\s+/g, '').trim() : '-';
+
     let finalCode = code ? String(code).trim() : '';
     if (!finalCode) {
       const allClients = await prisma.client.findMany({ select: { code: true } });
@@ -45,7 +48,7 @@ export const createClient = async (req: Request, res: Response) => {
         name: String(name).trim(),
         companyName: companyName ? String(companyName).trim() : null,
         contactPerson: contactPerson ? String(contactPerson).trim() : null,
-        phone: phone ? String(phone).trim() : '-',
+        phone: cleanedPhone,
         email: email ? String(email).trim() : null,
         billingAddress: billingAddress ? String(billingAddress).trim() : 'Registered Office Address',
         gstin: gstin ? String(gstin).trim() : null,
@@ -98,6 +101,75 @@ export const getClientInvoices = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Automatically calculate the next sequential RA Bill number with project tag.
+ * e.g. RA-01-SKYLINE, RA-02-Greenfield, RA-03-SKYLINE, etc.
+ */
+export const generateNextInvoiceNumber = async (projectId?: string) => {
+  const allInvoices = await prisma.clientInvoice.findMany({
+    select: { invoiceNumber: true, projectId: true },
+  });
+
+  let maxNum = 0;
+  for (const inv of allInvoices) {
+    if (!inv.invoiceNumber) continue;
+    // Extract integer sequence e.g. from RA-01-..., RA-06-..., or any sequential digits
+    const match = inv.invoiceNumber.match(/^RA-(\d+)/i) || inv.invoiceNumber.match(/RA[^\d]*(\d+)/i) || inv.invoiceNumber.match(/(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  }
+
+  const nextSeq = maxNum + 1;
+  const paddedSeq = String(nextSeq).padStart(2, '0');
+
+  let projectTag = '';
+  if (projectId) {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, code: true, name: true },
+    });
+
+    if (project) {
+      // Derive project tag directly from the selected project's name
+      if (project.name) {
+        const words = project.name.trim().split(/\s+/);
+        let candidate = words[0];
+        if (['THE', 'A', 'AN'].includes(candidate.toUpperCase()) && words.length > 1) {
+          candidate = words[1];
+        }
+        const clean = candidate.replace(/[^a-zA-Z0-9]/g, '');
+        if (clean.toUpperCase() === 'SKYLINE') {
+          projectTag = 'SKYLINE';
+        } else {
+          projectTag = clean;
+        }
+      }
+
+      // Fallback to project code if name is empty
+      if (!projectTag && project.code) {
+        projectTag = project.code.replace(/[^a-zA-Z0-9]/g, '');
+      }
+    }
+  }
+
+  const nextInvoiceNumber = projectTag ? `RA-${paddedSeq}-${projectTag}` : `RA-${paddedSeq}`;
+  return { nextInvoiceNumber, nextSeq, projectTag };
+};
+
+export const getNextInvoiceNumber = async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.query;
+    const result = await generateNextInvoiceNumber(projectId as string | undefined);
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const createClientInvoice = async (req: Request, res: Response) => {
   try {
     const {
@@ -115,10 +187,45 @@ export const createClientInvoice = async (req: Request, res: Response) => {
       gstPercent,
       certificationNotes,
       items,
+      quotationId,
+      milestoneName,
+      isFinalHandover,
     } = req.body;
 
-    if (!invoiceNumber || !projectId || !invoiceDate || !dueDate || subtotal === undefined) {
-      return res.status(400).json({ success: false, message: 'Invoice number, project, dates, and subtotal are required.' });
+    if (!projectId || !invoiceDate || !dueDate || subtotal === undefined) {
+      return res.status(400).json({ success: false, message: 'Project, dates, and subtotal are required.' });
+    }
+
+    // MODULE 4: Block final invoice generation if any payment dues remain outstanding!
+    const isFinal = invoiceType === 'FINAL' || Boolean(isFinalHandover);
+    if (isFinal) {
+      const priorInvoices = await prisma.clientInvoice.findMany({
+        where: { projectId, status: { not: 'CANCELLED' } },
+      });
+      const outstandingPriorDues = priorInvoices.reduce((sum, inv) => sum + inv.balanceDue, 0);
+      if (outstandingPriorDues > 0) {
+        return res.status(400).json({
+          success: false,
+          handoverBlocked: true,
+          message: `Cannot generate Final Handover Invoice: Client has an outstanding balance of ₹${outstandingPriorDues.toLocaleString('en-IN')} across prior milestone bills. All previous dues must be cleared in full before generating the final invoice.`,
+        });
+      }
+    }
+
+    // Auto-generate invoice number if missing, or ensure uniqueness
+    let finalInvoiceNumber = invoiceNumber ? String(invoiceNumber).trim() : '';
+    if (!finalInvoiceNumber) {
+      const generated = await generateNextInvoiceNumber(projectId);
+      finalInvoiceNumber = generated.nextInvoiceNumber;
+    } else {
+      // Check for collision and auto-increment if duplicate
+      const existing = await prisma.clientInvoice.findUnique({
+        where: { invoiceNumber: finalInvoiceNumber },
+      });
+      if (existing) {
+        const generated = await generateNextInvoiceNumber(projectId);
+        finalInvoiceNumber = generated.nextInvoiceNumber;
+      }
     }
 
     const sub = Number(subtotal);
@@ -175,9 +282,12 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.clientInvoice.create({
         data: {
-          invoiceNumber,
+          invoiceNumber: finalInvoiceNumber,
           clientId: finalClientId || null,
           projectId,
+          quotationId: quotationId || null,
+          milestoneName: milestoneName || null,
+          isFinalHandover: Boolean(isFinalHandover),
           invoiceType: invoiceType || 'RUNNING_ACCOUNT_RA',
           invoiceDate: new Date(invoiceDate),
           dueDate: new Date(dueDate),
@@ -259,8 +369,8 @@ export const getClientReceipts = async (req: Request, res: Response) => {
       where,
       include: {
         client: true,
-        project: { select: { code: true, name: true } },
-        invoice: { select: { invoiceNumber: true, netInvoiceAmount: true } },
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true } },
+        invoice: { select: { id: true, invoiceNumber: true, netInvoiceAmount: true, paidAmount: true, balanceDue: true, subtotal: true } },
       },
       orderBy: { receiptDate: 'desc' },
     });
@@ -276,8 +386,47 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
     const { clientId, projectId, invoiceId, receiptDate, amount, paymentMethod, referenceNo, notes } = req.body;
 
     const rcpAmount = Number(amount);
-    if (!projectId || rcpAmount <= 0 || !paymentMethod) {
+
+    // Auto-resolve projectId and clientId from invoiceId if not provided
+    let finalProjectId = projectId ? String(projectId).trim() : '';
+    let finalClientId = clientId ? String(clientId).trim() : '';
+
+    if (invoiceId) {
+      const inv = await prisma.clientInvoice.findUnique({
+        where: { id: invoiceId },
+        select: { id: true, projectId: true, clientId: true },
+      });
+      if (inv) {
+        if (!finalProjectId && inv.projectId) {
+          finalProjectId = inv.projectId;
+        }
+        if (!finalClientId && inv.clientId) {
+          finalClientId = inv.clientId;
+        }
+      }
+    }
+
+    // Fallback: If still no project, check if default project exists in DB
+    if (!finalProjectId && !invoiceId) {
+      const firstProj = await prisma.project.findFirst({ select: { id: true } });
+      if (firstProj) finalProjectId = firstProj.id;
+    }
+
+    if (!finalProjectId || rcpAmount <= 0 || !paymentMethod) {
       return res.status(400).json({ success: false, message: 'Project, positive amount, and payment method are required.' });
+    }
+
+    // Auto-resolve client from project if still not set
+    if (!finalClientId && finalProjectId) {
+      const proj = await prisma.project.findUnique({ where: { id: finalProjectId } });
+      if (proj?.clientName) {
+        const matched = await prisma.client.findFirst({
+          where: {
+            OR: [{ name: proj.clientName }, { companyName: proj.clientName }],
+          },
+        });
+        if (matched) finalClientId = matched.id;
+      }
     }
 
     const count = await prisma.clientReceipt.count();
@@ -287,8 +436,8 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
       const rcp = await tx.clientReceipt.create({
         data: {
           receiptNumber,
-          clientId: clientId || null,
-          projectId,
+          clientId: finalClientId || null,
+          projectId: finalProjectId,
           invoiceId: invoiceId || null,
           receiptDate: receiptDate ? new Date(receiptDate) : new Date(),
           amount: rcpAmount,
@@ -342,7 +491,17 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
 
     await logAudit(req.user?.id, 'CLIENT_RECEIPT', 'CLIENT_RECEIPT', receipt.id, { receiptNumber, amount: rcpAmount }, req.ip);
 
-    return res.status(201).json({ success: true, receipt });
+    // Fetch full receipt details with relations for instant client sharing
+    const fullReceipt = await prisma.clientReceipt.findUnique({
+      where: { id: receipt.id },
+      include: {
+        client: true,
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true } },
+        invoice: { select: { id: true, invoiceNumber: true, netInvoiceAmount: true, paidAmount: true, balanceDue: true, subtotal: true } },
+      },
+    });
+
+    return res.status(201).json({ success: true, receipt: fullReceipt || receipt });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -358,6 +517,11 @@ export const updateClient = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Client not found.' });
     }
 
+    // Automatically remove spaces from contact number
+    const cleanedPhone = phone !== undefined 
+      ? String(phone).replace(/\s+/g, '').trim() 
+      : existing.phone.replace(/\s+/g, '');
+
     const updated = await prisma.client.update({
       where: { id },
       data: {
@@ -365,7 +529,7 @@ export const updateClient = async (req: Request, res: Response) => {
         name: name !== undefined ? String(name).trim() : existing.name,
         companyName: companyName !== undefined ? (companyName ? String(companyName).trim() : null) : existing.companyName,
         contactPerson: contactPerson !== undefined ? (contactPerson ? String(contactPerson).trim() : null) : existing.contactPerson,
-        phone: phone !== undefined ? String(phone).trim() : existing.phone,
+        phone: cleanedPhone,
         email: email !== undefined ? (email ? String(email).trim() : null) : existing.email,
         billingAddress: billingAddress !== undefined ? String(billingAddress).trim() : existing.billingAddress,
         gstin: gstin !== undefined ? (gstin ? String(gstin).trim() : null) : existing.gstin,
@@ -373,7 +537,36 @@ export const updateClient = async (req: Request, res: Response) => {
       },
     });
 
-    await logAudit(req.user?.id, 'UPDATE_CLIENT', 'CLIENT', id, { name: updated.name }, req.ip);
+    // Synchronize client changes to all linked/matching projects so WhatsApp and reports use the updated number immediately!
+    const namesToMatch = [existing.name, updated.name];
+    if (existing.companyName) namesToMatch.push(existing.companyName);
+    if (updated.companyName) namesToMatch.push(updated.companyName);
+
+    // Also find any projects linked via client invoices
+    const linkedInvoices = await prisma.clientInvoice.findMany({
+      where: { clientId: id },
+      select: { projectId: true },
+      distinct: ['projectId'],
+    });
+    const linkedProjectIds = linkedInvoices.map((inv) => inv.projectId);
+
+    await prisma.project.updateMany({
+      where: {
+        OR: [
+          { clientName: { in: namesToMatch } },
+          ...(linkedProjectIds.length > 0 ? [{ id: { in: linkedProjectIds } }] : []),
+        ],
+      },
+      data: {
+        clientName: updated.name,
+        clientContact: cleanedPhone,
+        ...(updated.email ? { clientEmail: updated.email } : {}),
+        ...(updated.billingAddress ? { clientBillingAddr: updated.billingAddress } : {}),
+        ...(updated.gstin ? { clientGstin: updated.gstin } : {}),
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_CLIENT', 'CLIENT', id, { name: updated.name, phone: cleanedPhone }, req.ip);
 
     return res.json({ success: true, client: updated });
   } catch (error: any) {
