@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { AIChatbotModal } from '../AIChatbotModal';
@@ -17,6 +17,23 @@ export const AppLayout: React.FC = () => {
   const [companyStatus, setCompanyStatus] = useState<Company | undefined>(undefined);
 
   const { user, logout } = useAuth();
+  const location = useLocation();
+
+  // Reset scroll to top on every route change so the next page always starts from the top
+  useEffect(() => {
+    const reset = () => {
+      const mainContainer = document.getElementById('main-scroll-container');
+      if (mainContainer) {
+        mainContainer.scrollTop = 0;
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    };
+    reset();
+    const t = setTimeout(reset, 50);
+    return () => clearTimeout(t);
+  }, [location.pathname, location.key, location.search]);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -80,8 +97,8 @@ export const AppLayout: React.FC = () => {
         onLogout={logout}
       />
 
-      {/* Floating Global AI Assistant Trigger */}
-      {!aiModalOpen && (
+      {/* Floating Global AI Assistant Trigger - hidden when sidebar is open on mobile */}
+      {!aiModalOpen && !sidebarOpen && (
         <button
           onClick={() => setAiModalOpen(true)}
           className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 hover:from-amber-400 hover:to-amber-200 text-slate-950 font-extrabold px-4 py-3 rounded-2xl shadow-2xl shadow-amber-500/30 flex items-center space-x-2.5 transition-all transform hover:scale-105 active:scale-95 border border-amber-200 group cursor-pointer"

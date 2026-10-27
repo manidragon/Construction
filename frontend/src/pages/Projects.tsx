@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Project, Client } from '../types';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Project, Client, Quotation } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
@@ -21,14 +21,22 @@ import {
   Edit2,
   Trash2,
   AlertTriangle,
+  FileText,
+  Sparkles,
+  Check,
+  ArrowUpRight,
 } from 'lucide-react';
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
 export const Projects: React.FC = () => {
   const { hasRole } = useAuth();
   const { refreshProjects, selectedProjectId, setSelectedProjectId } = useProject();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const convertQuotationId = searchParams.get('convertQuotationId');
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -38,6 +46,11 @@ export const Projects: React.FC = () => {
   const [shareProjectId, setShareProjectId] = useState('');
   const [shareTab, setShareTab] = useState<'owner' | 'client'>('owner');
   const [isSubmittingClient, setIsSubmittingClient] = useState(false);
+
+  // Customer acquisition source: DIRECT customer or CONVERT from Quotation
+  const [customerSource, setCustomerSource] = useState<'DIRECT' | 'QUOTATION'>('DIRECT');
+  const [selectedQuotationId, setSelectedQuotationId] = useState<string>('');
+
   const [clientForm, setClientForm] = useState({
     code: '',
     name: '',
@@ -71,6 +84,7 @@ export const Projects: React.FC = () => {
     plannedEndDate: '',
     paymentTerms: 'Monthly Running Account (RA) Bills. Retention 5%, TDS 2%, GST 18%.',
     taxRatePercent: '18',
+    quotationId: '',
   });
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -157,6 +171,17 @@ export const Projects: React.FC = () => {
     }
   };
 
+  const fetchQuotations = async () => {
+    try {
+      const res = await api.getQuotations();
+      if (res.success && res.quotations) {
+        setQuotations(res.quotations);
+      }
+    } catch (err) {
+      console.error('Failed to load quotations:', err);
+    }
+  };
+
   const fetchClients = async () => {
     try {
       const res = await api.getClients();
@@ -175,9 +200,10 @@ export const Projects: React.FC = () => {
       if (statusFilter) params.append('status', statusFilter);
       if (search) params.append('search', search);
 
-      const [prjRes, cliRes] = await Promise.all([
+      const [prjRes, cliRes, quotRes] = await Promise.all([
         api.getProjects(params.toString()),
         api.getClients(),
+        api.getQuotations(),
       ]);
 
       if (prjRes.success && prjRes.projects) {
@@ -186,8 +212,11 @@ export const Projects: React.FC = () => {
       if (cliRes.success && cliRes.clients) {
         setClients(cliRes.clients);
       }
+      if (quotRes.success && quotRes.quotations) {
+        setQuotations(quotRes.quotations);
+      }
     } catch (err) {
-      console.error('Failed to load projects/clients:', err);
+      console.error('Failed to load projects/clients/quotations:', err);
     } finally {
       setLoading(false);
     }
@@ -196,6 +225,89 @@ export const Projects: React.FC = () => {
   useEffect(() => {
     fetchProjects();
   }, [statusFilter, search]);
+
+  const handleSelectQuotation = (quot: Quotation) => {
+    setSelectedQuotationId(quot.id);
+    setCustomerSource('QUOTATION');
+
+    let mappedType = 'RESIDENTIAL';
+    const pt = quot.projectType || '';
+    if (pt.includes('COMMERCIAL')) mappedType = 'COMMERCIAL';
+    else if (pt.includes('INFRASTRUCTURE')) mappedType = 'INFRASTRUCTURE';
+    else if (pt.includes('INDUSTRIAL')) mappedType = 'INDUSTRIAL';
+    else if (pt.includes('RENOVATION') || pt.includes('FITOUT')) mappedType = 'RENOVATION';
+
+    const defaultStartDate = new Date().toISOString().split('T')[0];
+    const defaultEndDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    setFormData((prev) => ({
+      ...prev,
+      quotationId: quot.id,
+      name: `${quot.clientName} - ${quot.projectType.replace(/_/g, ' ')}`,
+      description: `Project converted from Quotation ${quot.quotationNumber}. Scope: ${quot.projectType.replace(/_/g, ' ')} (${quot.items?.length || 0} line items).`,
+      clientName: quot.clientName,
+      clientContact: quot.clientPhone ? quot.clientPhone.replace(/\s+/g, '') : '',
+      clientEmail: quot.clientEmail || '',
+      clientBillingAddr: quot.siteAddress || '',
+      clientGstin: (quot.lead as any)?.gstin || '',
+      siteAddress: quot.siteAddress || '',
+      projectType: mappedType,
+      contractType: 'ITEM_RATE',
+      contractValue: String(quot.totalAmount || ''),
+      approvedBudget: String(quot.subtotal || Math.round((quot.totalAmount || 0) * 0.75)),
+      plannedStartDate: prev.plannedStartDate || defaultStartDate,
+      plannedEndDate: prev.plannedEndDate || defaultEndDate,
+      paymentTerms: quot.penaltyTerms ? `${quot.penaltyTerms}. Milestone payment schedule per quotation.` : '50% Advance, 40% Material Delivery, 10% Handover',
+      taxRatePercent: String(quot.gstPercent || 18),
+    }));
+  };
+
+  const handleClearQuotationSelection = () => {
+    setSelectedQuotationId('');
+    setCustomerSource('DIRECT');
+    setFormData((prev) => ({
+      ...prev,
+      quotationId: '',
+      name: '',
+      description: '',
+      clientName: '',
+      clientContact: '',
+      clientEmail: '',
+      clientBillingAddr: '',
+      clientGstin: '',
+      siteAddress: '',
+      contractValue: '',
+      approvedBudget: '',
+      paymentTerms: 'Monthly Running Account (RA) Bills. Retention 5%, TDS 2%, GST 18%.',
+      taxRatePercent: '18',
+    }));
+  };
+
+  // If URL has convertQuotationId, trigger modal and quotation preselection
+  useEffect(() => {
+    if (convertQuotationId && quotations.length > 0) {
+      const found = quotations.find((q) => q.id === convertQuotationId);
+      if (found) {
+        handleSelectQuotation(found);
+        openCreateProjectModal();
+      }
+    }
+  }, [convertQuotationId, quotations]);
+
+  const openCreateProjectModal = async () => {
+    try {
+      const res = await api.getNextProjectCode();
+      if (res.success && res.nextProjectCode) {
+        setFormData((prev) => ({
+          ...prev,
+          code: prev.code || res.nextProjectCode,
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch next project code:', err);
+    }
+    setShowCreateModal(true);
+  };
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,27 +354,17 @@ export const Projects: React.FC = () => {
         setShowCreateModal(false);
         fetchProjects();
         refreshProjects();
-        setFormData({
-          code: '',
-          name: '',
-          description: '',
-          clientName: '',
-          clientContact: '',
-          clientEmail: '',
-          clientBillingAddr: '',
-          clientGstin: '',
-          siteAddress: '',
-          city: 'Bengaluru',
-          state: 'Karnataka',
-          projectType: 'RESIDENTIAL',
-          contractType: 'ITEM_RATE',
-          contractValue: '',
-          approvedBudget: '',
-          plannedStartDate: '',
-          plannedEndDate: '',
-          paymentTerms: '',
-          taxRatePercent: '18',
-        });
+        fetchQuotations();
+
+        const isConverted = Boolean(res.convertedQuotation || formData.quotationId);
+        if (isConverted) {
+          alert(`🎉 Project "${res.project.name}" (${res.project.code}) created successfully!\n\nQuotation ${res.convertedQuotation?.quotationNumber || ''} has been marked as CONVERTED 🏆 and its line items have been imported directly into the Project BOQ.`);
+        }
+
+        handleClearQuotationSelection();
+        if (convertQuotationId) {
+          setSearchParams({});
+        }
       }
     } catch (err: any) {
       alert(err.message || 'Failed to create project');
@@ -294,7 +396,7 @@ export const Projects: React.FC = () => {
 
           {hasRole('OWNER', 'PROJECT_MANAGER') && (
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => openCreateProjectModal()}
               className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm transition"
             >
               <Plus className="w-4 h-4" />
@@ -589,52 +691,176 @@ export const Projects: React.FC = () => {
                 />
               </div>
 
-              {/* Client Auto-fill / Select box */}
-              <div className="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Select Client to Auto-fill Details</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowClientModal(true)}
-                    className="text-xs font-bold text-amber-800 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>+ Add New Client</span>
-                  </button>
-                </div>
-                <select
-                  onChange={(e) => {
-                    const cId = e.target.value;
-                    if (!cId) return;
-                    const c = clients.find((item) => item.id === cId);
-                    if (c) {
-                      setFormData({
-                        ...formData,
-                        clientName: c.companyName || c.name,
-                        clientContact: (c.phone ? c.phone.replace(/\s+/g, '') : '') || c.contactPerson || '',
-                        clientEmail: c.email || '',
-                        clientBillingAddr: c.billingAddress || '',
-                        clientGstin: c.gstin || '',
-                      });
-                    }
-                  }}
-                  defaultValue=""
-                  className="w-full text-xs p-2 bg-white border border-amber-300 rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-amber-500"
-                >
-                  <option value="">-- Choose from Registered Clients ({clients.length}) or enter below --</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      [{c.code}] {c.name} {c.companyName ? `(${c.companyName})` : ''} - {c.phone}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Selecting a client automatically fills client name, GSTIN, phone, email, and address.
-                </p>
-              </div>
+              {/* Customer Acquisition Source: Direct Customer vs Suggested Quotation */}
+              {(() => {
+                const unconvertedQuotations = quotations.filter((q) => q.status !== 'CONVERTED');
+                const convertedQuotations = quotations.filter((q) => q.status === 'CONVERTED');
+                const selectedQuotation = quotations.find((q) => q.id === selectedQuotationId);
+
+                return (
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Client Project Source</span>
+                      </label>
+                      <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg text-[11px] font-bold">
+                        <button
+                          type="button"
+                          onClick={handleClearQuotationSelection}
+                          className={`px-3 py-1 rounded-md transition ${
+                            customerSource === 'DIRECT'
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          🚶 Direct Customer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomerSource('QUOTATION');
+                            if (!selectedQuotationId && unconvertedQuotations.length > 0) {
+                              handleSelectQuotation(unconvertedQuotations[0]);
+                            }
+                          }}
+                          className={`px-3 py-1 rounded-md transition flex items-center gap-1.5 ${
+                            customerSource === 'QUOTATION'
+                              ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <span>📋 Convert from Quotation</span>
+                          {unconvertedQuotations.length > 0 && (
+                            <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.2 rounded-full">
+                              {unconvertedQuotations.length}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* If Quotation Source: Suggest given quotations */}
+                    {customerSource === 'QUOTATION' ? (
+                      <div className="space-y-2.5">
+                        <label className="block text-[11px] font-semibold text-slate-700">
+                          Suggest Quotation Given to Client ({unconvertedQuotations.length} proposals pending conversion):
+                        </label>
+                        <select
+                          value={selectedQuotationId}
+                          onChange={(e) => {
+                            const qId = e.target.value;
+                            if (!qId) {
+                              handleClearQuotationSelection();
+                              return;
+                            }
+                            const found = quotations.find((q) => q.id === qId);
+                            if (found) handleSelectQuotation(found);
+                          }}
+                          className="w-full text-xs p-2.5 bg-white border-2 border-amber-400 rounded-xl text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
+                        >
+                          <option value="">-- Choose Quotation to Auto-Fill & Convert --</option>
+                          {unconvertedQuotations.length > 0 && (
+                            <optgroup label="⚡ Available / Active Quotations (Pending Conversion)">
+                              {unconvertedQuotations.map((q) => (
+                                <option key={q.id} value={q.id}>
+                                  [{q.quotationNumber}] {q.clientName} • ₹{formatCurrency(q.totalAmount)} • Status: {q.status}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {convertedQuotations.length > 0 && (
+                            <optgroup label="✓ Previously Converted Quotations">
+                              {convertedQuotations.map((q) => (
+                                <option key={q.id} value={q.id} disabled>
+                                  [{q.quotationNumber}] {q.clientName} (ALREADY CONVERTED TO PROJECT)
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+
+                        {/* Selected Quotation Highlight Card */}
+                        {selectedQuotation && (
+                          <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-emerald-900 bg-emerald-200/70 px-2 py-0.5 rounded text-[11px]">
+                                  {selectedQuotation.quotationNumber}
+                                </span>
+                                <span className="font-bold text-emerald-950 text-xs">{selectedQuotation.clientName}</span>
+                                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                                  Current Status: {selectedQuotation.status}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-emerald-800 font-medium">
+                                Agreed Total Value: <strong>₹{selectedQuotation.totalAmount.toLocaleString('en-IN')}</strong> • {selectedQuotation.items?.length || 0} work items itemized
+                              </p>
+                              <p className="text-[10px] text-emerald-700 font-medium flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>
+                                  <strong>Automatic Conversion</strong>: On saving this project, Quotation <strong>{selectedQuotation.quotationNumber}</strong> will automatically be marked as <strong>CONVERTED</strong> 🏆, and its line items will be populated in the Project BOQ.
+                                </span>
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleClearQuotationSelection}
+                              className="self-start sm:self-center px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition shrink-0"
+                            >
+                              ✕ Reset
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Direct Customer registered clients dropdown */
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Select Existing Client (Optional)</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowClientModal(true)}
+                            className="text-[11px] font-bold text-amber-800 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>+ Add New Client</span>
+                          </button>
+                        </div>
+                        <select
+                          onChange={(e) => {
+                            const cId = e.target.value;
+                            if (!cId) return;
+                            const c = clients.find((item) => item.id === cId);
+                            if (c) {
+                              setFormData({
+                                ...formData,
+                                clientName: c.companyName || c.name,
+                                clientContact: (c.phone ? c.phone.replace(/\s+/g, '') : '') || c.contactPerson || '',
+                                clientEmail: c.email || '',
+                                clientBillingAddr: c.billingAddress || '',
+                                clientGstin: c.gstin || '',
+                              });
+                            }
+                          }}
+                          defaultValue=""
+                          className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        >
+                          <option value="">-- Direct Customer / Walk-in (Fill details below or select client) --</option>
+                          {clients.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              [{c.code}] {c.name} {c.companyName ? `(${c.companyName})` : ''} - {c.phone}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>

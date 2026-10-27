@@ -229,9 +229,9 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     }
 
     const sub = Number(subtotal);
-    const retPct = retentionPercent !== undefined && retentionPercent !== '' ? Number(retentionPercent) : 5.0;
-    const tdsPct = tdsPercent !== undefined && tdsPercent !== '' ? Number(tdsPercent) : 2.0;
-    const gstPct = gstPercent !== undefined && gstPercent !== '' ? Number(gstPercent) : 18.0;
+    const retPct = retentionPercent !== undefined && retentionPercent !== null && retentionPercent !== '' ? Number(retentionPercent) : 0;
+    const tdsPct = tdsPercent !== undefined && tdsPercent !== null && tdsPercent !== '' ? Number(tdsPercent) : 0;
+    const gstPct = gstPercent !== undefined && gstPercent !== null && gstPercent !== '' ? Number(gstPercent) : 0;
 
     const retentionAmount = (sub * retPct) / 100;
     const tdsAmount = (sub * tdsPct) / 100;

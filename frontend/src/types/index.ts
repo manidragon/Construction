@@ -169,6 +169,9 @@ export interface Project {
     budgetBurnPercent?: number;
     netProfit?: number;
     netProfitMargin?: number;
+    contractValue?: number;
+    balanceCash?: number;
+    remainingContract?: number;
   };
   advancePaymentRequired?: number;
   advancePaymentReceived?: number;
@@ -252,6 +255,41 @@ export interface Material {
     totalValuation: number;
     warehouse: { id: string; name: string; code: string; isSiteStore: boolean };
   }[];
+}
+
+export interface ProjectMaterialOrder {
+  poNumber: string;
+  poDate: string;
+  poStatus: string;
+  supplierName: string;
+  orderQty: number;
+  receivedQty: number;
+  unitPrice: number;
+  totalAmount: number;
+}
+
+export interface ProjectMaterial {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  materialName: string;
+  category: string;
+  brand?: string;
+  unit: string;
+  standardPrice: number;
+  projectId: string;
+  projectCode: string;
+  projectName: string;
+  totalOrderedQty: number;
+  totalReceivedQty: number;
+  totalIssuedQty: number;
+  availableStock: number;
+  totalValuation: number;
+  pendingDeliveryQty: number;
+  avgUnitCost: number;
+  preferredWarehouseId?: string;
+  preferredWarehouseName?: string;
+  purchaseOrders: ProjectMaterialOrder[];
 }
 
 export interface Warehouse {
@@ -373,8 +411,56 @@ export interface SupplierInvoice {
   id: string;
   invoiceNumber: string;
   supplierId: string;
-  supplier: { name: string; gstin?: string };
-  purchaseOrder?: { poNumber: string };
+  supplier: {
+    id?: string;
+    code?: string;
+    name: string;
+    phone?: string;
+    email?: string;
+    gstin?: string;
+    address?: string;
+    city?: string;
+    paymentTerms?: string;
+    bankName?: string;
+    bankAccountNo?: string;
+    bankIfsc?: string;
+  };
+  projectId?: string;
+  project?: {
+    id: string;
+    code: string;
+    name: string;
+    clientName?: string;
+    siteAddress?: string;
+    city?: string;
+  };
+  purchaseOrderId?: string;
+  purchaseOrder?: {
+    id?: string;
+    poNumber: string;
+    poDate?: string;
+    deliveryDueDate?: string;
+    projectId?: string;
+    project?: {
+      id: string;
+      code: string;
+      name: string;
+      clientName?: string;
+      siteAddress?: string;
+      city?: string;
+    };
+    items?: {
+      id: string;
+      materialId: string;
+      material: { code: string; name: string; unit: string; category?: string };
+      orderQty: number;
+      unitPrice: number;
+      taxPercent: number;
+      taxAmount: number;
+      totalAmount: number;
+      receivedQty: number;
+    }[];
+  };
   invoiceDate: string;
   dueDate: string;
   subtotal: number;
@@ -383,6 +469,15 @@ export interface SupplierInvoice {
   paidAmount: number;
   balanceDue: number;
   status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  payments?: {
+    id: string;
+    paymentNumber: string;
+    paymentDate: string;
+    amount: number;
+    paymentMethod: string;
+    referenceNo?: string;
+    notes?: string;
+  }[];
 }
 
 export interface Worker {
@@ -642,6 +737,9 @@ export interface Account {
   type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
   subType: string;
   currentBalance: number;
+  tallyGroup?: string;
+  schedule3Category?: string;
+  normalBalance?: 'DEBIT' | 'CREDIT';
 }
 
 export interface JournalEntry {
@@ -650,9 +748,12 @@ export interface JournalEntry {
   entryDate: string;
   referenceType: string;
   narration: string;
+  tallyVoucherType?: 'Payment' | 'Receipt' | 'Sales' | 'Purchase' | 'Contra' | 'Journal';
+  tallyShortcut?: 'F5' | 'F6' | 'F8' | 'F9' | 'F4' | 'F7';
+  tallyCategory?: string;
   lines: {
     id: string;
-    account: { code: string; name: string };
+    account: { code: string; name: string; tallyGroup?: string };
     debit: number;
     credit: number;
     project?: { code: string; name: string };
@@ -934,14 +1035,20 @@ export type LeadBudgetRange =
   | '2.5CR_PLUS';
 
 export type LeadSource =
-  | 'WEBSITE'
-  | 'INSTAGRAM'
-  | 'REFERRAL'
   | 'ARCHITECT_REFERRAL'
+  | 'REFERRAL'
+  | 'SITE_BRANDING'
   | 'WALKIN'
+  | 'REAL_ESTATE_BROKER'
+  | 'VENDOR_REFERRAL'
+  | 'ENGINEER_REFERRAL'
+  | 'INSTAGRAM'
+  | 'WEBSITE'
   | 'GOOGLE_ADS'
-  | 'PROPERTY_EXPO'
-  | 'OTHER';
+  | 'DIRECT_ENQUIRY'
+  | 'REPEAT_CLIENT'
+  | 'OTHER'
+  | (string & {});
 
 export type AssignedTeam = 'DESIGN_TEAM' | 'EXECUTION_TEAM' | 'SALES_TEAM';
 

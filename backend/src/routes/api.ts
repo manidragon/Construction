@@ -22,6 +22,7 @@ import { checkTrialStatus } from '../middleware/auth';
 import { getExecutiveMetrics } from '../controllers/dashboardController';
 import {
   getProjects,
+  getNextProjectCode,
   getProjectById,
   createProject,
   updateProject,
@@ -67,6 +68,7 @@ import {
 } from '../controllers/boqController';
 import {
   getMaterials,
+  getNextMaterialCode,
   createMaterial,
   updateMaterial,
   deleteMaterial,
@@ -80,6 +82,9 @@ import {
   deleteRequisition,
   recordStockMovement,
   getStockLedger,
+  getProjectMaterials,
+  addStock,
+  adjustStock,
 } from '../controllers/inventoryController';
 import {
   getSuppliers,
@@ -116,6 +121,8 @@ import {
   getSubcontractors,
   recordWagePayment,
   deleteWagePayment,
+  assignWorkerToProject,
+  unassignWorkerFromProject,
 } from '../controllers/labourController';
 import { getTasks, createTask, updateTask, deleteTask, addTaskComment, quickAddTask } from '../controllers/taskController';
 import { getDropdownOptions, createDropdownOption, deleteDropdownOption } from '../controllers/dropdownController';
@@ -157,6 +164,9 @@ import {
   getProfitAndLoss,
   getBalanceSheet,
   getAgingReports,
+  exportTallyXML,
+  exportDaybookCSV,
+  getIndianStatutorySummary,
 } from '../controllers/accountsController';
 import {
   getEquipment,
@@ -258,6 +268,7 @@ router.get('/dashboard/metrics', getExecutiveMetrics);
 
 // Projects
 router.get('/projects', getProjects);
+router.get('/projects/next-code', getNextProjectCode);
 router.get('/projects/:id', getProjectById);
 router.get('/projects/:id/daily-share-report', getProjectDailyShareReport);
 router.post('/projects', requireRole('OWNER', 'PROJECT_MANAGER'), createProject);
@@ -303,7 +314,8 @@ router.delete('/quotations/:id', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWN
 
 // Materials & Inventory
 router.get('/inventory/materials', getMaterials);
-router.post('/inventory/materials', requireRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER'), createMaterial);
+router.get('/inventory/materials/next-code', getNextMaterialCode);
+router.post('/inventory/materials', requireRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'PROJECT_MANAGER', 'SITE_ENGINEER'), createMaterial);
 router.put('/inventory/materials/:id', requireRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER'), updateMaterial);
 router.delete('/inventory/materials/:id', requireRole('OWNER', 'PURCHASE_MANAGER'), deleteMaterial);
 router.get('/inventory/warehouses', getWarehouses);
@@ -316,6 +328,9 @@ router.put('/inventory/requisitions/:id/approve', requireRole('OWNER', 'PROJECT_
 router.delete('/inventory/requisitions/:id', requireRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER'), deleteRequisition);
 router.post('/inventory/transactions', requireRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER'), recordStockMovement);
 router.get('/inventory/ledger', getStockLedger);
+router.get('/inventory/project-materials', getProjectMaterials);
+router.post('/inventory/add-stock', requireRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER'), addStock);
+router.post('/inventory/adjust-stock', requireRole('OWNER', 'STOREKEEPER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER'), adjustStock);
 
 // Procurement & Suppliers
 router.get('/procurement/suppliers', getSuppliers);
@@ -372,6 +387,8 @@ router.get('/labour/muster-roll', getMusterRoll);
 router.get('/labour/subcontractors', getSubcontractors);
 router.post('/labour/payout', requireRole('OWNER', 'HR_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), recordWagePayment);
 router.delete('/labour/payout/:id', requireRole('OWNER', 'HR_MANAGER', 'ACCOUNTS_MANAGER'), deleteWagePayment);
+router.post('/labour/assign-existing', requireRole('OWNER', 'HR_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER'), assignWorkerToProject);
+router.post('/labour/unassign', requireRole('OWNER', 'HR_MANAGER', 'SITE_ENGINEER', 'PROJECT_MANAGER'), unassignWorkerFromProject);
 
 // Tasks
 router.get('/tasks', getTasks);
@@ -423,6 +440,9 @@ router.get('/accounts/trial-balance', requireRole('OWNER', 'ACCOUNTS_MANAGER', '
 router.get('/accounts/pnl', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), getProfitAndLoss);
 router.get('/accounts/balance-sheet', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), getBalanceSheet);
 router.get('/accounts/aging', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), getAgingReports);
+router.get('/accounts/export/tally-xml', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), exportTallyXML);
+router.get('/accounts/export/daybook-csv', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), exportDaybookCSV);
+router.get('/accounts/indian-statutory', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'AUDITOR'), getIndianStatutorySummary);
 
 // Equipment & Machinery
 router.get('/equipment', getEquipment);

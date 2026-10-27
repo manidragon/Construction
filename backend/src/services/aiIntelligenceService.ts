@@ -741,34 +741,132 @@ export async function handleQuotationQuery(cleanPrompt: string, user?: any): Pro
 // 5. LEADS & SALES PIPELINE DOMAIN INTELLIGENCE
 // ============================================================================
 
-export async function handleLeadQuery(cleanPrompt: string, user?: any): Promise<AIActionResponse | null> {
-  const lower = cleanPrompt.toLowerCase();
-  const isLeadQuery =
-    (lower.includes('lead') || lower.includes('pipeline') || lower.includes('inquiry') || lower.includes('inquiries')) &&
-    !lower.includes('how to') &&
-    !lower.includes('what is') &&
-    !lower.includes('got a') &&
-    !lower.includes('have to add') &&
-    !lower.includes('want to add') &&
-    !lower.includes('add lead') &&
-    !lower.includes('create lead') &&
-    !lower.includes('register lead') &&
-    !lower.includes('new lead');
+const formatStageName = (stage: string): string => {
+  const map: Record<string, string> = {
+    NEW_LEAD: 'New Lead (Initial Inquiry)',
+    SITE_VISIT_SCHEDULED: 'Site Visit Scheduled',
+    SITE_MEASUREMENT_COMPLETED: 'Site Measurement Done',
+    DESIGN_CONCEPT_DISCUSSION: 'Design / Concept Discussion',
+    BOQ_QUOTATION_SHARED: 'BOQ / Quotation Shared',
+    NEGOTIATION: 'Client Negotiation',
+    LEAD_WON: 'Lead Won (Converted to Project)',
+    LEAD_LOST: 'Lead Lost (Closed/Dropped)',
+  };
+  return map[stage] || stage.replace(/_/g, ' ');
+};
 
-  if (!isLeadQuery) return null;
+function findTargetLeadOrProject(
+  cleanPrompt: string,
+  leads: any[],
+  projects: any[]
+): { lead?: any; project?: any } | null {
+  const lower = cleanPrompt.toLowerCase();
+
+  // 1. Direct lead number match (e.g. LEAD-2026-001)
+  const leadNumMatch = leads.find((l) => l.leadNumber && lower.includes(l.leadNumber.toLowerCase()));
+  if (leadNumMatch) return { lead: leadNumMatch };
+
+  // 2. Direct clientName match in leads
+  const clientNameMatch = leads.find((l) => l.clientName && lower.includes(l.clientName.toLowerCase()));
+  if (clientNameMatch) return { lead: clientNameMatch };
+
+  // 3. Match individual words/tokens of clientName in leads (excluding common stop words)
+  const stopWords = new Set([
+    'what', 'is', 'the', 'lead', 'status', 'of', 'for', 'a', 'particular', 'project',
+    'mentioning', 'its', 'name', 'show', 'me', 'tell', 'check', 'get', 'to', 'in',
+    'and', 'with', 'update', 'change', 'button', 'question', 'llp', 'pvt', 'ltd', 'dr',
+    'mr', 'mrs', 'dr.', 'mr.', 'mrs.'
+  ]);
+  
+  const promptTokens = lower.split(/[\s,()&.?!'"]+/).filter((w) => w.length >= 3 && !stopWords.has(w));
+
+  for (const token of promptTokens) {
+    const matchedByToken = leads.find((l) => {
+      const cLower = l.clientName.toLowerCase();
+      return cLower.includes(token);
+    });
+    if (matchedByToken) return { lead: matchedByToken };
+  }
+
+  // 4. Match project code or project name
+  const projMatch = projects.find((p) => {
+    const pName = p.name.toLowerCase();
+    const pCode = p.code.toLowerCase();
+    if (lower.includes(pName) || lower.includes(pCode)) return true;
+    for (const token of promptTokens) {
+      if (token.length >= 4 && pName.includes(token)) return true;
+    }
+    return false;
+  });
+
+  if (projMatch) {
+    // Check if this project has a linked lead
+    const linkedLead = leads.find(
+      (l) => l.convertedProjectId === projMatch.id || (projMatch.clientName && l.clientName.toLowerCase() === projMatch.clientName.toLowerCase())
+    );
+    if (linkedLead) return { lead: linkedLead };
+    return { project: projMatch };
+  }
+
+  // 5. Match siteAddress words
+  for (const token of promptTokens) {
+    if (token.length >= 4) {
+      const matchedBySite = leads.find((l) => l.siteAddress && l.siteAddress.toLowerCase().includes(token));
+      if (matchedBySite) return { lead: matchedBySite };
+    }
+  }
+
+  return null;
+}
+
+export async function handleLeadQuery(cleanPrompt: string, user?: any): Promise<AIActionResponse | null> {
+  const lower = cleanPrompt.toLowerCase().trim();
+
+  // Basic filter for lead/pipeline questions
+  const isLeadRelated =
+    lower.includes('lead') ||
+    lower.includes('pipeline') ||
+    lower.includes('inquiry') ||
+    lower.includes('inquiries') ||
+    lower.includes('prospect') ||
+    lower.includes('prospects');
+
+  const isStatusQuery =
+    (lower.includes('status') || lower.includes('stage')) &&
+    (lower.includes('what is') || lower.includes('show') || lower.includes('tell') || lower.includes('check') || lower.includes('get'));
+
+  if (!isLeadRelated && !isStatusQuery) return null;
+
+  // Conceptual questions should be handled by conceptual knowledge base
+  if (
+    lower.includes('what is the difference between') ||
+    lower.includes('how to manage leads') ||
+    lower.includes('how to convert lead')
+  ) {
+    return null;
+  }
 
   const tenantFilter = user?.companyId ? { tenantId: user.companyId } : {};
 
-  const leads = await prisma.lead.findMany({
-    where: tenantFilter,
-    include: {
-      quotations: true,
-      convertedProject: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const [leads, projects] = await Promise.all([
+    prisma.lead.findMany({
+      where: tenantFilter,
+      include: {
+        quotations: true,
+        convertedProject: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.project.findMany({
+      where: tenantFilter,
+      include: {
+        convertedFromLead: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
 
-  if (leads.length === 0) {
+  if (leads.length === 0 && projects.length === 0) {
     return {
       message:
         `📈 **Sales Leads & Client Inquiries Pipeline**\n\n` +
@@ -784,66 +882,280 @@ export async function handleLeadQuery(cleanPrompt: string, user?: any): Promise<
     };
   }
 
-  // Check if asking about a specific lead name or number
-  const matched = leads.find(
-    (l) =>
-      lower.includes(l.leadNumber.toLowerCase()) ||
-      lower.includes(l.clientName.toLowerCase()) ||
-      lower.includes(l.contactNumber)
-  );
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-  if (matched) {
-    let msg = `👤 **Lead Profile: ${matched.clientName}** [\`${matched.leadNumber}\`]\n\n`;
-    msg += `• **Contact Phone:** ${matched.contactNumber} ${matched.email ? `| **Email:** ${matched.email}` : ''}\n`;
-    msg += `• **Site Address:** ${matched.siteAddress} (${matched.city || 'City'})\n`;
-    msg += `• **Project Type:** ${matched.projectType.replace(/_/g, ' ')}\n`;
-    msg += `• **Estimated Budget Range:** **${matched.budgetRange.replace(/_/g, ' ')}**\n`;
-    msg += `• **Lead Source:** ${matched.source.replace(/_/g, ' ')}\n`;
-    msg += `• **Current Pipeline Stage:** **${matched.stage.replace(/_/g, ' ')}**\n`;
-    msg += `• **Registered Date:** ${formatDateStr(matched.createdAt)}\n\n`;
+  // --------------------------------------------------------------------------
+  // 1. INTENT: TODAY'S LEADS COUNT & STATUS ("how many lead today", "any lead today")
+  // --------------------------------------------------------------------------
+  const isTodayQuery =
+    (lower.includes('today') || lower.includes("today's")) &&
+    (lower.includes('how many') ||
+      lower.includes('any') ||
+      lower.includes('is there') ||
+      lower.includes('count') ||
+      lower.includes('number') ||
+      lower.includes('new') ||
+      lower.includes('received') ||
+      lower.includes('created') ||
+      lower === 'how many lead today' ||
+      lower === 'how many leads today' ||
+      lower === 'leads today' ||
+      lower === 'today leads' ||
+      lower === 'any lead today' ||
+      lower === 'any leads today');
 
-    if (matched.convertedProject) {
-      msg += `✅ **Converted to Active Project:** [\`${matched.convertedProject.code}\`] **${matched.convertedProject.name}**\n\n`;
+  if (isTodayQuery) {
+    const todayLeads = leads.filter((l) => {
+      const created = new Date(l.createdAt);
+      return created >= startOfToday && created <= endOfToday;
+    });
+
+    if (todayLeads.length === 0) {
+      return {
+        message:
+          `📅 **Today's Lead Inquiries Status**\n\n` +
+          `There are **0 new leads received today** (${formatDateStr(now)}).\n\n` +
+          `• **Overall Pipeline:** You currently have **${leads.length} total leads** registered across all stages.\n` +
+          `• Would you like to record a new client lead? Tap *"Yes, fill the new lead form"* or ask to add one.`,
+        actionTaken: 'LEAD_TODAY_QUERY',
+        data: { todayCount: 0, totalCount: leads.length },
+        suggestedPrompts: [
+          'Yes, fill the new lead form',
+          'How many lead converted',
+          'Show all active leads in sales pipeline',
+        ],
+      };
     }
 
-    if (matched.quotations.length > 0) {
-      msg += `### 📄 Associated Client Quotations (${matched.quotations.length}):\n`;
-      matched.quotations.forEach((q) => {
-        msg += `• **${q.quotationNumber}**: ${formatINR(q.totalAmount)} (${q.status})\n`;
-      });
-      msg += `\n`;
-    }
-
-    if (matched.siteVisitNotes) {
-      msg += `• **Site Visit Notes:** ${matched.siteVisitNotes}\n`;
-    }
+    let msg = `📅 **Today's New Leads: ${todayLeads.length} New Lead${todayLeads.length > 1 ? 's' : ''} Received Today** (${formatDateStr(now)})\n\n`;
+    todayLeads.forEach((l, idx) => {
+      msg += `### 📋 ${idx + 1}. ${l.clientName} [\`${l.leadNumber}\`]\n`;
+      msg += `• **Current Stage:** **${formatStageName(l.stage)}**\n`;
+      msg += `• **Scope & Type:** ${l.projectType?.replace(/_/g, ' ')}  |  **Budget:** ${l.budgetRange?.replace(/_/g, ' ')}\n`;
+      msg += `• **Contact:** ${l.contactNumber}  |  **Site:** ${l.siteAddress} (${l.city || 'City'})\n\n`;
+    });
 
     return {
       message: msg,
-      actionTaken: 'LEAD_DETAIL_QUERY',
-      data: matched,
+      actionTaken: 'LEAD_TODAY_QUERY',
+      data: { todayCount: todayLeads.length, leads: todayLeads },
       suggestedPrompts: [
+        `What is the lead status of ${todayLeads[0].clientName}`,
+        'How many lead converted',
         'Show all active leads in sales pipeline',
-        'How to convert lead to project?',
-        'How to create a Client Quotation?',
       ],
     };
   }
 
-  // General pipeline summary with clean card-based layout
+  // --------------------------------------------------------------------------
+  // 2. INTENT: CONVERTED LEADS COUNT ("how many lead converted", "leads won count")
+  // --------------------------------------------------------------------------
+  const isConvertedQuery =
+    (lower.includes('converted') ||
+      lower.includes('conversion') ||
+      lower.includes('lead won') ||
+      lower.includes('leads won') ||
+      lower.includes('won lead') ||
+      lower.includes('won leads') ||
+      lower.includes('closed won') ||
+      lower.includes('deal won')) &&
+    (lower.includes('how many') ||
+      lower.includes('count') ||
+      lower.includes('number') ||
+      lower.includes('what is') ||
+      lower.includes('total') ||
+      lower === 'how many lead converted' ||
+      lower === 'how many leads converted' ||
+      lower === 'leads converted' ||
+      lower === 'lead converted' ||
+      lower === 'how many lead won' ||
+      lower === 'how many leads won' ||
+      lower.includes('lead converted'));
+
+  if (isConvertedQuery) {
+    const wonLeads = leads.filter(
+      (l) => l.stage === 'LEAD_WON' || !!l.convertedProject || !!l.convertedProjectId
+    );
+    const wonCount = wonLeads.length;
+    const totalCount = leads.length;
+    const conversionRate = totalCount > 0 ? Math.round((wonCount / totalCount) * 100) : 0;
+
+    let msg = `🏆 **Total Converted Leads: Exactly ${wonCount} Lead${wonCount === 1 ? '' : 's'} Won**\n\n`;
+    msg += `Out of **${totalCount} total leads** registered in your sales pipeline, exactly **${wonCount} lead${wonCount === 1 ? '' : 's'}** have been converted into active projects (**${conversionRate}% conversion rate**).\n\n`;
+
+    if (wonLeads.length > 0) {
+      msg += `### ✅ Converted & Won Leads:\n`;
+      wonLeads.forEach((w, idx) => {
+        msg += `• **${idx + 1}. ${w.clientName}** [\`${w.leadNumber}\`]`;
+        if (w.convertedProject) {
+          msg += ` → Active Project: **${w.convertedProject.name}** [\`${w.convertedProject.code}\`]`;
+        }
+        msg += ` (${w.budgetRange?.replace(/_/g, ' ') || 'Budget Confirmed'})\n`;
+      });
+    } else {
+      msg += `• No prospective leads have reached the Won stage yet.\n`;
+    }
+
+    return {
+      message: msg,
+      actionTaken: 'LEAD_CONVERTED_COUNT',
+      data: { wonCount, totalCount, conversionRate, wonLeads },
+      suggestedPrompts: [
+        'How many lead today',
+        'Show all active leads in sales pipeline',
+        'How to convert lead to project?',
+      ],
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // 3. INTENT: NATURAL LANGUAGE DIRECT LEAD STATUS UPDATE COMMAND
+  // e.g. "update lead status of Rohit Verma to Lead Won"
+  // --------------------------------------------------------------------------
+  const isDirectUpdateCommand =
+    (lower.startsWith('update lead status') ||
+      lower.startsWith('change lead status') ||
+      lower.startsWith('update status of lead') ||
+      lower.startsWith('change status of lead') ||
+      lower.includes('update lead status') ||
+      lower.includes('change lead status') ||
+      lower.includes('mark lead') ||
+      lower.includes('set lead status')) &&
+    (lower.includes(' to ') || lower.includes(' as '));
+
+  if (isDirectUpdateCommand) {
+    let newStage: string | null = null;
+    if (lower.includes('won') || lower.includes('convert')) newStage = 'LEAD_WON';
+    else if (lower.includes('lost') || lower.includes('drop')) newStage = 'LEAD_LOST';
+    else if (lower.includes('negotiat')) newStage = 'NEGOTIATION';
+    else if (lower.includes('boq') || lower.includes('quotation') || lower.includes('shared')) newStage = 'BOQ_QUOTATION_SHARED';
+    else if (lower.includes('design') || lower.includes('concept')) newStage = 'DESIGN_CONCEPT_DISCUSSION';
+    else if (lower.includes('measurement')) newStage = 'SITE_MEASUREMENT_COMPLETED';
+    else if (lower.includes('visit') || lower.includes('scheduled')) newStage = 'SITE_VISIT_SCHEDULED';
+    else if (lower.includes('new lead') || lower.includes('inquiry')) newStage = 'NEW_LEAD';
+
+    const matched = findTargetLeadOrProject(cleanPrompt, leads, projects);
+    if (matched && matched.lead && newStage) {
+      const updated = await prisma.lead.update({
+        where: { id: matched.lead.id },
+        data: { stage: newStage },
+      });
+
+      return {
+        message:
+          `✅ **Lead Status Changed Successfully!**\n\n` +
+          `• **Lead ID:** [\`${updated.leadNumber}\`]\n` +
+          `• **Client Name:** **${updated.clientName}**\n` +
+          `• **New Status:** **${formatStageName(newStage)}**\n` +
+          `• **Database Sync:** The pipeline and live database have been automatically updated in the background.`,
+        actionTaken: 'LEAD_STATUS_CHANGED',
+        data: { lead: updated, newStage },
+        suggestedPrompts: [
+          `What is the lead status of ${updated.clientName}`,
+          'How many lead today',
+          'How many lead converted',
+        ],
+      };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 4. INTENT: SPECIFIC LEAD / PROJECT STATUS QUERY
+  // "what is the lead status of [name]", "lead status of Bakery", "status of lead Dr. Arvind"
+  // --------------------------------------------------------------------------
+  const isStatusInquiry =
+    lower.includes('status') ||
+    lower.includes('stage') ||
+    lower.includes('lead of') ||
+    lower.includes('lead for') ||
+    lower.startsWith('what is') ||
+    lower.startsWith('show lead') ||
+    lower.startsWith('details of');
+
+  if (
+    isStatusInquiry ||
+    leads.some((l) => lower.includes(l.clientName.toLowerCase()) || lower.includes(l.leadNumber.toLowerCase()))
+  ) {
+    const matchResult = findTargetLeadOrProject(cleanPrompt, leads, projects);
+
+    if (matchResult?.lead) {
+      const l = matchResult.lead;
+      let msg = `🎯 **Lead Status for ${l.clientName}**\n\n`;
+      msg += `• **Lead ID:** [\`${l.leadNumber}\`]\n`;
+      msg += `• **Current Status / Stage:** **${formatStageName(l.stage)}**\n`;
+      msg += `• **Scope & Project Type:** ${l.projectType?.replace(/_/g, ' ')}\n`;
+      msg += `• **Estimated Budget Range:** **${l.budgetRange?.replace(/_/g, ' ')}**\n`;
+      msg += `• **Contact Person:** ${l.clientName} (📞 ${l.contactNumber})\n`;
+      msg += `• **Site Location:** ${l.siteAddress} (${l.city || 'City'})\n`;
+      if (l.convertedProject) {
+        msg += `• **Linked Active Project:** **${l.convertedProject.name}** [\`${l.convertedProject.code}\`]\n`;
+      }
+      if (l.quotations && l.quotations.length > 0) {
+        msg += `• **Quotations Generated:** ${l.quotations.length} commercial proposal${l.quotations.length > 1 ? 's' : ''}\n`;
+      }
+
+      return {
+        message: msg,
+        actionTaken: 'LEAD_STATUS_UPDATE_CARD',
+        data: {
+          cardType: 'LEAD_STATUS_UPDATE',
+          lead: {
+            id: l.id,
+            leadNumber: l.leadNumber,
+            clientName: l.clientName,
+            stage: l.stage,
+            currentStage: l.stage,
+            projectType: l.projectType,
+            budgetRange: l.budgetRange,
+            contactNumber: l.contactNumber,
+            siteAddress: l.siteAddress,
+          },
+        },
+        suggestedPrompts: [
+          'How many lead today',
+          'How many lead converted',
+          'Show all active leads in sales pipeline',
+        ],
+      };
+    }
+
+    if (matchResult?.project) {
+      const p = matchResult.project;
+      return {
+        message:
+          `🏗️ **Project Execution Status: ${p.name}** [\`${p.code}\`]\n\n` +
+          `• **Current Project Status:** **${p.status}**\n` +
+          `• **Client Name:** ${p.clientName || 'Assigned Client'}\n` +
+          `• **Pre-Sales Lead Note:** This project was initiated directly in the ERP rather than through a pre-sales inquiry entry in the Leads Pipeline.\n\n` +
+          `Would you like to review project tasks or open the project overview?`,
+        actionTaken: 'PROJECT_STATUS_QUERY',
+        suggestedPrompts: [
+          `Show BOQ budget and variance for ${p.name}`,
+          'How many projects are active today?',
+          'Show all active leads in sales pipeline',
+        ],
+      };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 5. FALLBACK: GENERAL SALES PIPELINE REGISTER (Summary)
+  // --------------------------------------------------------------------------
   const stagesCount: Record<string, number> = {};
   leads.forEach((l) => {
     stagesCount[l.stage] = (stagesCount[l.stage] || 0) + 1;
   });
 
   const wonCount = stagesCount['LEAD_WON'] || 0;
-  const winRate = Math.round((wonCount / leads.length) * 100);
+  const winRate = leads.length > 0 ? Math.round((wonCount / leads.length) * 100) : 0;
 
   let msg = `📈 **Sales Leads & Client Inquiries Pipeline Register**\n`;
   msg += `Currently tracking **${leads.length} active leads** (${wonCount} won, **${winRate}% conversion rate**):\n\n`;
 
   leads.slice(0, 8).forEach((l, idx) => {
-    const stageBadge = l.stage === 'LEAD_WON' ? '✓ WON / CONVERTED' : l.stage.replace(/_/g, ' ');
+    const stageBadge = l.stage === 'LEAD_WON' ? '✓ WON / CONVERTED' : formatStageName(l.stage);
     msg += `### 📋 ${idx + 1}. ${l.clientName} [\`${l.leadNumber}\`]\n`;
     msg += `• **Stage:** **${stageBadge}**  |  **Budget:** ${l.budgetRange.replace(/_/g, ' ')}\n`;
     msg += `• **Project Type:** ${l.projectType.replace(/_/g, ' ')}\n`;
@@ -856,10 +1168,10 @@ export async function handleLeadQuery(cleanPrompt: string, user?: any): Promise<
     message: msg,
     actionTaken: 'LEAD_LIST_QUERY',
     suggestedPrompts: [
-      `Show details of lead ${leads[0].leadNumber}`,
+      `What is the lead status of ${leads[0].clientName}`,
+      'How many lead today',
+      'How many lead converted',
       'How to convert lead to project?',
-      'Show all recent client quotations',
-      'What is the difference between BOQ and quotation?',
     ],
   };
 }

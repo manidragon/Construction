@@ -8,7 +8,6 @@ export const getWorkers = async (req: Request, res: Response) => {
     const { projectId, trade, search } = req.query;
 
     const where: any = { isActive: true };
-    if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (trade && typeof trade === 'string') where.trade = trade;
     if (search && typeof search === 'string') {
       where.OR = [
@@ -18,10 +17,23 @@ export const getWorkers = async (req: Request, res: Response) => {
       ];
     }
 
+    if (projectId && typeof projectId === 'string') {
+      where.OR = [
+        { projectId: projectId },
+        { projectAssignments: { some: { projectId } } },
+        { attendances: { some: { projectId } } },
+      ];
+    }
+
     const workers = await prisma.worker.findMany({
       where,
       include: {
         project: { select: { id: true, code: true, name: true } },
+        projectAssignments: {
+          include: {
+            project: { select: { id: true, code: true, name: true } },
+          },
+        },
       },
       orderBy: { workerCode: 'asc' },
     });
@@ -32,17 +44,44 @@ export const getWorkers = async (req: Request, res: Response) => {
   }
 };
 
-export const getNextWorkerCode = async (req: Request, res: Response) => {
-  try {
-    const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
-    let maxNum = 0;
-    for (const w of allWorkers) {
-      if (w.workerCode && w.workerCode.startsWith('WRK-')) {
-        const num = parseInt(w.workerCode.replace('WRK-', ''), 10);
+export function computeGlobalNextWorkerCode(allWorkers: { workerCode: string | null }[]): string {
+  let maxNum = 0;
+  let useThreeDigits = false;
+
+  for (const w of allWorkers) {
+    if (!w.workerCode) continue;
+    const trimmed = w.workerCode.trim();
+    // Match WRK-01, WRK-001, WRK-1, etc.
+    const match = trimmed.match(/^WRK[-_\s]?(\d+)$/i);
+    if (match) {
+      const numStr = match[1];
+      const num = parseInt(numStr, 10);
+      if (!isNaN(num)) {
+        if (num > maxNum) maxNum = num;
+        // If user already had 3-digit codes in system, preserve 3-digit format
+        if (numStr.length >= 3) {
+          useThreeDigits = true;
+        }
+      }
+    } else {
+      const digitsMatch = trimmed.match(/(\d+)$/);
+      if (digitsMatch) {
+        const num = parseInt(digitsMatch[1], 10);
         if (!isNaN(num) && num > maxNum) maxNum = num;
       }
     }
-    const nextWorkerCode = `WRK-${String(maxNum + 1).padStart(3, '0')}`;
+  }
+
+  const nextNum = maxNum + 1;
+  const padLength = useThreeDigits ? Math.max(3, String(nextNum).length) : Math.max(2, String(nextNum).length);
+  return `WRK-${String(nextNum).padStart(padLength, '0')}`;
+}
+
+export const getNextWorkerCode = async (req: Request, res: Response) => {
+  try {
+    // Global sequence across entire enterprise / all projects
+    const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
+    const nextWorkerCode = computeGlobalNextWorkerCode(allWorkers);
     return res.json({ success: true, nextWorkerCode });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -87,37 +126,23 @@ export const createWorker = async (req: Request, res: Response) => {
       }
     }
 
-    // Auto-generate worker code if not supplied or empty
+    // Auto-generate global worker code across all projects if not supplied or empty
     let finalCode = workerCode ? String(workerCode).trim() : '';
     if (!finalCode) {
       const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
-      let maxNum = 0;
-      for (const w of allWorkers) {
-        if (w.workerCode && w.workerCode.startsWith('WRK-')) {
-          const num = parseInt(w.workerCode.replace('WRK-', ''), 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
-        }
-      }
-      finalCode = `WRK-${String(maxNum + 1).padStart(3, '0')}`;
+      finalCode = computeGlobalNextWorkerCode(allWorkers);
     } else {
-      // Check if code already exists
+      // Check if code already exists globally
       const existing = await prisma.worker.findUnique({
         where: { workerCode: finalCode },
       });
       if (existing) {
-        // Find next available code to suggest in the message
+        // Find next available global code to suggest
         const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
-        let maxNum = 0;
-        for (const w of allWorkers) {
-          if (w.workerCode && w.workerCode.startsWith('WRK-')) {
-            const num = parseInt(w.workerCode.replace('WRK-', ''), 10);
-            if (!isNaN(num) && num > maxNum) maxNum = num;
-          }
-        }
-        const suggestedCode = `WRK-${String(maxNum + 1).padStart(3, '0')}`;
+        const suggestedCode = computeGlobalNextWorkerCode(allWorkers);
         return res.status(400).json({
           success: false,
-          message: `Worker Code "${finalCode}" is already in use by "${existing.name}". Please enter a unique code (suggested: ${suggestedCode}).`,
+          message: `Worker code ${finalCode} is already assigned to ${existing.name}. Next sequential code is ${suggestedCode}.`,
           suggestedCode,
         });
       }
@@ -142,6 +167,27 @@ export const createWorker = async (req: Request, res: Response) => {
       },
     });
 
+    // Also register initial project assignment if created within a project
+    if (projectId) {
+      try {
+        await prisma.projectWorker.upsert({
+          where: {
+            projectId_workerId: {
+              projectId,
+              workerId: worker.id,
+            },
+          },
+          create: {
+            projectId,
+            workerId: worker.id,
+          },
+          update: {},
+        });
+      } catch (err) {
+        console.warn('Could not auto-create project worker relation:', err);
+      }
+    }
+
     await logAudit(req.user?.id, 'CREATE_WORKER', 'WORKER', worker.id, { workerCode: finalCode, name }, req.ip);
 
     return res.status(201).json({ success: true, worker });
@@ -149,7 +195,7 @@ export const createWorker = async (req: Request, res: Response) => {
     if (error.code === 'P2002') {
       return res.status(400).json({
         success: false,
-        message: 'A worker with this code already exists. Please choose a different worker code.',
+        message: 'Worker code or worker already exists.',
       });
     }
     return res.status(500).json({ success: false, message: error.message || 'Failed to create worker.' });
@@ -223,18 +269,17 @@ export const updateWorker = async (req: Request, res: Response) => {
       }
     }
 
-    // If workerCode changed, check uniqueness
-    if (workerCode && workerCode !== existing.workerCode) {
-      const duplicate = await prisma.worker.findUnique({ where: { workerCode } });
-      if (duplicate && duplicate.id !== id) {
-        return res.status(400).json({ success: false, message: `Worker code ${workerCode} is already taken.` });
-      }
+    // Worker Code is immutable once assigned. Disallow changing worker code.
+    if (workerCode && String(workerCode).trim() !== existing.workerCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Worker Code cannot be changed once assigned.',
+      });
     }
 
     const updated = await prisma.worker.update({
       where: { id },
       data: {
-        ...(workerCode ? { workerCode: String(workerCode).trim() } : {}),
         ...(name ? { name: String(name).trim() } : {}),
         ...(phone !== undefined ? { phone: phone ? String(phone).trim() : null } : {}),
         ...(trade ? { trade } : {}),
@@ -251,6 +296,11 @@ export const updateWorker = async (req: Request, res: Response) => {
       },
       include: {
         project: { select: { id: true, code: true, name: true } },
+        projectAssignments: {
+          include: {
+            project: { select: { id: true, code: true, name: true } },
+          },
+        },
       },
     });
 
@@ -892,5 +942,103 @@ export const deleteWagePayment = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const assignWorkerToProject = async (req: Request, res: Response) => {
+  try {
+    const { projectId, workerId, workerIds } = req.body;
+    const targetProjectId = projectId || (req.params as any).projectId;
+
+    if (!targetProjectId) {
+      return res.status(400).json({ success: false, message: 'Project ID is required.' });
+    }
+
+    const targetProject = await prisma.project.findUnique({ where: { id: targetProjectId } });
+    if (!targetProject) {
+      return res.status(404).json({ success: false, message: 'Project not found.' });
+    }
+
+    const idsToAssign: string[] = [];
+    if (Array.isArray(workerIds)) {
+      idsToAssign.push(...workerIds);
+    } else if (workerId) {
+      idsToAssign.push(workerId);
+    }
+
+    if (idsToAssign.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select at least one worker to assign.' });
+    }
+
+    const assigned: any[] = [];
+    for (const wId of idsToAssign) {
+      const worker = await prisma.worker.findUnique({ where: { id: wId } });
+      if (!worker) continue;
+
+      await prisma.projectWorker.upsert({
+        where: {
+          projectId_workerId: {
+            projectId: targetProjectId,
+            workerId: wId,
+          },
+        },
+        create: {
+          projectId: targetProjectId,
+          workerId: wId,
+        },
+        update: {},
+      });
+
+      // If worker doesn't have a primary project, set this as primary
+      if (!worker.projectId) {
+        await prisma.worker.update({
+          where: { id: wId },
+          data: { projectId: targetProjectId },
+        });
+      }
+
+      assigned.push({ workerId: wId, name: worker.name, workerCode: worker.workerCode });
+    }
+
+    await logAudit(
+      req.user?.id,
+      'ASSIGN_WORKERS_TO_PROJECT',
+      'PROJECT',
+      targetProjectId,
+      { project: targetProject.name, count: assigned.length, workers: assigned },
+      req.ip
+    );
+
+    return res.json({
+      success: true,
+      message: `Successfully added ${assigned.length} worker(s) to "${targetProject.name}".`,
+      assigned,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message || 'Failed to assign worker(s).' });
+  }
+};
+
+export const unassignWorkerFromProject = async (req: Request, res: Response) => {
+  try {
+    const { projectId, workerId } = req.body;
+    const targetProjectId = projectId || (req.params as any).projectId;
+    const targetWorkerId = workerId || (req.params as any).workerId;
+
+    if (!targetProjectId || !targetWorkerId) {
+      return res.status(400).json({ success: false, message: 'Project ID and Worker ID are required.' });
+    }
+
+    await prisma.projectWorker.deleteMany({
+      where: {
+        projectId: targetProjectId,
+        workerId: targetWorkerId,
+      },
+    });
+
+    return res.json({ success: true, message: 'Worker unassigned from project workforce.' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message || 'Failed to unassign worker.' });
+  }
+};
+
 
 

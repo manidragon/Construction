@@ -18,6 +18,7 @@ export async function postBalancedJournalEntry({
   narration,
   lines,
   createdById,
+  tx,
 }: {
   entryDate?: Date;
   referenceType: string;
@@ -25,6 +26,7 @@ export async function postBalancedJournalEntry({
   narration: string;
   lines: JournalLineInput[];
   createdById?: string;
+  tx?: any;
 }) {
   // Validate total debits equal total credits within 0.01 tolerance
   const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
@@ -36,13 +38,13 @@ export async function postBalancedJournalEntry({
     );
   }
 
-  // Generate unique entry number
-  const entryCount = await prisma.journalEntry.count();
+  // Generate unique entry number using either tx or prisma
+  const client = tx || prisma;
+  const entryCount = await client.journalEntry.count();
   const entryNumber = `JE-${new Date().getFullYear()}-${String(entryCount + 1).padStart(5, '0')}-${Date.now().toString().slice(-4)}`;
 
-  // Execute inside atomic transaction
-  return await prisma.$transaction(async (tx) => {
-    const journalEntry = await tx.journalEntry.create({
+  const executeEntry = async (txClient: any) => {
+    const journalEntry = await txClient.journalEntry.create({
       data: {
         entryNumber,
         entryDate: entryDate || new Date(),
@@ -57,13 +59,13 @@ export async function postBalancedJournalEntry({
     for (const line of lines) {
       if (line.debit === 0 && line.credit === 0) continue;
 
-      let account = await tx.account.findUnique({
+      let account = await txClient.account.findUnique({
         where: { code: line.accountCode },
       });
 
       if (!account) {
         // Create standard account if missing
-        account = await tx.account.create({
+        account = await txClient.account.create({
           data: {
             code: line.accountCode,
             name: line.accountCode.replace(/_/g, ' '),
@@ -75,7 +77,7 @@ export async function postBalancedJournalEntry({
       }
 
       // Create journal line
-      await tx.journalLine.create({
+      await txClient.journalLine.create({
         data: {
           journalEntryId: journalEntry.id,
           accountId: account.id,
@@ -95,7 +97,7 @@ export async function postBalancedJournalEntry({
         balanceDelta = line.credit - line.debit;
       }
 
-      await tx.account.update({
+      await txClient.account.update({
         where: { id: account.id },
         data: {
           currentBalance: { increment: balanceDelta },
@@ -104,7 +106,17 @@ export async function postBalancedJournalEntry({
     }
 
     return journalEntry;
-  });
+  };
+
+  // If already inside an existing transaction, execute directly on tx to avoid nested SQLite lock timeouts
+  if (tx) {
+    return await executeEntry(tx);
+  }
+
+  // Otherwise create a standalone transaction with a safe 15s timeout
+  return await prisma.$transaction(async (innerTx) => {
+    return await executeEntry(innerTx);
+  }, { timeout: 15000 });
 }
 
 function determineAccountType(code: string): string {

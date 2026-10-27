@@ -197,7 +197,7 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950 overflow-y-auto">
       {/* Background Decorative Gradients */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
@@ -206,96 +206,96 @@ export const Login: React.FC = () => {
       </div>
 
       {/* Header */}
-      <header className="relative z-10 max-w-7xl mx-auto w-full px-6 py-6 flex items-center justify-between border-b border-slate-800/80">
+      <header className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between border-b border-slate-800/80">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 font-black">
-            <HardHat className="w-6 h-6 stroke-[2.2]" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 font-black">
+            <HardHat className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
           </div>
           <div>
-            <div className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+            <div className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
               APEX<span className="text-amber-500">BUILD</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-widest">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-widest hidden sm:inline-block">
                 ERP Enterprise
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Civil & Infrastructure Engineering Operations</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400">Civil & Infrastructure Engineering Operations</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <Link
             to="/signup"
-            className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold text-xs flex items-center gap-1.5 transition"
+            className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold text-xs flex items-center gap-1.5 transition"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Start 14-Day Free Trial</span>
           </Link>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 font-mono">
+          <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 font-mono">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>GST / RERA / Schedule-III Compliant</span>
+            <span>GST / RERA Compliant</span>
           </div>
         </div>
       </header>
 
       {/* Main Content: Split Hero & Login */}
-      <main className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 flex-1 flex flex-col lg:flex-row items-center gap-12">
+      <main className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 sm:py-6 flex-1 flex flex-col lg:flex-row items-center lg:items-start gap-8 lg:gap-10">
         {/* Left: Traditional Login & Enterprise Value */}
-        <div className="w-full lg:w-5/12 space-y-6">
+        <div className="w-full lg:w-5/12 space-y-4 sm:space-y-5">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-xs text-amber-400 mb-3">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] text-amber-400 mb-2">
+              <Sparkles className="w-3 h-3" />
               <span>Full-Spectrum Multi-Tenant Construction Cloud</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-              Site Operations, BOQ Costing & Real Double-Entry Accounts.
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-snug">
+              Site Operations, BOQ Costing & Balanced Accounts.
             </h1>
-            <p className="text-slate-400 text-sm mt-3 leading-relaxed">
+            <p className="text-slate-400 text-xs sm:text-sm mt-2 leading-relaxed">
               From heavy machinery telemetry to running account (RA) client billing with retention and strict balanced general ledgers.
             </p>
           </div>
 
           {/* Login Card */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-2xl backdrop-blur-xl">
-            <h2 className="text-lg font-bold text-white mb-1">Sign in to Console</h2>
-            <p className="text-xs text-slate-400 mb-5">
-              Enter your corporate email address or select a 1-click persona on the right.
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-2xl backdrop-blur-xl">
+            <h2 className="text-base sm:text-lg font-bold text-white mb-0.5">Sign in to Console</h2>
+            <p className="text-[11px] sm:text-xs text-slate-400 mb-4">
+              Enter your corporate credentials or click any demo role on the right.
             </p>
 
             {error && (
-              <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+              <div className="p-2.5 mb-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
                 <span className="font-bold">Error:</span> {error}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1.5">Corporate Email</label>
+                <label className="block text-slate-300 font-semibold mb-1">Corporate Email</label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
+                  <Mail className="w-4 h-4 absolute left-3.5 top-2.5 text-slate-500" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-4 py-2.5 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-4 py-2 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition text-xs"
                     placeholder="user@apexbuild.com"
                   />
                 </div>
               </div>
 
               <div>
-                <div className="flex justify-between items-center mb-1.5">
+                <div className="flex justify-between items-center mb-1">
                   <label className="block text-slate-300 font-semibold">Password</label>
-                  <span className="text-[11px] text-slate-500">Default: Password@123 (SuperAdmin: SuperAdmin@123)</span>
+                  <span className="text-[10px] text-slate-500">Default: Password@123</span>
                 </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
+                  <Lock className="w-4 h-4 absolute left-3.5 top-2.5 text-slate-500" />
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-4 py-2.5 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition font-mono"
+                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-4 py-2 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition font-mono text-xs"
                     placeholder="••••••••"
                   />
                 </div>
@@ -304,19 +304,19 @@ export const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition disabled:opacity-50"
+                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-1"
               >
                 {loading ? 'Authenticating...' : 'Sign In to Workspace'}
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              <div className="pt-4 border-t border-slate-800 text-center">
-                <p className="text-xs text-slate-400">
+              <div className="pt-3 border-t border-slate-800 text-center">
+                <p className="text-[11px] text-slate-400">
                   New Construction or Interior Firm?
                 </p>
                 <Link
                   to="/signup"
-                  className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-amber-400 hover:text-amber-300 transition group"
+                  className="inline-flex items-center gap-1.5 mt-1 text-xs font-bold text-amber-400 hover:text-amber-300 transition group"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   <span>Start 14-Day Free Trial</span>
@@ -329,58 +329,58 @@ export const Login: React.FC = () => {
 
         {/* Right: 1-Click Interactive Demo Role Switcher Panel */}
         <div className="w-full lg:w-7/12">
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 pb-3 border-b border-slate-800">
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 sm:p-5 backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-2.5 border-b border-slate-800">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-amber-400" />
                   Instant 1-Click Persona Login
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Click any card below to test Super Admin, Active Trials, Expired Trials, or Site Roles.
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Click any persona below to quickly test Super Admin, Active Trials, or Site Roles.
                 </p>
               </div>
-              <span className="font-mono text-[11px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
-                11 Multi-Tenant Personas
+              <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
+                11 Roles Available
               </span>
             </div>
 
             {/* Grid of Enterprise Roles */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[520px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
               {DEMO_ROLES.map((r) => {
                 const IconComponent = r.icon;
                 return (
                   <div
                     key={r.role + r.email}
                     onClick={() => handleQuickDemoLogin(r)}
-                    className="p-3.5 rounded-xl bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 transition cursor-pointer group flex flex-col justify-between"
+                    className="p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 transition cursor-pointer group flex flex-col justify-between"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-lg bg-gradient-to-tr ${r.color} text-slate-950`}>
-                            <IconComponent className="w-4 h-4" />
+                      <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`p-1.5 rounded-lg bg-gradient-to-tr ${r.color} text-slate-950 shrink-0`}>
+                            <IconComponent className="w-3.5 h-3.5" />
                           </div>
-                          <div>
-                            <div className="font-bold text-white text-xs group-hover:text-amber-400 transition">
+                          <div className="min-w-0">
+                            <div className="font-bold text-white text-xs group-hover:text-amber-400 transition truncate">
                               {r.name}
                             </div>
-                            <div className="text-[10px] text-slate-400">{r.title}</div>
+                            <div className="text-[9px] text-slate-400 truncate">{r.title}</div>
                           </div>
                         </div>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${r.badge}`}>
+                        <span className={`text-[8.5px] uppercase font-bold px-1.5 py-0.5 rounded border shrink-0 ${r.badge}`}>
                           {r.role.replace('_', ' ')}
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                      <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
                         {r.description}
                       </p>
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[10px]">
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[9.5px]">
                       <span className="font-mono text-slate-500 truncate">{r.email}</span>
-                      <span className="text-amber-400 font-bold group-hover:translate-x-0.5 transition flex items-center gap-0.5">
+                      <span className="text-amber-400 font-bold group-hover:translate-x-0.5 transition flex items-center gap-0.5 shrink-0">
                         Login &rarr;
                       </span>
                     </div>
@@ -393,10 +393,10 @@ export const Login: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 max-w-7xl mx-auto w-full px-6 py-4 text-center text-xs text-slate-600 border-t border-slate-900 flex flex-wrap items-center justify-center gap-2">
+      <footer className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-3 text-center text-[11px] text-slate-500 border-t border-slate-900 flex flex-wrap items-center justify-center gap-2 mb-2">
         <span>ApexBuild Infra ERP Platform • Double-Entry Accounting Engine • Construction & Interior Operations</span>
         <span className="hidden sm:inline text-slate-700">|</span>
-        <Link to="/platform-admin/login" className="text-slate-500 hover:text-indigo-400 font-semibold transition">
+        <Link to="/platform-admin/login" className="text-slate-400 hover:text-indigo-400 font-semibold transition">
           SaaS Platform Operator Portal ↗
         </Link>
       </footer>

@@ -402,10 +402,11 @@ export const disburseSalary = async (req: Request, res: Response) => {
             credit: netPaid,
           },
         ],
+        tx,
       });
 
       return created;
-    });
+    }, { timeout: 15000 });
 
     await logAudit(req.user?.id, 'DISBURSE_SALARY', 'STAFF_SALARY', payment.id, { staffName: staff.name, netPaid, paymentNumber }, req.ip);
 
@@ -601,10 +602,11 @@ export const createOfficeExpense = async (req: Request, res: Response) => {
             credit: expAmount,
           },
         ],
+        tx,
       });
 
       return created;
-    });
+    }, { timeout: 15000 });
 
     await logAudit(req.user?.id, 'CREATE_OFFICE_EXPENSE', 'OFFICE_EXPENSE', expense.id, { expenseNumber, title, amount: expAmount }, req.ip);
 

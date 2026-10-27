@@ -48,26 +48,53 @@ const findMatchedProject = async (text: string) => {
   });
   const lower = text.toLowerCase();
 
-  // 1. Direct name or code inclusion
-  let matched = projects.find(
-    (p) => lower.includes(p.name.toLowerCase()) || lower.includes(p.code.toLowerCase())
-  );
-  if (matched) return matched;
+  // 1. Exact project name or code match in text
+  for (const p of projects) {
+    if (p.code && lower.includes(p.code.toLowerCase())) return p;
+    if (p.name && lower.includes(p.name.toLowerCase())) return p;
+  }
 
-  // 2. Keyword match against project name words (length > 3)
-  matched = projects.find((p) => {
-    const words = p.name.toLowerCase().split(/[\s-]+/).filter((w) => w.length > 3);
-    return words.some((w) => lower.includes(w));
-  });
-  if (matched) return matched;
+  // Common stop words to deprioritize in fuzzy matching
+  const stopWords = new Set(['project', 'house', 'site', 'work', 'theni', 'luxury', 'phase', 'tower', 'apartments', 'villa', 'from', 'with', 'received', 'payment', 'paid']);
 
-  // 3. Match client name words
-  matched = projects.find((p) => {
-    if (!p.clientName) return false;
-    const words = p.clientName.toLowerCase().split(/[\s-]+/).filter((w) => w.length > 3);
-    return words.some((w) => lower.includes(w));
-  });
-  return matched || null;
+  // 2. Score by matching whole distinctive words (\bword\b)
+  let bestProject: any = null;
+  let bestScore = 0;
+
+  for (const p of projects) {
+    let score = 0;
+    // Project name words
+    const nameWords = p.name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+    for (const w of nameWords) {
+      const regex = new RegExp(`\\b${w}\\b`, 'i');
+      if (regex.test(text)) {
+        score += stopWords.has(w) ? 1 : 4;
+      }
+    }
+
+    // Client name words
+    if (p.clientName) {
+      const clientWords = p.clientName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+      for (const w of clientWords) {
+        const regex = new RegExp(`\\b${w}\\b`, 'i');
+        if (regex.test(text)) {
+          score += stopWords.has(w) ? 1 : 3;
+        }
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestProject = p;
+    }
+  }
+
+  // Require at least score >= 3 (or distinctive match)
+  if (bestScore >= 3) {
+    return bestProject;
+  }
+
+  return null;
 };
 
 // Helper: match client from natural language prompt
@@ -187,6 +214,12 @@ export const processAIPrompt = async (req: Request, res: Response) => {
     // =============================================================
     const isAddLeadIntent =
       (lower.includes('lead') || lower.includes('inquiry') || lower.includes('prospect')) &&
+      !lower.includes('how many') &&
+      !lower.includes('count') &&
+      !lower.includes('status') &&
+      !lower.includes('converted') &&
+      !lower.includes('today') &&
+      !lower.includes('what is') &&
       (lower.includes('got a') ||
         lower.includes('new lead') ||
         lower.includes('add lead') ||
@@ -2436,7 +2469,14 @@ export const processAIPrompt = async (req: Request, res: Response) => {
 
       const matchedProj = await findMatchedProject(cleanPrompt);
       const allProjects = await prisma.project.findMany();
-      const targetProj = matchedProj || allProjects[0];
+      const targetProj = matchedProj;
+
+      if (!targetProj) {
+        return res.json({
+          reply: `I could not clearly identify which project this payment of ${formatINR(amount)} belongs to. Please specify the project name (e.g., "${allProjects.slice(0, 3).map((p) => p.name).join('", "')}").`,
+          actionType: 'CLARIFY_PROJECT',
+        });
+      }
 
       if (targetProj && amount > 0) {
         const openInv = await prisma.clientInvoice.findFirst({

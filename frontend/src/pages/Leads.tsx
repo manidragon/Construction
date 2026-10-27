@@ -73,16 +73,42 @@ const BUDGET_RANGE_LABELS: Record<LeadBudgetRange, string> = {
   '2.5CR_PLUS': '₹2.5 Crores+',
 };
 
-const SOURCE_LABELS: Record<LeadSource, string> = {
-  WEBSITE: 'Website Inquiry',
-  INSTAGRAM: 'Instagram / Social Media',
-  REFERRAL: 'Client Referral',
-  ARCHITECT_REFERRAL: 'Architect Referral',
-  WALKIN: 'Walk-in Studio',
+const SOURCE_LABELS: Record<string, string> = {
+  ARCHITECT_REFERRAL: 'Architect & Interior Designer Referral',
+  REFERRAL: 'Client / Word-of-Mouth Referral',
+  SITE_BRANDING: 'Site Signboard & On-Site Branding',
+  WALKIN: 'Walk-in / Studio & Office Visit',
+  REAL_ESTATE_BROKER: 'Real Estate Consultant / Broker Referral',
+  VENDOR_REFERRAL: 'Subcontractor / Material Supplier Referral',
+  ENGINEER_REFERRAL: 'Civil Engineer / Structural Consultant',
+  INSTAGRAM: 'Instagram / Meta Social Media',
+  WEBSITE: 'Website & Google Local Search',
   GOOGLE_ADS: 'Google Search Ads',
-  PROPERTY_EXPO: 'Real Estate / Property Expo',
+  DIRECT_ENQUIRY: 'Direct Enquiry / Personal Network',
+  REPEAT_CLIENT: 'Repeat Client / Phase-2 Job Works',
   OTHER: 'Other Channel',
 };
+
+const formatSource = (source?: string) => {
+  if (!source) return 'Not Specified';
+  return SOURCE_LABELS[source] || source.replace(/_/g, ' ');
+};
+
+const LEAD_SOURCE_FALLBACK_OPTIONS = [
+  { label: 'Architect & Interior Designer Referral', value: 'ARCHITECT_REFERRAL' },
+  { label: 'Client / Word-of-Mouth Referral', value: 'REFERRAL' },
+  { label: 'Site Signboard & On-Site Branding', value: 'SITE_BRANDING' },
+  { label: 'Walk-in / Studio & Office Visit', value: 'WALKIN' },
+  { label: 'Real Estate Consultant / Broker Referral', value: 'REAL_ESTATE_BROKER' },
+  { label: 'Subcontractor / Material Supplier Referral', value: 'VENDOR_REFERRAL' },
+  { label: 'Civil Engineer / Structural Consultant', value: 'ENGINEER_REFERRAL' },
+  { label: 'Instagram / Meta Social Media', value: 'INSTAGRAM' },
+  { label: 'Website & Google Local Search', value: 'WEBSITE' },
+  { label: 'Google Search Ads', value: 'GOOGLE_ADS' },
+  { label: 'Direct Enquiry / Personal Network', value: 'DIRECT_ENQUIRY' },
+  { label: 'Repeat Client / Phase-2 Job Works', value: 'REPEAT_CLIENT' },
+  { label: 'Other Channel', value: 'OTHER' },
+];
 
 const formatBudget = (budget?: string) => {
   if (!budget) return 'Budget: Flexible';
@@ -125,7 +151,7 @@ export const Leads: React.FC = () => {
     state: 'Karnataka',
     projectType: 'RESIDENTIAL_INTERIOR' as LeadProjectType,
     budgetRange: '25L_50L' as LeadBudgetRange,
-    source: 'WEBSITE' as LeadSource,
+    source: 'ARCHITECT_REFERRAL' as LeadSource,
     stage: 'NEW_LEAD' as LeadStage,
     assignedTeam: 'DESIGN_TEAM' as AssignedTeam,
     assignedProjectManagerId: '',
@@ -165,7 +191,7 @@ export const Leads: React.FC = () => {
     state: 'Karnataka',
     projectType: 'RESIDENTIAL_INTERIOR' as LeadProjectType,
     budgetRange: '25L_50L' as LeadBudgetRange,
-    source: 'WEBSITE' as LeadSource,
+    source: 'ARCHITECT_REFERRAL' as LeadSource,
     stage: 'NEW_LEAD' as LeadStage,
     assignedTeam: 'DESIGN_TEAM' as AssignedTeam,
     assignedProjectManagerId: '',
@@ -986,6 +1012,7 @@ export const Leads: React.FC = () => {
                     category="LeadSource"
                     value={formData.source}
                     onChange={(val) => setFormData({ ...formData, source: val as any })}
+                    fallbackOptions={LEAD_SOURCE_FALLBACK_OPTIONS}
                     className="!bg-white !border-slate-300 !text-slate-900 !py-2 !rounded-lg !text-xs font-semibold"
                   />
                 </div>
@@ -1287,20 +1314,13 @@ export const Leads: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-slate-700 font-semibold mb-1">Lead Source</label>
-                  <select
+                  <DynamicSelect
+                    category="LeadSource"
                     value={editFormData.source}
-                    onChange={(e) => setEditFormData({ ...editFormData, source: e.target.value as LeadSource })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
-                  >
-                    <option value="WEBSITE">Website Inquiry</option>
-                    <option value="INSTAGRAM">Instagram / Social Media</option>
-                    <option value="REFERRAL">Client Referral</option>
-                    <option value="ARCHITECT_REFERRAL">Architect Referral</option>
-                    <option value="WALKIN">Walk-in Studio</option>
-                    <option value="GOOGLE_ADS">Google Search Ads</option>
-                    <option value="PROPERTY_EXPO">Real Estate / Property Expo</option>
-                    <option value="OTHER">Other Channel</option>
-                  </select>
+                    onChange={(val) => setEditFormData({ ...editFormData, source: val as LeadSource })}
+                    fallbackOptions={LEAD_SOURCE_FALLBACK_OPTIONS}
+                    className="!bg-white !border-slate-300 !text-slate-900 !py-2 !rounded-lg !text-xs font-semibold"
+                  />
                 </div>
               </div>
 
@@ -1482,7 +1502,7 @@ export const Leads: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block font-semibold uppercase">Lead Source</span>
-                  <span className="font-medium text-slate-700">{SOURCE_LABELS[selectedLeadForDetail.source]}</span>
+                  <span className="font-medium text-slate-700">{formatSource(selectedLeadForDetail.source)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block font-semibold uppercase">Assigned Team</span>

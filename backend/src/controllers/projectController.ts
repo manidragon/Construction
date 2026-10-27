@@ -41,6 +41,16 @@ export const getProjects = async (req: Request, res: Response) => {
             balanceDue: true,
           },
         },
+        expenses: {
+          select: { totalAmount: true },
+        },
+        purchaseOrders: {
+          where: { status: { not: 'CANCELLED' } },
+          select: { totalAmount: true },
+        },
+        labourAttendances: {
+          select: { totalWageEarned: true },
+        },
         members: {
           include: {
             user: { select: { id: true, name: true, role: true, email: true } },
@@ -70,6 +80,13 @@ export const getProjects = async (req: Request, res: Response) => {
         .reduce((sum, rcp) => sum + rcp.amount, 0);
       const outstandingReceivable = Math.max(0, totalBilled - totalReceived);
 
+      const expensesCost = (p.expenses || []).reduce((sum: number, e: any) => sum + (e.totalAmount || 0), 0);
+      const materialsCost = (p.purchaseOrders || []).reduce((sum: number, po: any) => sum + (po.totalAmount || 0), 0);
+      const labourCost = (p.labourAttendances || []).reduce((sum: number, att: any) => sum + (att.totalWageEarned || 0), 0);
+      const actualCost = expensesCost + materialsCost + labourCost;
+      const balanceCash = totalReceived - actualCost;
+      const remainingContract = Math.max(0, p.contractValue - actualCost);
+
       return {
         ...p,
         financials: {
@@ -78,6 +95,12 @@ export const getProjects = async (req: Request, res: Response) => {
           cashReceived,
           bankReceived,
           outstandingReceivable,
+          expensesCost,
+          materialsCost,
+          labourCost,
+          actualCost,
+          balanceCash,
+          remainingContract,
         },
       };
     });
@@ -254,6 +277,46 @@ export const getProjectById = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Sequential Project Code Generator: PRJ-YYYY-NNN
+ */
+export const getNextProjectCode = async (req?: Request, res?: Response) => {
+  try {
+    const currentYear = new Date().getFullYear();
+    const prefix = `PRJ-${currentYear}-`;
+
+    const latest = await prisma.project.findFirst({
+      where: { code: { startsWith: prefix } },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    });
+
+    let nextSeq = 1;
+    if (latest && latest.code) {
+      const parts = latest.code.split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(num)) {
+        nextSeq = num + 1;
+      }
+    } else {
+      const count = await prisma.project.count();
+      nextSeq = count + 1;
+    }
+
+    const nextProjectCode = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
+    if (res) {
+      return res.json({ success: true, nextProjectCode, nextSeq });
+    }
+    return { nextProjectCode, nextSeq };
+  } catch (error: any) {
+    if (res) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+    throw error;
+  }
+};
+
 export const createProject = async (req: Request, res: Response) => {
   try {
     const {
@@ -276,42 +339,65 @@ export const createProject = async (req: Request, res: Response) => {
       plannedEndDate,
       paymentTerms,
       taxRatePercent,
+      quotationId, // Optional: if converted from a Client Quotation
     } = req.body;
 
-    if (!code || !name || !clientName || !siteAddress || !plannedStartDate || !plannedEndDate) {
+    let finalCode = code ? String(code).trim() : '';
+    if (!finalCode) {
+      const generated = await getNextProjectCode();
+      finalCode = (generated as any).nextProjectCode;
+    }
+
+    if (!finalCode || !name || !clientName || !siteAddress || !plannedStartDate || !plannedEndDate) {
       return res.status(400).json({ success: false, message: 'Required fields are missing.' });
     }
 
-    const existing = await prisma.project.findUnique({ where: { code } });
+    const existing = await prisma.project.findUnique({ where: { code: finalCode } });
     if (existing) {
-      return res.status(400).json({ success: false, message: `Project code '${code}' already exists.` });
+      return res.status(400).json({ success: false, message: `Project code '${finalCode}' already exists.` });
     }
 
     const tenantId = (req as any).user?.companyId || null;
 
+    // Check if quotationId is provided
+    let quotation: any = null;
+    if (quotationId) {
+      quotation = await prisma.quotation.findUnique({
+        where: { id: String(quotationId) },
+        include: { items: true, lead: true },
+      });
+    }
+
+    const finalClientContact = clientContact ? String(clientContact).replace(/\s+/g, '').trim() : (quotation?.clientPhone || null);
+    const finalClientEmail = clientEmail || quotation?.clientEmail || null;
+    const finalBillingAddr = clientBillingAddr || quotation?.siteAddress || null;
+    const finalPaymentTerms = paymentTerms || (quotation?.milestoneTerms ? 'Milestone terms per quotation' : null);
+    const finalTaxRate = Number(taxRatePercent) || quotation?.gstPercent || 18.0;
+
     const project = await prisma.project.create({
       data: {
         tenantId,
-        code,
+        code: finalCode,
         name,
-        description,
+        description: description || (quotation ? `Project converted from Quotation ${quotation.quotationNumber}. Scope: ${quotation.projectType.replace(/_/g, ' ')}` : null),
         clientName,
-        clientContact: clientContact ? String(clientContact).replace(/\s+/g, '').trim() : null,
-        clientEmail,
-        clientBillingAddr,
+        clientContact: finalClientContact,
+        clientEmail: finalClientEmail,
+        clientBillingAddr: finalBillingAddr,
         clientGstin,
         siteAddress,
         city: city || 'Bengaluru',
         state: state || 'Karnataka',
         projectType: projectType || 'RESIDENTIAL',
         contractType: contractType || 'ITEM_RATE',
-        contractValue: Number(contractValue) || 0,
-        approvedBudget: Number(approvedBudget) || 0,
+        contractValue: Number(contractValue) || (quotation ? quotation.totalAmount : 0),
+        approvedBudget: Number(approvedBudget) || (quotation ? quotation.subtotal : 0),
         plannedStartDate: new Date(plannedStartDate),
         plannedEndDate: new Date(plannedEndDate),
         status: 'ACTIVE',
-        paymentTerms,
-        taxRatePercent: Number(taxRatePercent) || 18.0,
+        paymentTerms: finalPaymentTerms,
+        taxRatePercent: finalTaxRate,
+        convertedFromLeadId: quotation?.leadId || null,
       },
     });
 
@@ -320,15 +406,127 @@ export const createProject = async (req: Request, res: Response) => {
       data: {
         projectId: project.id,
         name: 'Main Site Yard',
-        code: `${code}-S01`,
+        code: `${finalCode}-S01`,
         location: siteAddress,
       },
     });
 
-    await logAudit(req.user?.id, 'CREATE', 'PROJECT', project.id, { code: project.code, name: project.name }, req.ip);
+    // If converted from a Quotation:
+    if (quotation) {
+      // 1. Mark status of quotation as CONVERTED and link to project
+      await prisma.quotation.update({
+        where: { id: quotation.id },
+        data: {
+          status: 'CONVERTED',
+          projectId: project.id,
+        },
+      });
 
-    return res.status(201).json({ success: true, project });
+      // 2. If quotation is linked to a Lead, update lead to LEAD_WON and link project
+      if (quotation.leadId) {
+        await prisma.lead.update({
+          where: { id: quotation.leadId },
+          data: {
+            stage: 'LEAD_WON',
+            convertedProjectId: project.id,
+          },
+        });
+      }
+
+      // 3. Seamlessly copy Quotation Line Items into Project's initial BOQItems!
+      if (quotation.items && quotation.items.length > 0) {
+        for (let i = 0; i < quotation.items.length; i++) {
+          const it = quotation.items[i];
+          const itemCode = `BOQ-${String(i + 1).padStart(3, '0')}`;
+          await prisma.bOQItem.create({
+            data: {
+              projectId: project.id,
+              itemCode,
+              description: `[${it.areaRoom}] ${it.workDescription}`,
+              category: 'CARPENTRY_JOINERY',
+              unit: it.unit || 'SQFT',
+              estimatedQty: it.quantity || 0,
+              unitRate: it.rate || 0,
+              estimatedTotal: it.totalAmount || 0,
+              materialUnitCost: (it.rate || 0) * 0.6,
+              labourUnitCost: (it.rate || 0) * 0.4,
+              clientApprovalStatus: 'APPROVED',
+            },
+          });
+        }
+      }
+
+      // 4. Record Activity Log for quotation status change
+      try {
+        await prisma.activityLog.create({
+          data: {
+            tenantId,
+            userId: req.user?.id || null,
+            userName: req.user?.name || 'User',
+            entityType: 'Quotation',
+            entityId: quotation.id,
+            entityTitle: quotation.quotationNumber,
+            action: 'STATUS_CHANGE',
+            fromStatus: quotation.status,
+            toStatus: 'CONVERTED',
+            message: `Quotation ${quotation.quotationNumber} (${quotation.clientName}) converted into Project ${project.code} (${project.name}). Quotation status marked as CONVERTED.`,
+          },
+        });
+      } catch (logErr) {
+        console.error('Failed to write activityLog:', logErr);
+      }
+    }
+
+    // 5. Ensure client record is saved or updated in directory
+    try {
+      const cPhone = finalClientContact || quotation?.clientPhone;
+      if (cPhone) {
+        const existingClient = await prisma.client.findFirst({
+          where: { phone: cPhone },
+        });
+        if (!existingClient) {
+          const clientCount = await prisma.client.count();
+          await prisma.client.create({
+            data: {
+              code: `CLI-${String(clientCount + 1).padStart(3, '0')}`,
+              name: clientName || quotation?.clientName || 'Client',
+              phone: cPhone,
+              email: finalClientEmail,
+              billingAddress: finalBillingAddr || siteAddress || '',
+              gstin: clientGstin || null,
+              tenantId,
+            },
+          });
+        }
+      }
+    } catch (cErr) {
+      console.error('Failed to sync client record:', cErr);
+    }
+
+    await logAudit(
+      req.user?.id,
+      quotation ? 'CONVERT_QUOTATION_TO_PROJECT' : 'CREATE',
+      'PROJECT',
+      project.id,
+      {
+        code: project.code,
+        name: project.name,
+        quotationId: quotation?.id || null,
+        quotationNumber: quotation?.quotationNumber || null,
+      },
+      req.ip
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: quotation
+        ? `Project ${project.code} created and Quotation ${quotation.quotationNumber} marked as CONVERTED!`
+        : `Project ${project.code} created successfully!`,
+      project,
+      convertedQuotation: quotation ? { id: quotation.id, quotationNumber: quotation.quotationNumber, status: 'CONVERTED' } : null,
+    });
   } catch (error: any) {
+    console.error('Error creating project:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -7,15 +7,19 @@ import { sendSuccess, sendError } from '../utils/responseHelper';
  */
 export const DEFAULT_DROPDOWN_OPTIONS: Record<string, Array<{ label: string; value: string }>> = {
   LeadSource: [
-    { label: 'Website / SEO', value: 'WEBSITE' },
-    { label: 'Instagram / Meta Ads', value: 'INSTAGRAM' },
-    { label: 'Client Referral', value: 'REFERRAL' },
-    { label: 'Architect Referral', value: 'ARCHITECT_REFERRAL' },
-    { label: 'Walk-in Inquiry', value: 'WALKIN' },
-    { label: 'Google Local Ads', value: 'GOOGLE_ADS' },
-    { label: 'Property Expo', value: 'PROPERTY_EXPO' },
-    { label: 'Cold Outreach', value: 'COLD_OUTREACH' },
-    { label: 'Other', value: 'OTHER' },
+    { label: 'Architect & Interior Designer Referral', value: 'ARCHITECT_REFERRAL' },
+    { label: 'Client / Word-of-Mouth Referral', value: 'REFERRAL' },
+    { label: 'Site Signboard & On-Site Branding', value: 'SITE_BRANDING' },
+    { label: 'Walk-in / Studio & Office Visit', value: 'WALKIN' },
+    { label: 'Real Estate Consultant / Broker Referral', value: 'REAL_ESTATE_BROKER' },
+    { label: 'Subcontractor / Material Supplier Referral', value: 'VENDOR_REFERRAL' },
+    { label: 'Civil Engineer / Structural Consultant', value: 'ENGINEER_REFERRAL' },
+    { label: 'Instagram / Meta Social Media', value: 'INSTAGRAM' },
+    { label: 'Website & Google Local Search', value: 'WEBSITE' },
+    { label: 'Google Search Ads', value: 'GOOGLE_ADS' },
+    { label: 'Direct Enquiry / Personal Network', value: 'DIRECT_ENQUIRY' },
+    { label: 'Repeat Client / Phase-2 Job Works', value: 'REPEAT_CLIENT' },
+    { label: 'Other Channel', value: 'OTHER' },
   ],
   ServiceType: [
     { label: 'Full Villa Construction', value: 'FULL_VILLA_CONSTRUCTION' },

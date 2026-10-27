@@ -535,18 +535,77 @@ export const createGoodsReceiptNote = async (req: Request, res: Response) => {
 
 export const getSupplierInvoices = async (req: Request, res: Response) => {
   try {
-    const { supplierId, status } = req.query;
+    const { supplierId, status, projectId } = req.query;
 
     const where: any = {};
     if (supplierId && typeof supplierId === 'string') where.supplierId = supplierId;
     if (status && typeof status === 'string') where.status = status;
+    if (projectId && typeof projectId === 'string') {
+      where.OR = [
+        { projectId },
+        { purchaseOrder: { projectId } },
+      ];
+    }
 
     const invoices = await prisma.supplierInvoice.findMany({
       where,
       include: {
-        supplier: { select: { id: true, code: true, name: true, gstin: true } },
-        purchaseOrder: { select: { poNumber: true, projectId: true } },
-        payments: true,
+        supplier: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            phone: true,
+            email: true,
+            gstin: true,
+            address: true,
+            city: true,
+            paymentTerms: true,
+            bankName: true,
+            bankAccountNo: true,
+            bankIfsc: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            clientName: true,
+            siteAddress: true,
+            city: true,
+          },
+        },
+        purchaseOrder: {
+          include: {
+            project: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                clientName: true,
+                siteAddress: true,
+                city: true,
+              },
+            },
+            items: {
+              include: {
+                material: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    unit: true,
+                    category: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        payments: {
+          orderBy: { paymentDate: 'desc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -559,7 +618,7 @@ export const getSupplierInvoices = async (req: Request, res: Response) => {
 
 export const createSupplierInvoice = async (req: Request, res: Response) => {
   try {
-    const { invoiceNumber, supplierId, purchaseOrderId, invoiceDate, dueDate, subtotal, taxAmount } = req.body;
+    const { invoiceNumber, supplierId, purchaseOrderId, projectId, invoiceDate, dueDate, subtotal, taxAmount } = req.body;
 
     if (!invoiceNumber || !supplierId || !invoiceDate || !dueDate || subtotal === undefined) {
       return res.status(400).json({ success: false, message: 'Invoice number, supplier, dates, and subtotal are required.' });
@@ -580,11 +639,21 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
     const tax = Number(taxAmount) || 0;
     const total = sub + tax;
 
+    let resolvedProjectId = projectId || null;
+    let po = null;
+    if (purchaseOrderId) {
+      po = await prisma.purchaseOrder.findUnique({ where: { id: purchaseOrderId } });
+      if (po && po.projectId) {
+        resolvedProjectId = po.projectId;
+      }
+    }
+
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.supplierInvoice.create({
         data: {
           invoiceNumber,
           supplierId,
+          projectId: resolvedProjectId,
           purchaseOrderId: purchaseOrderId || null,
           invoiceDate: new Date(invoiceDate),
           dueDate: new Date(dueDate),
@@ -611,16 +680,15 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
     // Dr. Input GST 18%: tax
     // Cr. Accounts Payable: total
     try {
-      const po = purchaseOrderId ? await prisma.purchaseOrder.findUnique({ where: { id: purchaseOrderId } }) : null;
       await postBalancedJournalEntry({
         entryDate: new Date(invoiceDate),
         referenceType: 'SUPPLIER_INVOICE',
         referenceId: invoice.id,
         narration: `Supplier bill booked #${invoiceNumber} for purchase`,
         lines: [
-          { accountCode: COA.DIRECT_MATERIAL_COST, debit: sub, credit: 0, projectId: po?.projectId },
-          { accountCode: COA.INPUT_GST_18, debit: tax, credit: 0, projectId: po?.projectId },
-          { accountCode: COA.ACCOUNTS_PAYABLE, debit: 0, credit: total, projectId: po?.projectId },
+          { accountCode: COA.DIRECT_MATERIAL_COST, debit: sub, credit: 0, projectId: resolvedProjectId },
+          { accountCode: COA.INPUT_GST_18, debit: tax, credit: 0, projectId: resolvedProjectId },
+          { accountCode: COA.ACCOUNTS_PAYABLE, debit: 0, credit: total, projectId: resolvedProjectId },
         ],
         createdById: req.user?.id,
       });
@@ -628,7 +696,7 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
       console.error('Auto journal error for supplier invoice:', jeErr);
     }
 
-    await logAudit(req.user?.id, 'CREATE_SUPPLIER_INVOICE', 'SUPPLIER_INVOICE', invoice.id, { invoiceNumber, total }, req.ip);
+    await logAudit(req.user?.id, 'CREATE_SUPPLIER_INVOICE', 'SUPPLIER_INVOICE', invoice.id, { invoiceNumber, total, projectId: resolvedProjectId }, req.ip);
 
     return res.status(201).json({ success: true, invoice });
   } catch (error: any) {

@@ -17,12 +17,8 @@ import {
   Calculator,
   Receipt,
   Boxes,
-  ClipboardList,
-  RefreshCw,
   Archive,
-  Layers,
-  Sparkles,
-  Info,
+  RefreshCw,
   Clock,
   User,
   ArrowRight,
@@ -176,57 +172,57 @@ export const RecycleBin: React.FC = () => {
       case 'Quotation':
         return {
           icon: FileText,
-          bg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-          dot: 'bg-amber-400',
-          label: 'Client Quotation',
+          bg: 'bg-amber-50 text-amber-800 border-amber-200',
+          dot: 'bg-amber-500',
+          label: 'Quotation',
         };
       case 'Lead':
         return {
           icon: Users,
-          bg: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-          dot: 'bg-blue-400',
-          label: 'Sales Lead',
+          bg: 'bg-blue-50 text-blue-800 border-blue-200',
+          dot: 'bg-blue-500',
+          label: 'Lead',
         };
       case 'Project':
         return {
           icon: Building2,
-          bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
-          dot: 'bg-indigo-400',
+          bg: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+          dot: 'bg-indigo-500',
           label: 'Project',
         };
       case 'Task':
         return {
           icon: CheckSquare,
-          bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-          dot: 'bg-purple-400',
+          bg: 'bg-purple-50 text-purple-800 border-purple-200',
+          dot: 'bg-purple-500',
           label: 'Task',
         };
       case 'BOQItem':
         return {
           icon: Calculator,
-          bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
-          dot: 'bg-cyan-400',
+          bg: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+          dot: 'bg-cyan-500',
           label: 'BOQ Item',
         };
       case 'Expense':
         return {
           icon: Receipt,
-          bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-          dot: 'bg-emerald-400',
+          bg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          dot: 'bg-emerald-500',
           label: 'Expense',
         };
       case 'Material':
         return {
           icon: Boxes,
-          bg: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-          dot: 'bg-rose-400',
+          bg: 'bg-rose-50 text-rose-800 border-rose-200',
+          dot: 'bg-rose-500',
           label: 'Material',
         };
       default:
         return {
           icon: Archive,
-          bg: 'bg-slate-500/10 text-slate-300 border-slate-500/30',
-          dot: 'bg-slate-400',
+          bg: 'bg-slate-100 text-slate-700 border-slate-200',
+          dot: 'bg-slate-500',
           label: type,
         };
     }
@@ -246,72 +242,78 @@ export const RecycleBin: React.FC = () => {
   }, [inspectItem]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-1 sm:px-2 md:px-0 pb-12">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500/20 via-amber-500/20 to-orange-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shadow-lg shadow-rose-950/30">
-              <Trash2 className="w-5 h-5 animate-pulse" />
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3 sm:gap-3.5 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-sm shrink-0">
+              <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                Recycle Bin Vault
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30 tracking-wider uppercase">
-                  Computer Trash System
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-slate-900 truncate">
+                  Enterprise Data Vault & Recycle Bin
+                </h1>
+                <span className="text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider flex items-center gap-1.5 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Zero Data Loss Active
                 </span>
-              </h1>
-              <p className="text-xs md:text-sm text-slate-400 mt-0.5">
-                Every deleted quotation, lead, project, or task is safely retained here. Inspect or restore them anytime.
+                <span className="text-[10px] sm:text-[11px] font-semibold px-2 sm:px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-mono shrink-0">
+                  30-Day Safe Retention
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-2 sm:line-clamp-none">
+                Every deleted quotation, lead, project, or task is safely retained in encrypted cold storage. Inspect or restore them anytime.
               </p>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          <button
-            onClick={fetchBinItems}
-            disabled={loading}
-            className="px-3 py-2 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700/80 transition-all flex items-center gap-1.5 shadow-sm"
-            title="Refresh Bin"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : ''}`} />
-            Refresh
-          </button>
-
-          {items.length > 0 && (
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
             <button
-              onClick={() => setShowEmptyConfirm(true)}
-              disabled={actionLoading}
-              className="px-3.5 py-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 hover:text-rose-200 border border-rose-500/40 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 shadow-sm shadow-rose-950/20"
+              onClick={fetchBinItems}
+              disabled={loading}
+              className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-bold border border-slate-200 transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+              title="Refresh Vault"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              Empty Recycle Bin
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-slate-900' : 'text-slate-600'}`} />
+              <span>Refresh Vault</span>
             </button>
-          )}
+
+            {items.length > 0 && (
+              <button
+                onClick={() => setShowEmptyConfirm(true)}
+                disabled={actionLoading}
+                className="flex-1 sm:flex-initial px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Empty Vault</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Status Notification Banner */}
       {statusMessage && (
         <div
-          className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-sm transition-all ${
+          className={`p-3.5 sm:p-4 rounded-xl border flex items-center justify-between gap-3 text-xs sm:text-sm transition-all shadow-sm ${
             statusMessage.type === 'success'
-              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-              : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-rose-50 border-rose-200 text-rose-900'
           }`}
         >
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             {statusMessage.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
             )}
-            <span>{statusMessage.text}</span>
+            <span className="font-medium truncate">{statusMessage.text}</span>
             {statusMessage.link && (
               <button
                 onClick={() => navigate(statusMessage.link!)}
-                className="ml-2 underline font-semibold flex items-center gap-1 text-emerald-300 hover:text-emerald-100"
+                className="ml-2 underline font-bold flex items-center gap-1 text-emerald-700 hover:text-emerald-900 shrink-0"
               >
                 Go to module <ArrowRight className="w-3.5 h-3.5" />
               </button>
@@ -319,7 +321,7 @@ export const RecycleBin: React.FC = () => {
           </div>
           <button
             onClick={() => setStatusMessage(null)}
-            className="text-slate-400 hover:text-slate-200 p-1 rounded-lg"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -327,52 +329,71 @@ export const RecycleBin: React.FC = () => {
       )}
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-            <Trash2 className="w-4 h-4" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Card 1: Quarantined Items */}
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-slate-300 transition group min-w-0">
+          <div className="flex items-center justify-between text-slate-500 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1.5 sm:mb-2">
+            <span className="truncate">Quarantined</span>
+            <div className="p-1 sm:p-1.5 rounded-lg bg-rose-50 text-rose-600 group-hover:scale-110 transition-transform shrink-0 ml-1">
+              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
           </div>
-          <div>
-            <div className="text-xl font-bold text-white">{counts.ALL || 0}</div>
-            <div className="text-[11px] text-slate-400 font-medium">Items in Recycle Bin</div>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-            <FileText className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white">{counts.Quotation || 0}</div>
-            <div className="text-[11px] text-slate-400 font-medium">Deleted Quotations</div>
+          <div className="text-xl sm:text-2xl font-bold font-mono text-slate-900">{counts.ALL || 0}</div>
+          <div className="text-[10px] sm:text-[11px] text-slate-500 mt-1.5 sm:mt-2 flex items-center gap-1.5 truncate">
+            <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 inline-block" />
+            <span className="truncate">Safety buffer active</span>
           </div>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-            <Users className="w-4 h-4" />
+        {/* Card 2: Deleted Quotations */}
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-amber-300 transition group min-w-0">
+          <div className="flex items-center justify-between text-slate-500 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1.5 sm:mb-2">
+            <span className="truncate">Quotations</span>
+            <div className="p-1 sm:p-1.5 rounded-lg bg-amber-50 text-amber-600 group-hover:scale-110 transition-transform shrink-0 ml-1">
+              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
           </div>
-          <div>
-            <div className="text-xl font-bold text-white">{counts.Lead || 0}</div>
-            <div className="text-[11px] text-slate-400 font-medium">Deleted Leads</div>
+          <div className="text-xl sm:text-2xl font-bold font-mono text-amber-700">{counts.Quotation || 0}</div>
+          <div className="text-[10px] sm:text-[11px] text-amber-800/80 mt-1.5 sm:mt-2 truncate">
+            Full items & rates
           </div>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <RotateCcw className="w-4 h-4" />
+        {/* Card 3: Deleted Leads & Projects */}
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-blue-300 transition group min-w-0">
+          <div className="flex items-center justify-between text-slate-500 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1.5 sm:mb-2">
+            <span className="truncate">Leads & Projects</span>
+            <div className="p-1 sm:p-1.5 rounded-lg bg-blue-50 text-blue-600 group-hover:scale-110 transition-transform shrink-0 ml-1">
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
           </div>
-          <div>
-            <div className="text-xl font-bold text-emerald-400">100%</div>
-            <div className="text-[11px] text-slate-400 font-medium">Full Data Restorability</div>
+          <div className="text-xl sm:text-2xl font-bold font-mono text-blue-700">
+            {(counts.Lead || 0) + (counts.Project || 0)}
+          </div>
+          <div className="text-[10px] sm:text-[11px] text-blue-800/80 mt-1.5 sm:mt-2 truncate">
+            Preserved history
+          </div>
+        </div>
+
+        {/* Card 4: Restorability Rate */}
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-300 transition group min-w-0">
+          <div className="flex items-center justify-between text-slate-500 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1.5 sm:mb-2">
+            <span className="truncate">Restorability</span>
+            <div className="p-1 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-110 transition-transform shrink-0 ml-1">
+              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
+          </div>
+          <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-700">100%</div>
+          <div className="text-[10px] sm:text-[11px] text-emerald-800/80 mt-1.5 sm:mt-2 truncate">
+            Zero data loss
           </div>
         </div>
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-slate-900/50 p-2 rounded-xl border border-slate-800">
-        {/* Entity Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white border border-slate-200 p-2.5 sm:p-3 rounded-2xl shadow-sm">
+        {/* Entity Tabs - scrollable horizontally without page stretch */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-1 px-1 text-xs font-bold w-full lg:w-auto">
           {[
             { id: 'ALL', label: 'All Items', count: counts.ALL || 0 },
             { id: 'Quotation', label: 'Quotations', count: counts.Quotation || 0 },
@@ -380,74 +401,120 @@ export const RecycleBin: React.FC = () => {
             { id: 'Project', label: 'Projects', count: counts.Project || 0 },
             { id: 'Task', label: 'Tasks', count: counts.Task || 0 },
             { id: 'Expense', label: 'Expenses', count: counts.Expense || 0 },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                activeTab === tab.id
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-              }`}
-            >
-              <span>{tab.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  activeTab === tab.id
-                    ? 'bg-slate-950/30 text-slate-950'
-                    : 'bg-slate-800 text-slate-400'
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition flex items-center gap-1.5 shrink-0 ${
+                  isActive
+                    ? 'bg-slate-900 text-white font-bold shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-semibold'
                 }`}
               >
-                {tab.count}
-              </span>
-            </button>
-          ))}
+                <span>{tab.label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    isActive
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Search */}
-        <form onSubmit={handleSearchSubmit} className="relative min-w-[240px]">
+        <form onSubmit={handleSearchSubmit} className="relative w-full lg:w-72 xl:w-80 shrink-0">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by code, title, client..."
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/70 transition-all"
+            className="w-full pl-9 pr-3 py-1.5 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition font-medium"
           />
         </form>
       </div>
 
       {/* Main Items Listing */}
       {loading ? (
-        <div className="py-24 text-center">
+        <div className="py-20 sm:py-24 text-center bg-white border border-slate-200 rounded-2xl shadow-sm">
           <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-300">Loading Recycle Bin items...</p>
+          <p className="text-sm font-medium text-slate-600">Loading Recycle Bin items...</p>
         </div>
       ) : items.length === 0 ? (
-        <div className="py-20 text-center bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-8">
-          <div className="w-16 h-16 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-center text-slate-500 mx-auto mb-4">
-            <Trash2 className="w-8 h-8" />
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 md:p-12 shadow-sm space-y-6 sm:space-y-8">
+          <div className="text-center max-w-md mx-auto space-y-2.5 sm:space-y-3">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mx-auto shadow-sm">
+              <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.2]" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+              {search ? 'No Matching Records in Vault' : 'Enterprise Safety Vault is Clean & Active'}
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {search
+                ? `No quarantined items matched your query "${search}". Try clearing search or switching category filters.`
+                : 'All your quotations, client leads, construction projects, and BOQs are actively operating without deletions. If anything is ever accidentally removed, it is instantly recoverable right here.'}
+            </p>
+            {search && (
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setActiveTab('ALL');
+                }}
+                className="mt-2 px-3.5 py-1.5 bg-slate-100 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-bold border border-slate-200 transition"
+              >
+                Clear Search Filter
+              </button>
+            )}
           </div>
-          <h3 className="text-base font-semibold text-white mb-1">Recycle Bin is Empty</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            {search
-              ? `No deleted records matched your search query "${search}". Try clearing search or changing the filter tab.`
-              : 'Whenever any quotation, lead, project, or task is deleted, it will safely appear here. You can inspect its full line items and restore it anytime with one click.'}
-          </p>
-          {search && (
-            <button
-              onClick={() => {
-                setSearch('');
-                setActiveTab('ALL');
-              }}
-              className="mt-4 px-3 py-1.5 bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700 transition-all"
-            >
-              Clear Search Filters
-            </button>
-          )}
+
+          {/* 3 Safety Vault Pillar Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 pt-6 border-t border-slate-100">
+            <div className="bg-slate-50/80 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
+                <RotateCcw className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-slate-900">Instant 1-Click Rollback</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  Restores complete records including item rates, BOQ breakdown, specifications, and linked client relations.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 text-blue-700 shrink-0">
+                <ShieldAlert className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-slate-900">Foreign Key Protection</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  Prevents orphaned data or database constraint errors by securely snapshotting relational integrity in cold storage.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-700 shrink-0">
+                <Clock className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-slate-900">Forensic Audit Trail</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  Every delete action is stamped with the user name, role, timestamp, and IP address for internal accountability.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {items.map((item) => {
             const badge = getEntityBadge(item.entityType);
             const Icon = badge.icon;
@@ -456,67 +523,67 @@ export const RecycleBin: React.FC = () => {
             return (
               <div
                 key={item.id}
-                className="group bg-slate-900/70 hover:bg-slate-900 border border-slate-800 hover:border-slate-700/80 rounded-xl p-4 transition-all shadow-sm hover:shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="group bg-white hover:bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 sm:p-4 transition-all shadow-sm hover:shadow-md flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4"
               >
                 {/* Left: Entity & Title */}
-                <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                <div className="flex items-start gap-3 sm:gap-3.5 flex-1 min-w-0">
                   <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${badge.bg}`}
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border flex-shrink-0 ${badge.bg}`}
                   >
-                    <Icon className="w-5 h-5" />
+                    <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
 
                   <div className="space-y-1 min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.bg} flex items-center gap-1`}
+                        className={`text-[9.5px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.bg} flex items-center gap-1`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
                         {badge.label}
                       </span>
 
                       {item.itemNumber && (
-                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700">
+                        <span className="text-[11px] sm:text-xs font-mono font-bold px-1.5 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
                           {item.itemNumber}
                         </span>
                       )}
 
-                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-600" />
-                        Deleted {formatDate(item.deletedAt)}
+                      <span className="text-[10px] sm:text-[11px] text-slate-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {formatDate(item.deletedAt)}
                       </span>
 
                       {item.deletedByName && (
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1 bg-slate-800/40 px-2 py-0.5 rounded">
-                          <User className="w-3 h-3 text-slate-500" />
-                          {item.deletedByName}
+                        <span className="text-[10px] sm:text-[11px] text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 sm:px-2 py-0.5 rounded truncate max-w-[150px] sm:max-w-none">
+                          <User className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{item.deletedByName}</span>
                         </span>
                       )}
                     </div>
 
-                    <h4 className="text-sm font-semibold text-white truncate group-hover:text-amber-400 transition-colors">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate group-hover:text-amber-600 transition-colors">
                       {item.title}
                     </h4>
 
                     {item.description && (
-                      <p className="text-xs text-slate-400 line-clamp-1">
+                      <p className="text-xs text-slate-500 line-clamp-1">
                         {item.description}
                       </p>
                     )}
 
                     {/* Quick Entity Detail Snippet */}
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-0.5">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 pt-0.5">
                       {item.entityType === 'Quotation' && (
                         <>
                           {parsed.grandTotal !== undefined && (
-                            <span className="text-emerald-400 font-semibold font-mono">
+                            <span className="text-emerald-700 font-bold font-mono">
                               Total: {formatCurrency(parsed.grandTotal)}
                             </span>
                           )}
-                          {parsed.clientName && <span>Client: {parsed.clientName}</span>}
+                          {parsed.clientName && <span>Client: <strong>{parsed.clientName}</strong></span>}
                           {Array.isArray(parsed.items) && (
-                            <span className="text-slate-500">
-                              ({parsed.items.length} line items archived)
+                            <span className="text-slate-400">
+                              ({parsed.items.length} line items)
                             </span>
                           )}
                         </>
@@ -524,13 +591,13 @@ export const RecycleBin: React.FC = () => {
 
                       {item.entityType === 'Lead' && (
                         <>
-                          {parsed.name && <span>Contact: {parsed.name}</span>}
+                          {parsed.name && <span>Contact: <strong>{parsed.name}</strong></span>}
                           {parsed.phone && <span>Phone: {parsed.phone}</span>}
                           {parsed.projectType && (
-                            <span className="text-blue-400">Type: {parsed.projectType}</span>
+                            <span className="text-blue-700 font-medium">Type: {parsed.projectType}</span>
                           )}
                           {parsed.estimatedBudget && (
-                            <span className="text-emerald-400 font-mono">
+                            <span className="text-emerald-700 font-mono font-bold">
                               Est: {formatCurrency(parsed.estimatedBudget)}
                             </span>
                           )}
@@ -539,9 +606,9 @@ export const RecycleBin: React.FC = () => {
 
                       {item.entityType === 'Project' && (
                         <>
-                          {parsed.clientName && <span>Client: {parsed.clientName}</span>}
+                          {parsed.clientName && <span>Client: <strong>{parsed.clientName}</strong></span>}
                           {parsed.contractValue && (
-                            <span className="text-emerald-400 font-mono">
+                            <span className="text-emerald-700 font-mono font-bold">
                               Contract: {formatCurrency(parsed.contractValue)}
                             </span>
                           )}
@@ -551,7 +618,7 @@ export const RecycleBin: React.FC = () => {
                       {item.entityType === 'Task' && (
                         <>
                           {parsed.priority && (
-                            <span className="text-purple-400">Priority: {parsed.priority}</span>
+                            <span className="text-purple-700 font-medium">Priority: {parsed.priority}</span>
                           )}
                           {parsed.status && <span>Status: {parsed.status}</span>}
                         </>
@@ -561,32 +628,32 @@ export const RecycleBin: React.FC = () => {
                 </div>
 
                 {/* Right: Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0 self-end md:self-center pt-2 md:pt-0 border-t md:border-t-0 border-slate-800 w-full md:w-auto justify-end">
+                <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto justify-end pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
                   {/* Inspect Details Button */}
                   <button
                     onClick={() => setInspectItem(item)}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700 transition-all flex items-center gap-1.5"
+                    className="flex-1 md:flex-initial px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-semibold border border-slate-200 transition-all flex items-center justify-center gap-1.5"
                     title="Inspect archived JSON details"
                   >
-                    <Eye className="w-3.5 h-3.5 text-blue-400" />
-                    Inspect
+                    <Eye className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Inspect</span>
                   </button>
 
                   {/* Restore Button */}
                   <button
                     onClick={() => handleRestore(item)}
                     disabled={actionLoading}
-                    className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-emerald-950/30 transition-all flex items-center gap-1.5"
+                    className="flex-1 md:flex-initial px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Restore
+                    <span>Restore</span>
                   </button>
 
                   {/* Permanent Delete Button */}
                   <button
                     onClick={() => setDeleteConfirmItem(item)}
                     disabled={actionLoading}
-                    className="p-1.5 bg-slate-800/80 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 rounded-lg text-xs border border-slate-700/80 transition-all"
+                    className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200 rounded-lg text-xs transition-all shrink-0"
                     title="Delete permanently"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -600,18 +667,18 @@ export const RecycleBin: React.FC = () => {
 
       {/* Inspect Item Modal */}
       {inspectItem && parsedCurrentInspect && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 space-y-5 shadow-2xl relative">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto my-auto p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-2xl relative text-slate-900">
             <button
               onClick={() => setInspectItem(null)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-slate-200 p-1 rounded-lg"
+              className="absolute top-4 sm:top-5 right-4 sm:right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3 sm:pb-4 pr-8">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                className={`w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 ${
                   getEntityBadge(inspectItem.entityType).bg
                 }`}
               >
@@ -619,45 +686,45 @@ export const RecycleBin: React.FC = () => {
                   className: 'w-5 h-5',
                 })}
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  Archived {inspectItem.entityType} Snapshot
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                  <span>Archived {inspectItem.entityType} Snapshot</span>
                   {inspectItem.itemNumber && (
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
                       {inspectItem.itemNumber}
                     </span>
                   )}
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 truncate">
                   Preserved from {formatDate(inspectItem.deletedAt)} by {inspectItem.deletedByName || 'Admin'}
                 </p>
               </div>
             </div>
 
             {/* Quick Summary Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-3 bg-slate-50 p-3 sm:p-3.5 rounded-xl border border-slate-200 text-xs">
               <div>
                 <span className="text-slate-500 block">Title / Code</span>
-                <span className="font-semibold text-white">{inspectItem.title}</span>
+                <span className="font-semibold text-slate-900 break-words">{inspectItem.title}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">Entity Type</span>
-                <span className="font-semibold text-amber-400">{inspectItem.entityType}</span>
+                <span className="font-semibold text-amber-700">{inspectItem.entityType}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">Deleted Date</span>
-                <span className="font-semibold text-slate-300">{formatDate(inspectItem.deletedAt)}</span>
+                <span className="font-semibold text-slate-700">{formatDate(inspectItem.deletedAt)}</span>
               </div>
               {parsedCurrentInspect.clientName && (
                 <div>
                   <span className="text-slate-500 block">Client / Customer</span>
-                  <span className="font-semibold text-white">{parsedCurrentInspect.clientName}</span>
+                  <span className="font-semibold text-slate-900 break-words">{parsedCurrentInspect.clientName}</span>
                 </div>
               )}
               {parsedCurrentInspect.grandTotal !== undefined && (
                 <div>
                   <span className="text-slate-500 block">Grand Total</span>
-                  <span className="font-semibold text-emerald-400 font-mono">
+                  <span className="font-bold text-emerald-700 font-mono">
                     {formatCurrency(parsedCurrentInspect.grandTotal)}
                   </span>
                 </div>
@@ -665,7 +732,7 @@ export const RecycleBin: React.FC = () => {
               {parsedCurrentInspect.status && (
                 <div>
                   <span className="text-slate-500 block">Status When Deleted</span>
-                  <span className="font-semibold text-blue-400">{parsedCurrentInspect.status}</span>
+                  <span className="font-semibold text-blue-700">{parsedCurrentInspect.status}</span>
                 </div>
               )}
             </div>
@@ -673,13 +740,13 @@ export const RecycleBin: React.FC = () => {
             {/* If Quotation: Show Line Items Preview */}
             {inspectItem.entityType === 'Quotation' && Array.isArray(parsedCurrentInspect.items) && (
               <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Calculator className="w-3.5 h-3.5 text-amber-400" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Calculator className="w-3.5 h-3.5 text-amber-600" />
                   Preserved Line Items ({parsedCurrentInspect.items.length})
                 </h4>
-                <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-lg bg-slate-950/40 text-xs">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-900 text-slate-400 text-[11px] uppercase border-b border-slate-800 sticky top-0">
+                <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg bg-white text-xs overflow-x-auto">
+                  <table className="w-full min-w-[460px] text-left">
+                    <thead className="bg-slate-50 text-slate-600 text-[11px] uppercase border-b border-slate-200 sticky top-0">
                       <tr>
                         <th className="p-2">Area / Room</th>
                         <th className="p-2">Description</th>
@@ -688,16 +755,16 @@ export const RecycleBin: React.FC = () => {
                         <th className="p-2 text-right">Total</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
                       {parsedCurrentInspect.items.map((it: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-900/40">
-                          <td className="p-2 font-medium text-amber-300/90">{it.areaRoom || '-'}</td>
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="p-2 font-medium text-amber-900">{it.areaRoom || '-'}</td>
                           <td className="p-2">{it.workDescription || '-'}</td>
                           <td className="p-2 text-right font-mono">
                             {it.quantity} {it.unit}
                           </td>
                           <td className="p-2 text-right font-mono">{formatCurrency(it.rate || 0)}</td>
-                          <td className="p-2 text-right font-mono font-semibold text-emerald-400">
+                          <td className="p-2 text-right font-mono font-semibold text-emerald-700">
                             {formatCurrency(it.totalAmount || 0)}
                           </td>
                         </tr>
@@ -710,42 +777,42 @@ export const RecycleBin: React.FC = () => {
 
             {/* Preserved Full JSON View */}
             <details className="text-xs group">
-              <summary className="cursor-pointer font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-1.5 select-none">
-                <FileJson className="w-3.5 h-3.5 text-blue-400" />
+              <summary className="cursor-pointer font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1.5 select-none">
+                <FileJson className="w-3.5 h-3.5 text-blue-600" />
                 View Complete Raw Backup Payload (JSON)
               </summary>
-              <pre className="mt-2 p-3 bg-slate-950 border border-slate-800 rounded-lg overflow-x-auto text-[11px] text-slate-300 font-mono max-h-48">
+              <pre className="mt-2 p-3 bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto text-[11px] text-slate-200 font-mono max-h-48">
                 {JSON.stringify(parsedCurrentInspect, null, 2)}
               </pre>
             </details>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-3 sm:pt-4 border-t border-slate-100">
               <button
                 onClick={() => {
                   setDeleteConfirmItem(inspectItem);
                   setInspectItem(null);
                 }}
-                className="px-3 py-2 text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5"
+                className="px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Purge Permanently
+                <span>Purge Permanently</span>
               </button>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setInspectItem(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-all"
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all text-center"
                 >
                   Close
                 </button>
                 <button
                   onClick={() => handleRestore(inspectItem)}
                   disabled={actionLoading}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-950/30 flex items-center gap-1.5"
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Restore This Item Now
+                  <span>Restore Now</span>
                 </button>
               </div>
             </div>
@@ -755,35 +822,35 @@ export const RecycleBin: React.FC = () => {
 
       {/* Confirmation Modal: Single Item Permanent Delete */}
       {deleteConfirmItem && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mx-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto my-auto p-5 sm:p-6 space-y-4 shadow-2xl text-center text-slate-900">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white mb-1">Permanently Delete Item?</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-base font-bold text-slate-900 mb-1">Permanently Delete Item?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
                 You are about to permanently erase{' '}
-                <strong className="text-rose-400">
+                <strong className="text-rose-600 break-words">
                   {deleteConfirmItem.entityType} "{deleteConfirmItem.itemNumber || deleteConfirmItem.title}"
                 </strong>{' '}
                 from the Recycle Bin. This action cannot be undone.
               </p>
             </div>
-            <div className="flex items-center justify-center gap-3 pt-2">
+            <div className="flex items-center justify-center gap-2.5 sm:gap-3 pt-2">
               <button
                 onClick={() => setDeleteConfirmItem(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-all"
+                className="flex-1 sm:flex-initial px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handlePermanentDelete(deleteConfirmItem)}
                 disabled={actionLoading}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-rose-950/30 flex items-center gap-1.5"
+                className="flex-1 sm:flex-initial px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Yes, Purge Permanently
+                <span>Yes, Purge</span>
               </button>
             </div>
           </div>
@@ -792,31 +859,31 @@ export const RecycleBin: React.FC = () => {
 
       {/* Confirmation Modal: Empty Entire Recycle Bin */}
       {showEmptyConfirm && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto animate-bounce">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto my-auto p-5 sm:p-6 space-y-4 shadow-2xl text-center text-slate-900">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto">
               <Trash2 className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white mb-1">Empty Entire Recycle Bin?</h3>
-              <p className="text-xs text-slate-400">
-                This will permanently erase all <strong className="text-white font-mono">{counts.ALL || items.length}</strong> archived items in the Recycle Bin. There is no way to recover them once emptied.
+              <h3 className="text-base font-bold text-slate-900 mb-1">Empty Entire Recycle Bin?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will permanently erase all <strong className="text-slate-900 font-mono font-bold">{counts.ALL || items.length}</strong> archived items in the Recycle Bin. There is no way to recover them once emptied.
               </p>
             </div>
-            <div className="flex items-center justify-center gap-3 pt-2">
+            <div className="flex items-center justify-center gap-2.5 sm:gap-3 pt-2">
               <button
                 onClick={() => setShowEmptyConfirm(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-all"
+                className="flex-1 sm:flex-initial px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleEmptyBin}
                 disabled={actionLoading}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-rose-950/40 flex items-center gap-1.5"
+                className="flex-1 sm:flex-initial px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Yes, Empty Bin Completely
+                <span>Yes, Empty All</span>
               </button>
             </div>
           </div>

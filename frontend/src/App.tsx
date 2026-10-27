@@ -70,9 +70,12 @@ const VendorAdminRoute: React.FC<{ children: React.ReactElement }> = ({ children
   return children;
 };
 
+import { ScrollToTop } from './components/ScrollToTop';
+
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
         <ProjectProvider>
           <Routes>

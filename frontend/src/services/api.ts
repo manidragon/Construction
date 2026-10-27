@@ -53,6 +53,7 @@ class ApiService {
 
   // Projects
   getProjects = (params: string = '') => this.request<any>(`/projects${params ? `?${params}` : ''}`);
+  getNextProjectCode = () => this.request<any>('/projects/next-code');
   getProjectById = (id: string) => this.request<any>(`/projects/${id}`);
   getProjectDailyShareReport = (id: string) => this.request<any>(`/projects/${id}/daily-share-report`);
   createProject = (data: any) => this.request<any>('/projects', { method: 'POST', body: JSON.stringify(data) });
@@ -77,6 +78,7 @@ class ApiService {
 
   // Inventory
   getMaterials = (params: string = '') => this.request<any>(`/inventory/materials${params ? `?${params}` : ''}`);
+  getNextMaterialCode = () => this.request<any>('/inventory/materials/next-code');
   createMaterial = (data: any) => this.request<any>('/inventory/materials', { method: 'POST', body: JSON.stringify(data) });
   updateMaterial = (id: string, data: any) => this.request<any>(`/inventory/materials/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteMaterial = (id: string) => this.request<any>(`/inventory/materials/${id}`, { method: 'DELETE' });
@@ -90,6 +92,9 @@ class ApiService {
   deleteRequisition = (id: string) => this.request<any>(`/inventory/requisitions/${id}`, { method: 'DELETE' });
   recordStockMovement = (data: any) => this.request<any>('/inventory/transactions', { method: 'POST', body: JSON.stringify(data) });
   getStockLedger = (params: string = '') => this.request<any>(`/inventory/ledger${params ? `?${params}` : ''}`);
+  getProjectMaterials = (params: string = '') => this.request<any>(`/inventory/project-materials${params ? `?${params}` : ''}`);
+  addStock = (data: any) => this.request<any>('/inventory/add-stock', { method: 'POST', body: JSON.stringify(data) });
+  adjustStock = (data: any) => this.request<any>('/inventory/adjust-stock', { method: 'POST', body: JSON.stringify(data) });
 
   // Procurement
   getSuppliers = () => this.request<any>('/procurement/suppliers');
@@ -134,6 +139,10 @@ class ApiService {
   getSubcontractors = () => this.request<any>('/labour/subcontractors');
   recordWagePayment = (data: any) => this.request<any>('/labour/payout', { method: 'POST', body: JSON.stringify(data) });
   deleteWagePayment = (id: string) => this.request<any>(`/labour/payout/${id}`, { method: 'DELETE' });
+  assignWorkerToProject = (data: { projectId: string; workerId?: string; workerIds?: string[] }) =>
+    this.request<any>('/labour/assign-existing', { method: 'POST', body: JSON.stringify(data) });
+  unassignWorkerFromProject = (data: { projectId: string; workerId: string }) =>
+    this.request<any>('/labour/unassign', { method: 'POST', body: JSON.stringify(data) });
 
   // Tasks & DPR
   getTasks = (params: string = '') => this.request<any>(`/tasks${params ? `?${params}` : ''}`);
@@ -183,6 +192,41 @@ class ApiService {
   getProfitAndLoss = () => this.request<any>('/accounts/pnl');
   getBalanceSheet = () => this.request<any>('/accounts/balance-sheet');
   getAgingReports = () => this.request<any>('/accounts/aging');
+  getIndianStatutory = () => this.request<any>('/accounts/indian-statutory');
+
+  downloadTallyXML = async (params: string = '') => {
+    const token = localStorage.getItem('erp_token');
+    const res = await fetch(`${API_BASE}/accounts/export/tally-xml${params ? `?${params}` : ''}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    });
+    if (!res.ok) throw new Error('Failed to download Tally XML');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ApexBuild_Tally_Import_${new Date().toISOString().slice(0, 10)}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  downloadDaybookCSV = async (params: string = '') => {
+    const token = localStorage.getItem('erp_token');
+    const res = await fetch(`${API_BASE}/accounts/export/daybook-csv${params ? `?${params}` : ''}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+    });
+    if (!res.ok) throw new Error('Failed to download Day Book CSV');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ApexBuild_DayBook_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
 
   // Equipment
   getEquipment = (params: string = '') => this.request<any>(`/equipment${params ? `?${params}` : ''}`);

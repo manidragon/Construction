@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import api from '../services/api';
@@ -20,6 +20,8 @@ import {
   AlertCircle,
   HelpCircle,
   Building,
+  Building2,
+  TrendingUp,
   Layers,
   Sparkles,
   Calculator,
@@ -709,11 +711,12 @@ export const Quotations: React.FC = () => {
                         {quot.quotationNumber}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        quot.status === 'CONVERTED' ? 'bg-purple-100 text-purple-900 border border-purple-300 font-extrabold' :
                         quot.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
                         quot.status === 'SHARED' ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' :
                         'bg-slate-100 text-slate-700'
                       }`}>
-                        {quot.status}
+                        {quot.status === 'CONVERTED' ? 'CONVERTED 🏆' : quot.status}
                       </span>
                     </div>
 
@@ -760,51 +763,74 @@ export const Quotations: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Actions Footer: View, Edit, Dispatch, Invoice, Delete */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-1.5 text-xs">
-                    {/* View Details */}
-                    <button
-                      type="button"
-                      onClick={() => setViewingQuotation(quot)}
-                      className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition flex items-center space-x-1 text-[11px]"
-                      title="View Full Quotation & Print"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-slate-600" />
-                      <span>View</span>
-                    </button>
+                  {/* Actions Footer: View, Edit, Dispatch, Invoice, Convert/Project, Delete */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-1.5 text-xs flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* View Details */}
+                      <button
+                        type="button"
+                        onClick={() => setViewingQuotation(quot)}
+                        className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition flex items-center space-x-1 text-[11px]"
+                        title="View Full Quotation & Print"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-600" />
+                        <span>View</span>
+                      </button>
 
-                    {/* Edit */}
-                    <button
-                      type="button"
-                      onClick={() => handleStartEdit(quot)}
-                      className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold rounded-lg transition flex items-center space-x-1 text-[11px]"
-                      title="Edit Quotation"
-                    >
-                      <Edit className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Edit</span>
-                    </button>
+                      {/* Edit */}
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(quot)}
+                        className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold rounded-lg transition flex items-center space-x-1 text-[11px]"
+                        title="Edit Quotation"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Edit</span>
+                      </button>
 
-                    {/* WhatsApp / Email Dispatch */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenDispatch(quot)}
-                      className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition flex items-center space-x-1 shadow-xs text-[11px]"
-                      title="Send via WhatsApp or Email"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Dispatch</span>
-                    </button>
+                      {/* WhatsApp / Email Dispatch */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDispatch(quot)}
+                        className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition flex items-center space-x-1 shadow-xs text-[11px]"
+                        title="Send via WhatsApp or Email"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Dispatch</span>
+                      </button>
 
-                    {/* Generate Milestone Invoice */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenInvoiceModal(quot)}
-                      className="px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition flex items-center space-x-1 shadow-xs text-[11px]"
-                      title="Generate Milestone Invoice"
-                    >
-                      <Receipt className="w-3.5 h-3.5" />
-                      <span>Invoice</span>
-                    </button>
+                      {/* Generate Milestone Invoice */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenInvoiceModal(quot)}
+                        className="px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition flex items-center space-x-1 shadow-xs text-[11px]"
+                        title="Generate Milestone Invoice"
+                      >
+                        <Receipt className="w-3.5 h-3.5" />
+                        <span>Invoice</span>
+                      </button>
+
+                      {/* Convert to Project or View Converted Project */}
+                      {quot.status === 'CONVERTED' || quot.projectId ? (
+                        <Link
+                          to="/projects"
+                          className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold rounded-lg transition flex items-center space-x-1 text-[11px]"
+                          title="View Converted Construction Project"
+                        >
+                          <Building2 className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Project</span>
+                        </Link>
+                      ) : (
+                        <Link
+                          to={`/projects?convertQuotationId=${quot.id}`}
+                          className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg transition flex items-center space-x-1 text-[11px] shadow-xs"
+                          title="Convert this quotation to an active construction project"
+                        >
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          <span>Convert</span>
+                        </Link>
+                      )}
+                    </div>
 
                     {/* Delete */}
                     <button

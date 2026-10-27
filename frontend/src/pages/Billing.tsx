@@ -242,7 +242,14 @@ export const Billing: React.FC = () => {
     e.preventDefault();
     try {
       const targetProjId = invForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
-      const res = await api.createClientInvoice({ ...invForm, projectId: targetProjId });
+      const payload = {
+        ...invForm,
+        projectId: targetProjId,
+        retentionPercent: invForm.retentionPercent !== '' && invForm.retentionPercent !== null ? invForm.retentionPercent : '0',
+        tdsPercent: invForm.tdsPercent !== '' && invForm.tdsPercent !== null ? invForm.tdsPercent : '0',
+        gstPercent: invForm.gstPercent !== '' && invForm.gstPercent !== null ? invForm.gstPercent : '0',
+      };
+      const res = await api.createClientInvoice(payload);
       if (res.success) {
         setShowInvoiceModal(false);
         fetchData();
@@ -336,7 +343,13 @@ export const Billing: React.FC = () => {
     e.preventDefault();
     if (!editingInvoice) return;
     try {
-      const res = await api.updateClientInvoice(editingInvoice.id, editInvForm);
+      const payload = {
+        ...editInvForm,
+        retentionPercent: editInvForm.retentionPercent !== '' && editInvForm.retentionPercent !== null ? editInvForm.retentionPercent : '0',
+        tdsPercent: editInvForm.tdsPercent !== '' && editInvForm.tdsPercent !== null ? editInvForm.tdsPercent : '0',
+        gstPercent: editInvForm.gstPercent !== '' && editInvForm.gstPercent !== null ? editInvForm.gstPercent : '0',
+      };
+      const res = await api.updateClientInvoice(editingInvoice.id, payload);
       if (res.success) {
         setEditingInvoice(null);
         fetchData();
@@ -506,24 +519,59 @@ export const Billing: React.FC = () => {
         </div>
       </div>
 
-      {/* Project Selector Bar */}
-      <div className="flex items-center space-x-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
-        <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
-        <select
-          value={projectId}
-          onChange={(e) => {
-            setProjectId(e.target.value);
-            setSelectedProjectId(e.target.value);
-          }}
-          className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
-        >
-          <option value="">🌐 All Projects</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              [{p.code}] {p.name}
-            </option>
-          ))}
-        </select>
+      {/* Project Selector Bar & Financial Tracker */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center space-x-2">
+          <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
+          <select
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              setSelectedProjectId(e.target.value);
+            }}
+            className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[380px] cursor-pointer transition"
+          >
+            <option value="">🌐 All Projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                [{p.code}] {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Financial Tracker: Overall Project Value | Expense Done | Balance Cash */}
+        {(() => {
+          const selP = projects.find((p) => p.id === projectId);
+          const totalVal = selP
+            ? (selP.financials?.contractValue ?? selP.contractValue ?? 0)
+            : projects.reduce((s, p) => s + (p.financials?.contractValue ?? p.contractValue ?? 0), 0);
+          const expDone = selP
+            ? (selP.financials?.actualCost ?? 0)
+            : projects.reduce((s, p) => s + (p.financials?.actualCost ?? 0), 0);
+          const balCash = selP
+            ? (selP.financials?.balanceCash ?? ((selP.financials?.totalReceived ?? 0) - (selP.financials?.actualCost ?? 0)))
+            : projects.reduce((s, p) => s + (p.financials?.balanceCash ?? ((p.financials?.totalReceived ?? 0) - (p.financials?.actualCost ?? 0))), 0);
+
+          return (
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="flex items-center space-x-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl" title="Total Contract Value of the Project">
+                <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Project Value:</span>
+                <span className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono">{formatCurrency(totalVal)}</span>
+              </div>
+              <div className="flex items-center space-x-2 px-3 py-1.5 bg-amber-50/80 border border-amber-200 rounded-xl" title="Actual Outflow Cost: Site Expenses + Material POs + Labour Wages">
+                <span className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Expense Done:</span>
+                <span className="text-xs sm:text-sm font-extrabold text-amber-900 font-mono">{formatCurrency(expDone)}</span>
+              </div>
+              <div className="flex items-center space-x-2 px-3 py-1.5 bg-emerald-50/80 border border-emerald-200 rounded-xl" title="Net Cash Position: Client Collections minus Incurred Expenses">
+                <span className="text-[11px] text-emerald-700 font-bold uppercase tracking-wider">Balance Cash:</span>
+                <span className={`text-xs sm:text-sm font-extrabold font-mono ${balCash >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {formatCurrency(balCash)}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* KPI Cards */}
@@ -906,33 +954,88 @@ export const Billing: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block text-[10px] text-slate-500 font-bold">Retention %</label>
+                  <label className="block text-[10px] text-slate-600 font-bold mb-1">Retention %</label>
                   <input
                     type="number"
+                    step="any"
+                    placeholder="0.0"
                     value={invForm.retentionPercent}
                     onChange={(e) => setInvForm({ ...invForm, retentionPercent: e.target.value })}
-                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-500 font-bold">TDS (194C) %</label>
+                  <label className="block text-[10px] text-slate-600 font-bold mb-1">TDS (194C) %</label>
                   <input
                     type="number"
+                    step="any"
+                    placeholder="0.0"
                     value={invForm.tdsPercent}
                     onChange={(e) => setInvForm({ ...invForm, tdsPercent: e.target.value })}
-                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-500 font-bold">GST (18%)</label>
+                  <label className="block text-[10px] text-slate-600 font-bold mb-1">GST %</label>
                   <input
                     type="number"
+                    step="any"
+                    placeholder="0.0"
                     value={invForm.gstPercent}
                     onChange={(e) => setInvForm({ ...invForm, gstPercent: e.target.value })}
-                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
+                    className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded font-mono font-bold"
                   />
                 </div>
               </div>
+
+              {/* Grand Total Live Calculation Preview */}
+              {(() => {
+                const sub = Number(invForm.subtotal) || 0;
+                const retP = invForm.retentionPercent !== '' && invForm.retentionPercent !== null ? Number(invForm.retentionPercent) || 0 : 0;
+                const tdsP = invForm.tdsPercent !== '' && invForm.tdsPercent !== null ? Number(invForm.tdsPercent) || 0 : 0;
+                const gstP = invForm.gstPercent !== '' && invForm.gstPercent !== null ? Number(invForm.gstPercent) || 0 : 0;
+
+                const retAmt = (sub * retP) / 100;
+                const tdsAmt = (sub * tdsP) / 100;
+                const gstAmt = (sub * gstP) / 100;
+                const grandTotal = sub + gstAmt - retAmt - tdsAmt;
+
+                return (
+                  <div className="p-3.5 bg-slate-900 text-white rounded-xl shadow-inner border border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span>Certified Subtotal:</span>
+                      <span className="font-mono font-bold">{formatCurrency(sub)}</span>
+                    </div>
+                    {retAmt > 0 && (
+                      <div className="flex items-center justify-between text-xs text-amber-400">
+                        <span>(-) Retention ({retP}%):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(retAmt)}</span>
+                      </div>
+                    )}
+                    {tdsAmt > 0 && (
+                      <div className="flex items-center justify-between text-xs text-amber-400">
+                        <span>(-) TDS 194C ({tdsP}%):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(tdsAmt)}</span>
+                      </div>
+                    )}
+                    {gstAmt > 0 && (
+                      <div className="flex items-center justify-between text-xs text-emerald-400">
+                        <span>(+) GST ({gstP}%):</span>
+                        <span className="font-mono font-bold">+{formatCurrency(gstAmt)}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Grand Total (Net Bill Amount):</span>
+                        <p className="text-[10px] text-slate-400">Final certified bill amount including all tax & deductions</p>
+                      </div>
+                      <span className="text-base sm:text-lg font-black font-mono text-emerald-400">
+                        {formatCurrency(grandTotal)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1495,33 +1598,82 @@ export const Billing: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">Retention %</label>
                   <input
                     type="number"
-                    step="0.1"
+                    step="any"
+                    placeholder="0.0"
                     value={editInvForm.retentionPercent}
                     onChange={(e) => setEditInvForm({ ...editInvForm, retentionPercent: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">TDS 194C %</label>
                   <input
                     type="number"
-                    step="0.1"
+                    step="any"
+                    placeholder="0.0"
                     value={editInvForm.tdsPercent}
                     onChange={(e) => setEditInvForm({ ...editInvForm, tdsPercent: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">GST %</label>
                   <input
                     type="number"
-                    step="0.1"
+                    step="any"
+                    placeholder="0.0"
                     value={editInvForm.gstPercent}
                     onChange={(e) => setEditInvForm({ ...editInvForm, gstPercent: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
                   />
                 </div>
               </div>
+
+              {/* Grand Total Live Breakdown Preview */}
+              {(() => {
+                const sub = Number(editInvForm.subtotal) || 0;
+                const retP = editInvForm.retentionPercent !== '' && editInvForm.retentionPercent !== null ? Number(editInvForm.retentionPercent) || 0 : 0;
+                const tdsP = editInvForm.tdsPercent !== '' && editInvForm.tdsPercent !== null ? Number(editInvForm.tdsPercent) || 0 : 0;
+                const gstP = editInvForm.gstPercent !== '' && editInvForm.gstPercent !== null ? Number(editInvForm.gstPercent) || 0 : 0;
+
+                const retAmt = (sub * retP) / 100;
+                const tdsAmt = (sub * tdsP) / 100;
+                const gstAmt = (sub * gstP) / 100;
+                const grandTotal = sub + gstAmt - retAmt - tdsAmt;
+
+                return (
+                  <div className="p-3 bg-slate-900 text-white rounded-xl shadow-inner border border-slate-800 space-y-1">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span>Subtotal (Work Done):</span>
+                      <span className="font-mono font-bold">{formatCurrency(sub)}</span>
+                    </div>
+                    {retAmt > 0 && (
+                      <div className="flex items-center justify-between text-xs text-amber-400">
+                        <span>(-) Retention ({retP}%):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(retAmt)}</span>
+                      </div>
+                    )}
+                    {tdsAmt > 0 && (
+                      <div className="flex items-center justify-between text-xs text-amber-400">
+                        <span>(-) TDS 194C ({tdsP}%):</span>
+                        <span className="font-mono font-bold">-{formatCurrency(tdsAmt)}</span>
+                      </div>
+                    )}
+                    {gstAmt > 0 && (
+                      <div className="flex items-center justify-between text-xs text-emerald-400">
+                        <span>(+) GST ({gstP}%):</span>
+                        <span className="font-mono font-bold">+{formatCurrency(gstAmt)}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Grand Total (Net Amount):</span>
+                      <span className="text-sm font-black font-mono text-emerald-400">
+                        {formatCurrency(grandTotal)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Certification & Joint Inspection Notes</label>

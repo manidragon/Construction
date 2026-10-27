@@ -236,10 +236,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         />
       )}
 
-      {/* Sidebar container */}
+      {/* Sidebar container - must be z-50 to sit above the mobile backdrop (z-40) */}
       <aside
         id="sidebar-navigation-menu"
-        className={`fixed lg:static top-0 bottom-0 left-0 z-30 lg:z-10 w-64 h-full shrink-0 min-h-0 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-transform duration-200 ease-in-out ${
+        className={`fixed lg:static top-0 bottom-0 left-0 z-50 lg:z-10 w-64 h-full shrink-0 min-h-0 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-transform duration-200 ease-in-out shadow-2xl lg:shadow-none ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >

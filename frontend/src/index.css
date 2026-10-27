@@ -79,6 +79,15 @@
   background: rgba(148, 163, 184, 0.8);
 }
 
+/* Hide scrollbar for Chrome, Safari, Opera, Firefox and IE */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Print styles for RA Bills and Invoices */
 @media print {
   html, body, #root, #main-scroll-container {

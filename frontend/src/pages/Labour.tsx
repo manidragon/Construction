@@ -30,6 +30,8 @@ import {
   Briefcase,
   Filter,
   ExternalLink,
+  Lock,
+  Check,
 } from 'lucide-react';
 
 export const Labour: React.FC = () => {
@@ -123,6 +125,16 @@ export const Labour: React.FC = () => {
   const [deleteConfirmWorker, setDeleteConfirmWorker] = useState<Worker | null>(null);
   const [isDeletingWorker, setIsDeletingWorker] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // Add Existing Worker Modal state
+  const [showExistingWorkerModal, setShowExistingWorkerModal] = useState(false);
+  const [allMasterWorkers, setAllMasterWorkers] = useState<Worker[]>([]);
+  const [selectedExistingWorkerIds, setSelectedExistingWorkerIds] = useState<string[]>([]);
+  const [existingWorkerSearch, setExistingWorkerSearch] = useState('');
+  const [existingWorkerTrade, setExistingWorkerTrade] = useState('');
+  const [loadingMasterWorkers, setLoadingMasterWorkers] = useState(false);
+  const [isSubmittingExistingWorkers, setIsSubmittingExistingWorkers] = useState(false);
+  const [existingWorkerModalError, setExistingWorkerModalError] = useState<string | null>(null);
 
   // Wage Payout Modal
   const [showPayoutModal, setShowPayoutModal] = useState(false);
@@ -243,6 +255,63 @@ export const Labour: React.FC = () => {
     setDocumentFile(null);
     setDocumentType('Aadhaar Card');
     setShowWorkerModal(true);
+  };
+
+  const openAddExistingWorkerModal = async () => {
+    setExistingWorkerModalError(null);
+    setSelectedExistingWorkerIds([]);
+    setExistingWorkerSearch('');
+    setExistingWorkerTrade('');
+    setShowExistingWorkerModal(true);
+    setLoadingMasterWorkers(true);
+    try {
+      const res = await api.getWorkers('');
+      if (res.success && res.workers) {
+        setAllMasterWorkers(res.workers);
+      }
+    } catch (err: any) {
+      console.warn('Failed to load master workers:', err);
+    } finally {
+      setLoadingMasterWorkers(false);
+    }
+  };
+
+  const handleToggleSelectExistingWorker = (id: string) => {
+    setSelectedExistingWorkerIds((prev) =>
+      prev.includes(id) ? prev.filter((wId) => wId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllAvailableExistingWorkers = (availableIds: string[]) => {
+    if (selectedExistingWorkerIds.length === availableIds.length) {
+      setSelectedExistingWorkerIds([]);
+    } else {
+      setSelectedExistingWorkerIds(availableIds);
+    }
+  };
+
+  const handleAddExistingWorkersSubmit = async () => {
+    if (selectedExistingWorkerIds.length === 0) return;
+    setIsSubmittingExistingWorkers(true);
+    setExistingWorkerModalError(null);
+    try {
+      const res = await api.assignWorkerToProject({
+        projectId,
+        workerIds: selectedExistingWorkerIds,
+      });
+      if (res.success) {
+        setShowExistingWorkerModal(false);
+        setActionSuccessMsg(res.message || `Successfully added ${selectedExistingWorkerIds.length} worker(s) to this project.`);
+        setTimeout(() => setActionSuccessMsg(null), 4000);
+        fetchData();
+      } else {
+        setExistingWorkerModalError(res.message || 'Failed to add workers to project.');
+      }
+    } catch (err: any) {
+      setExistingWorkerModalError(err.message || 'Failed to add workers to project.');
+    } finally {
+      setIsSubmittingExistingWorkers(false);
+    }
   };
 
   const handleAutoFillCode = async () => {
@@ -475,7 +544,7 @@ export const Labour: React.FC = () => {
         });
       }
     } catch (err: any) {
-      setModalError(err.message || 'Failed to create worker');
+      setModalError(err.message || 'Worker code or worker already exists.');
     } finally {
       setIsSubmittingWorker(false);
     }
@@ -594,13 +663,23 @@ export const Labour: React.FC = () => {
           )}
 
           {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER') && (
-            <button
-              onClick={openAddWorkerModal}
-              className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Worker</span>
-            </button>
+            <>
+              <button
+                onClick={openAddExistingWorkerModal}
+                className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
+                title="Add / Deploy an existing registered worker from other projects to this project"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>+ Add Existing Worker</span>
+              </button>
+              <button
+                onClick={openAddWorkerModal}
+                className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add New Worker</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1419,8 +1498,74 @@ export const Labour: React.FC = () => {
 
       {/* Tab 3: Workers Master */}
       {activeTab === 'workers' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {workers.map((w) => {
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-slate-900">
+                Workforce for Project: {projects.find((p) => p.id === projectId)?.name || 'Selected Site'}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {workers.length} active worker(s) assigned to this site. Workers can work across multiple construction projects.
+              </p>
+            </div>
+            {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER') && (
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={openAddExistingWorkerModal}
+                  className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 rounded-xl text-xs shadow-sm transition"
+                  title="Deploy an existing worker from other projects to this site"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>+ Add Existing Worker</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openAddWorkerModal}
+                  className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-2 rounded-xl text-xs shadow-sm transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add New Worker</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {workers.length === 0 ? (
+            <div className="bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center space-y-4">
+              <div className="w-14 h-14 mx-auto bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+                <Users className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">No Workers Assigned to this Project Yet</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  You can deploy existing registered workers from your company roster to this project or register new site workers.
+                </p>
+              </div>
+              {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER') && (
+                <div className="flex items-center justify-center space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={openAddExistingWorkerModal}
+                    className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm transition"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>+ Add Existing Worker</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openAddWorkerModal}
+                    className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Add New Worker</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {workers.map((w) => {
             const mRecord = musterRoll.find((m) => m.worker?.id === w.id) || {
               worker: w,
               daysWorked: 0,
@@ -1564,6 +1709,8 @@ export const Labour: React.FC = () => {
           })}
         </div>
       )}
+    </div>
+  )}
 
       {/* Tab 4: Subcontractors */}
       {activeTab === 'subcontractors' && (
@@ -1592,6 +1739,8 @@ export const Labour: React.FC = () => {
       {/* Add Worker Modal */}
       {showWorkerModal && (() => {
         const duplicateWorker = workers.find(
+          (w) => w.workerCode.trim().toLowerCase() === workerForm.workerCode.trim().toLowerCase()
+        ) || allMasterWorkers.find(
           (w) => w.workerCode.trim().toLowerCase() === workerForm.workerCode.trim().toLowerCase()
         );
 
@@ -1769,19 +1918,20 @@ export const Labour: React.FC = () => {
                     <input
                       type="text"
                       required
-                      placeholder="WRK-009"
+                      placeholder="WRK-01"
                       value={workerForm.workerCode}
                       onChange={(e) => {
                         setWorkerForm({ ...workerForm, workerCode: e.target.value });
                         if (modalError) setModalError(null);
                       }}
                       className={`w-full text-xs p-2 bg-slate-50 border rounded-lg font-mono font-bold ${
-                        duplicateWorker ? 'border-amber-500 bg-amber-50/40 text-amber-900' : 'border-slate-200'
+                        duplicateWorker ? 'border-rose-400 bg-rose-50/40 text-rose-900' : 'border-slate-200'
                       }`}
                     />
                     {duplicateWorker && (
-                      <p className="text-[10px] text-amber-700 font-semibold mt-1">
-                        ⚠️ Already used by {duplicateWorker.name}
+                      <p className="text-[10px] text-rose-700 font-bold mt-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                        <span>Worker code or worker already exists ({duplicateWorker.name}).</span>
                       </p>
                     )}
                   </div>
@@ -1899,6 +2049,215 @@ export const Labour: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* Add / Deploy Existing Worker to Project Modal */}
+      {showExistingWorkerModal && (() => {
+        const selProject = projects.find((p) => p.id === projectId);
+        const availableWorkers = allMasterWorkers.filter(
+          (mw) => !workers.some((w) => w.id === mw.id)
+        );
+
+        const filtered = availableWorkers.filter((w) => {
+          const matchSearch =
+            !existingWorkerSearch ||
+            w.name.toLowerCase().includes(existingWorkerSearch.toLowerCase()) ||
+            w.workerCode.toLowerCase().includes(existingWorkerSearch.toLowerCase()) ||
+            (w.phone && w.phone.includes(existingWorkerSearch)) ||
+            w.trade.toLowerCase().includes(existingWorkerSearch.toLowerCase());
+          const matchTrade = !existingWorkerTrade || w.trade === existingWorkerTrade;
+          return matchSearch && matchTrade;
+        });
+
+        const allSelected = filtered.length > 0 && filtered.every((w) => selectedExistingWorkerIds.includes(w.id));
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 my-auto max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-blue-50 rounded-xl text-blue-700">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Add Existing Worker to Project
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Deploy registered workforce to <strong className="text-slate-800">{selProject?.name || 'this project'}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowExistingWorkerModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mt-3 p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center gap-2">
+                <Users className="w-4 h-4 shrink-0 text-blue-600" />
+                <span>
+                  One worker can work across multiple projects. Selecting workers here links them to this project's daily muster roll and attendance roster without changing their permanent records.
+                </span>
+              </div>
+
+              {existingWorkerModalError && (
+                <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span className="font-semibold">{existingWorkerModalError}</span>
+                </div>
+              )}
+
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search by worker name, code, trade, phone..."
+                    value={existingWorkerSearch}
+                    onChange={(e) => setExistingWorkerSearch(e.target.value)}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  {existingWorkerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setExistingWorkerSearch('')}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    value={existingWorkerTrade}
+                    onChange={(e) => setExistingWorkerTrade(e.target.value)}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    <option value="">All Trades</option>
+                    {['MASON', 'CARPENTER', 'BARBENDER', 'ELECTRICIAN', 'PLUMBER', 'PAINTER', 'WELDER', 'HELPER', 'OPERATOR', 'SUPERVISOR'].map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+
+                  {filtered.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAllAvailableExistingWorkers(filtered.map((w) => w.id))}
+                      className="whitespace-nowrap px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                    >
+                      {allSelected ? 'Deselect All' : 'Select All'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex-1 overflow-y-auto custom-scrollbar border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-[45vh]">
+                {loadingMasterWorkers ? (
+                  <div className="p-8 text-center text-xs text-slate-400 font-medium">
+                    Loading company workers directory...
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-500 space-y-1">
+                    <p className="font-bold">No available workers found</p>
+                    <p className="text-[11px] text-slate-400">
+                      {availableWorkers.length === 0
+                        ? 'All registered workers in the company are already assigned to this project.'
+                        : 'Try adjusting your search query or trade filter.'}
+                    </p>
+                  </div>
+                ) : (
+                  filtered.map((w) => {
+                    const isSelected = selectedExistingWorkerIds.includes(w.id);
+
+                    return (
+                      <div
+                        key={w.id}
+                        onClick={() => handleToggleSelectExistingWorker(w.id)}
+                        className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition ${
+                          isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                          {w.photoUrl ? (
+                            <img
+                              src={w.photoUrl}
+                              alt={w.name}
+                              className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center font-bold text-xs shrink-0">
+                              {w.name.charAt(0)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                                {w.workerCode}
+                              </span>
+                              <span className="text-xs font-bold text-slate-900 truncate">{w.name}</span>
+                            </div>
+                            <div className="flex items-center space-x-2 text-[10px] text-slate-500 mt-0.5">
+                              <span className="font-semibold text-amber-700">{w.trade}</span>
+                              <span>•</span>
+                              <span>{w.skillLevel}</span>
+                              <span>•</span>
+                              <span className="font-mono font-bold text-slate-700">₹{w.dailyWageRate}/day</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 block">Primary Project:</span>
+                          <span className="text-[11px] font-semibold text-slate-700 max-w-[150px] truncate block">
+                            {w.project?.name || 'Unassigned'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-600">
+                  {selectedExistingWorkerIds.length} worker(s) selected
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowExistingWorkerModal(false)}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddExistingWorkersSubmit}
+                    disabled={selectedExistingWorkerIds.length === 0 || isSubmittingExistingWorkers}
+                    className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl shadow-sm transition flex items-center gap-1.5"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>
+                      {isSubmittingExistingWorkers
+                        ? 'Deploying to Project...'
+                        : `Add ${selectedExistingWorkerIds.length > 0 ? selectedExistingWorkerIds.length : ''} Worker(s) to Project`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Record Wage Payout Modal */}
       {showPayoutModal && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -2556,14 +2915,21 @@ export const Labour: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-600 font-bold mb-1">Worker Code</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-600 font-bold">Worker Code</label>
+                    <span className="text-[10px] text-amber-700 font-bold flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      <Lock className="w-3 h-3" /> Locked ID
+                    </span>
+                  </div>
                   <input
                     type="text"
-                    required
+                    disabled
+                    readOnly
                     value={editForm.workerCode}
-                    onChange={(e) => setEditForm({ ...editForm, workerCode: e.target.value })}
-                    className="w-full bg-slate-100 border border-slate-300 rounded-xl p-2.5 font-mono font-bold text-slate-800"
+                    className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 font-mono font-bold text-slate-500 cursor-not-allowed select-none"
+                    title="Worker Code is a permanent identifier and cannot be modified."
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">Permanent unique ID (cannot be changed)</p>
                 </div>
                 <div>
                   <label className="block text-slate-600 font-bold mb-1">Full Name *</label>

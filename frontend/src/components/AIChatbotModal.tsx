@@ -534,6 +534,116 @@ const LeadRegistrationFormCard: React.FC<{
 };
 
 // -------------------------------------------------------------
+// Interactive In-Chat Lead Status Update Card
+// -------------------------------------------------------------
+const LeadStatusUpdateCard: React.FC<{
+  data: any;
+  onStatusUpdated: (lead: any, newStage: string) => void;
+}> = ({ data, onStatusUpdated }) => {
+  const lead = data?.lead;
+  const [selectedStage, setSelectedStage] = useState(lead?.stage || 'NEW_LEAD');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isUpdated, setIsUpdated] = useState(false);
+  const [updatedStage, setUpdatedStage] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const STAGE_OPTIONS = [
+    { value: 'NEW_LEAD', label: '1. New Lead (Initial Inquiry)' },
+    { value: 'SITE_VISIT_SCHEDULED', label: '2. Site Visit Scheduled' },
+    { value: 'SITE_MEASUREMENT_COMPLETED', label: '3. Site Measurement Done' },
+    { value: 'DESIGN_CONCEPT_DISCUSSION', label: '4. Design / Concept Discussion' },
+    { value: 'BOQ_QUOTATION_SHARED', label: '5. BOQ / Quotation Shared' },
+    { value: 'NEGOTIATION', label: '6. Client Negotiation' },
+    { value: 'LEAD_WON', label: '7. Lead Won (Convert to Project)' },
+    { value: 'LEAD_LOST', label: '8. Lead Lost (Closed/Dropped)' },
+  ];
+
+  const handleUpdate = async () => {
+    if (!lead?.id || isUpdating) return;
+    setIsUpdating(true);
+    setErrorMsg(null);
+    try {
+      const res = await api.updateLead(lead.id, { stage: selectedStage });
+      if (res.success && res.lead) {
+        setIsUpdated(true);
+        setUpdatedStage(selectedStage);
+        onStatusUpdated(res.lead, selectedStage);
+      } else {
+        setErrorMsg(res.message || 'Failed to update lead status.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error updating status in background');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  if (isUpdated) {
+    const stageObj = STAGE_OPTIONS.find((s) => s.value === updatedStage) || { label: updatedStage };
+    return (
+      <div className="mt-3 p-3.5 bg-emerald-950/80 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs space-y-1.5 animate-in fade-in duration-200 shadow-md">
+        <div className="flex items-center space-x-2 font-bold text-emerald-300">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>Status Changed Successfully!</span>
+        </div>
+        <p className="text-[11px] text-emerald-100/90 leading-relaxed">
+          The lead status for <strong>{lead.clientName}</strong> has been updated to <strong>{stageObj.label}</strong> in the background database.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-3.5 bg-slate-900/95 border border-amber-500/50 rounded-xl space-y-3 text-xs text-slate-200 shadow-xl animate-in fade-in duration-150">
+      <div className="flex items-center space-x-2 text-amber-400 font-bold border-b border-slate-700/80 pb-2">
+        <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+        <span className="text-sm">Do you want to update the status?</span>
+      </div>
+
+      {errorMsg && (
+        <div className="p-2 bg-rose-950/70 border border-rose-500/40 text-rose-300 rounded text-[11px] flex items-center space-x-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      <div>
+        <label className="text-[10px] text-slate-400 font-bold block mb-1">
+          Select New Status / Stage:
+        </label>
+        <select
+          value={selectedStage}
+          onChange={(e) => setSelectedStage(e.target.value)}
+          disabled={isUpdating}
+          className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs font-semibold text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+        >
+          {STAGE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label} {opt.value === lead?.stage ? '(Current)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="pt-1 flex items-center justify-between gap-2 border-t border-slate-800">
+        <span className="text-[10px] text-slate-400 italic">
+          Automatically updates in background
+        </span>
+        <button
+          type="button"
+          onClick={handleUpdate}
+          disabled={isUpdating || selectedStage === lead?.stage}
+          className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs rounded-lg transition shadow-md shadow-amber-500/20 disabled:opacity-40 flex items-center space-x-1.5 cursor-pointer"
+        >
+          <RotateCcw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
+          <span>{isUpdating ? 'Updating in Background...' : 'Update Status'}</span>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------
 // Rich Markdown & Card Formatter Component
 // -------------------------------------------------------------
 const renderInlineFormatting = (text: string): React.ReactNode => {
@@ -905,6 +1015,40 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
     saveCurrentSessionMessages([...messages, botConfirmMsg]);
   };
 
+  const handleLeadStatusUpdated = (lead: any, newStage: string) => {
+    const stageLabels: Record<string, string> = {
+      NEW_LEAD: 'New Lead (Initial Inquiry)',
+      SITE_VISIT_SCHEDULED: 'Site Visit Scheduled',
+      SITE_MEASUREMENT_COMPLETED: 'Site Measurement Done',
+      DESIGN_CONCEPT_DISCUSSION: 'Design / Concept Discussion',
+      BOQ_QUOTATION_SHARED: 'BOQ / Quotation Shared',
+      NEGOTIATION: 'Client Negotiation',
+      LEAD_WON: 'Lead Won (Converted to Project)',
+      LEAD_LOST: 'Lead Lost (Closed/Dropped)',
+    };
+    const stageTitle = stageLabels[newStage] || newStage.replace(/_/g, ' ');
+
+    const botConfirmMsg: ChatMessage = {
+      id: `bot-${Date.now()}`,
+      sender: 'bot',
+      text:
+        `✅ **Lead Status Changed Successfully!**\n\n` +
+        `• **Lead ID:** [\`${lead.leadNumber}\`]\n` +
+        `• **Client Name:** **${lead.clientName}**\n` +
+        `• **Updated Status:** **${stageTitle}**\n` +
+        `• **Database Sync:** The pipeline and live database have been automatically updated in the background.`,
+      timestamp: new Date().toISOString(),
+      actionTaken: 'LEAD_STATUS_CHANGED',
+      suggestedPrompts: [
+        'How many lead today',
+        'How many lead converted',
+        'Show all active leads in sales pipeline',
+      ],
+    };
+    saveCurrentSessionMessages([...messages, botConfirmMsg]);
+    window.dispatchEvent(new CustomEvent('lead-status-updated', { detail: { leadId: lead.id, stage: newStage } }));
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1152,6 +1296,14 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
                       <LeadRegistrationFormCard
                         data={m.data}
                         onRegistered={handleLeadRegistered}
+                      />
+                    )}
+
+                    {/* Interactive Lead Status Update Card */}
+                    {m.actionTaken === 'LEAD_STATUS_UPDATE_CARD' && m.data?.lead && (
+                      <LeadStatusUpdateCard
+                        data={m.data}
+                        onStatusUpdated={handleLeadStatusUpdated}
                       />
                     )}
 
