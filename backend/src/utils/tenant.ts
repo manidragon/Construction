@@ -13,3 +13,4 @@ export const getTenantFilter = (req: Request) => {
   }
   return { tenantId: req.user.companyId };
 };
+

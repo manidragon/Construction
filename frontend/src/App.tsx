@@ -75,7 +75,7 @@ import { ScrollToTop } from './components/ScrollToTop';
 
 export const App: React.FC = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ScrollToTop />
       <AuthProvider>
         <ProjectProvider>

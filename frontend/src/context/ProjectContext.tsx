@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Project } from '../types';
 import api from '../services/api';
+import { useAuth } from './AuthContext';
 
 interface ProjectContextType {
   projects: Project[];
@@ -14,11 +15,17 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchProjects = async () => {
+    const token = localStorage.getItem('erp_token');
+    if (!token || !isAuthenticated) {
+      return;
+    }
+
     setIsLoading(true);
     try {
       const res = await api.getProjects();
@@ -33,8 +40,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (isAuthenticated && user) {
+      fetchProjects();
+    } else {
+      setProjects([]);
+      setSelectedProjectId('');
+    }
+  }, [isAuthenticated, user?.id, user?.company?.id]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
 
