@@ -5,6 +5,14 @@ import fs from 'fs';
 
 import { login, superAdminLogin, switchRole, getMe, getUsers, signupTrial } from '../controllers/authController';
 import {
+  getTeamMembers,
+  createTeamMember,
+  updateTeamMember,
+  resetTeamMemberPassword,
+  toggleTeamMemberStatus,
+  deleteTeamMember,
+} from '../controllers/teamController';
+import {
   getSuperAdminStats,
   getAllTenants,
   createTenant,
@@ -240,6 +248,16 @@ router.get('/auth/users', getUsers);
 
 // Tenant Current Status (accessible even if trial expired, so UI can display upgrade banner/modal)
 router.get('/company/current-status', getTenantCurrentStatus);
+
+// ----------------------------------------------------------------------
+// Constructor Staff & Team Logins Management
+// ----------------------------------------------------------------------
+router.get('/company/team', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), getTeamMembers);
+router.post('/company/team', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), checkTrialStatus, createTeamMember);
+router.put('/company/team/:id', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), checkTrialStatus, updateTeamMember);
+router.patch('/company/team/:id/reset-password', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), checkTrialStatus, resetTeamMemberPassword);
+router.patch('/company/team/:id/status', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), checkTrialStatus, toggleTeamMemberStatus);
+router.delete('/company/team/:id', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), checkTrialStatus, deleteTeamMember);
 
 // ----------------------------------------------------------------------
 // SUPER_ADMIN SaaS Management Routes

@@ -29,6 +29,7 @@ import { SelfServeSignup } from './pages/SelfServeSignup';
 import { CompanySettings } from './pages/CompanySettings';
 import { ShiftLogger } from './pages/ShiftLogger';
 import { RecycleBin } from './pages/RecycleBin';
+import { TeamManagement } from './pages/TeamManagement';
 
 // Protected Route Guard
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -95,6 +96,8 @@ export const App: React.FC = () => {
               <Route index element={<Dashboard />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="company-settings" element={<CompanySettings />} />
+              <Route path="team" element={<TeamManagement />} />
+              <Route path="company-team" element={<TeamManagement />} />
               <Route path="leads" element={<Leads />} />
               <Route path="quotations" element={<Quotations />} />
               <Route path="projects" element={<Projects />} />

@@ -330,6 +330,20 @@ class ApiService {
   getWhatsAppLogs = (params: string = '') =>
     this.request<any>(`/whatsapp/logs${params ? `?${params}` : ''}`);
 
+  // CONSTRUCTOR STAFF & TEAM LOGINS MANAGEMENT
+  getTeamMembers = (params: string = '') =>
+    this.request<any>(`/company/team${params ? `?${params}` : ''}`);
+  createTeamMember = (data: any) =>
+    this.request<any>('/company/team', { method: 'POST', body: JSON.stringify(data) });
+  updateTeamMember = (id: string, data: any) =>
+    this.request<any>(`/company/team/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  resetTeamMemberPassword = (id: string, data: { newPassword: string }) =>
+    this.request<any>(`/company/team/${id}/reset-password`, { method: 'PATCH', body: JSON.stringify(data) });
+  toggleTeamMemberStatus = (id: string) =>
+    this.request<any>(`/company/team/${id}/status`, { method: 'PATCH' });
+  deleteTeamMember = (id: string) =>
+    this.request<any>(`/company/team/${id}`, { method: 'DELETE' });
+
   // UNIVERSAL OPERATIONAL ARCHITECTURE: DYNAMIC DROPDOWNS, LIFECYCLE & DAILY OPS
   getDropdowns = (category?: string) =>
     this.request<any>(`/dropdowns${category ? `?category=${category}` : ''}`);

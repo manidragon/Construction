@@ -22,6 +22,7 @@ import {
   Crown,
   Trash2,
   X,
+  UserCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -77,6 +78,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           path: '/',
           icon: LayoutDashboard,
           roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'ACCOUNTS_MANAGER', 'PURCHASE_MANAGER', 'STOREKEEPER', 'HR_MANAGER', 'AUDITOR'],
+        },
+        {
+          name: 'Staff & Team Logins',
+          path: '/team',
+          icon: UserCheck,
+          roles: ['SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'],
+          badge: 'ACCESS',
         },
         {
           name: 'Company Settings',
