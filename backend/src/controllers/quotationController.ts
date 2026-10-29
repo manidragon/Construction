@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { logAudit } from '../middleware/auth';
 import { moveToRecycleBin } from './recycleBinController';
+import { getTenantFilter } from '../utils/tenant';
 
 /**
  * Sequential Quotation Numbering: QUOT-YYYY-NNN
@@ -10,9 +11,10 @@ export const getNextQuotationNumber = async (req?: Request, res?: Response) => {
   try {
     const currentYear = new Date().getFullYear();
     const prefix = `QUOT-${currentYear}-`;
+    const tenantFilter = req ? getTenantFilter(req) : {};
 
     const latest = await prisma.quotation.findFirst({
-      where: { quotationNumber: { startsWith: prefix } },
+      where: { quotationNumber: { startsWith: prefix }, ...tenantFilter },
       orderBy: { quotationNumber: 'desc' },
       select: { quotationNumber: true },
     });
@@ -129,7 +131,7 @@ export const getQuotations = async (req: Request, res: Response) => {
   try {
     const { leadId, projectId, status } = req.query;
 
-    const where: any = {};
+    const where: any = { ...getTenantFilter(req) };
     if (leadId && typeof leadId === 'string') where.leadId = leadId;
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (status && typeof status === 'string') where.status = status;
@@ -187,8 +189,8 @@ export const getQuotationById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const quotation = await prisma.quotation.findUnique({
-      where: { id },
+    const quotation = await prisma.quotation.findFirst({
+      where: { id, ...getTenantFilter(req) },
       include: {
         lead: true,
         project: true,
@@ -270,7 +272,7 @@ export const createQuotation = async (req: Request, res: Response) => {
     let finalNumber = quotationNumber ? String(quotationNumber).trim() : '';
     if (finalNumber) {
       const existing = await prisma.quotation.findFirst({
-        where: { quotationNumber: finalNumber, ...(tenantId ? { tenantId } : {}) },
+        where: { quotationNumber: finalNumber, ...getTenantFilter(req) },
       });
       if (existing) {
         // Update in-place to prevent duplicate quotation records
@@ -279,7 +281,7 @@ export const createQuotation = async (req: Request, res: Response) => {
       }
     } else if (leadId) {
       const existingForLead = await prisma.quotation.findFirst({
-        where: { leadId },
+        where: { leadId, ...getTenantFilter(req) },
         orderBy: { createdAt: 'desc' },
       });
       if (existingForLead) {
@@ -289,7 +291,7 @@ export const createQuotation = async (req: Request, res: Response) => {
     }
 
     if (!finalNumber) {
-      const generated = await getNextQuotationNumber();
+      const generated = await getNextQuotationNumber(req);
       finalNumber = (generated as any).nextQuotationNumber;
     }
 
@@ -388,7 +390,10 @@ export const updateQuotation = async (req: Request, res: Response) => {
       items,
     } = req.body;
 
-    const existing: any = await prisma.quotation.findUnique({ where: { id }, include: { items: true } });
+    const existing: any = await prisma.quotation.findFirst({
+      where: { id, ...getTenantFilter(req) },
+      include: { items: true },
+    });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Quotation not found.' });
     }
@@ -421,7 +426,7 @@ export const updateQuotation = async (req: Request, res: Response) => {
     }
 
     const updated = await prisma.quotation.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         ...(clientName && { clientName }),
         ...(clientPhone && { clientPhone }),
@@ -470,8 +475,8 @@ export const dispatchQuotation = async (req: Request, res: Response) => {
     const id = String(req.params.id);
     const { channel } = req.body; // 'WHATSAPP', 'EMAIL', or 'BOTH'
 
-    const quotation: any = await prisma.quotation.findUnique({
-      where: { id },
+    const quotation: any = await prisma.quotation.findFirst({
+      where: { id, ...getTenantFilter(req) },
       include: {
         items: true,
         lead: true,
@@ -487,7 +492,7 @@ export const dispatchQuotation = async (req: Request, res: Response) => {
 
     // Update Quotation status to SHARED
     const updatedQuotation = await prisma.quotation.update({
-      where: { id },
+      where: { id: quotation.id },
       data: {
         status: 'SHARED',
         sharedVia: dispatchChannel,
@@ -581,8 +586,8 @@ export const generateMilestoneInvoiceFromQuotation = async (req: Request, res: R
       dueDate,
     } = req.body;
 
-    const quotation: any = await prisma.quotation.findUnique({
-      where: { id },
+    const quotation: any = await prisma.quotation.findFirst({
+      where: { id, ...getTenantFilter(req) },
       include: {
         lead: true,
         project: {
@@ -642,18 +647,19 @@ export const generateMilestoneInvoiceFromQuotation = async (req: Request, res: R
 
     // Generate sequential invoice number: INV-YYYY-NNN
     const currentYear = new Date().getFullYear();
-    const count = await prisma.clientInvoice.count();
+    const count = await prisma.clientInvoice.count({ where: getTenantFilter(req) });
     const invoiceNumber = `INV-${currentYear}-${String(count + 1).padStart(3, '0')}`;
 
     // Find or create Client
     let client = await prisma.client.findFirst({
-      where: { phone: quotation.clientPhone },
+      where: { phone: quotation.clientPhone, ...getTenantFilter(req) },
     });
 
     if (!client) {
-      const clientCount = await prisma.client.count();
+      const clientCount = await prisma.client.count({ where: getTenantFilter(req) });
       client = await prisma.client.create({
         data: {
+          tenantId: quotation.tenantId || req.user?.companyId || null,
           code: `CLI-${String(clientCount + 1).padStart(3, '0')}`,
           name: quotation.clientName,
           phone: quotation.clientPhone,
@@ -671,6 +677,7 @@ export const generateMilestoneInvoiceFromQuotation = async (req: Request, res: R
 
     const invoice = await prisma.clientInvoice.create({
       data: {
+        tenantId: quotation.tenantId || req.user?.companyId || null,
         invoiceNumber,
         clientId: client.id,
         projectId: project.id,
@@ -743,8 +750,8 @@ export const deleteQuotation = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const existing = await prisma.quotation.findUnique({
-      where: { id },
+    const existing = await prisma.quotation.findFirst({
+      where: { id, ...getTenantFilter(req) },
       include: { items: true },
     });
     if (!existing) {
@@ -775,7 +782,7 @@ export const deleteQuotation = async (req: Request, res: Response) => {
     });
 
     // Delete the quotation
-    await prisma.quotation.delete({ where: { id } });
+    await prisma.quotation.delete({ where: { id: existing.id } });
 
     await logAudit(req.user?.id, 'DELETE_QUOTATION', 'QUOTATION', id, {
       quotationNumber: existing.quotationNumber,

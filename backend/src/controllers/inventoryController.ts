@@ -5,8 +5,9 @@ import { logAudit, getTenantFilter } from '../middleware/auth';
 export const getMaterials = async (req: Request, res: Response) => {
   try {
     const { category, search, projectId, onlyProject } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, ...tenantFilter };
     if (category && typeof category === 'string') {
       where.category = category;
     }
@@ -114,7 +115,10 @@ export const getMaterials = async (req: Request, res: Response) => {
 
 export const getNextMaterialCode = async (req: Request, res: Response) => {
   try {
-    const allMaterials = await prisma.material.findMany({ select: { code: true } });
+    const allMaterials = await prisma.material.findMany({
+      where: getTenantFilter(req),
+      select: { code: true },
+    });
     let maxNum = 0;
     for (const m of allMaterials) {
       if (m.code && m.code.startsWith('MAT-')) {
@@ -143,9 +147,14 @@ export const createMaterial = async (req: Request, res: Response) => {
     name = String(name).trim();
     unit = unit && String(unit).trim() ? String(unit).trim().toUpperCase() : 'NOS';
 
+    const tenantFilter = getTenantFilter(req);
+
     // Auto-generate code if not provided
     if (!code || !String(code).trim()) {
-      const allMaterials = await prisma.material.findMany({ select: { code: true } });
+      const allMaterials = await prisma.material.findMany({
+        where: tenantFilter,
+        select: { code: true },
+      });
       let maxNum = 0;
       for (const m of allMaterials) {
         if (m.code && m.code.startsWith('MAT-')) {
@@ -159,7 +168,6 @@ export const createMaterial = async (req: Request, res: Response) => {
       code = `MAT-GEN-${String(maxNum + 1).padStart(3, '0')}`;
     } else {
       code = String(code).trim().toUpperCase();
-      const tenantFilter = getTenantFilter(req);
       const existing = await prisma.material.findFirst({ where: { code, ...tenantFilter } });
       if (existing) {
         return res.status(400).json({ success: false, message: `Material code '${code}' already exists.` });
@@ -182,9 +190,12 @@ export const createMaterial = async (req: Request, res: Response) => {
       },
     });
 
-    // Auto-initialize stock balance for all warehouses
+    // Auto-initialize stock balance for all warehouses of this tenant
     try {
-      const warehouses = await prisma.warehouse.findMany({ select: { id: true } });
+      const warehouses = await prisma.warehouse.findMany({
+        where: tenantFilter,
+        select: { id: true },
+      });
       for (const wh of warehouses) {
         await prisma.stockBalance.upsert({
           where: {
@@ -218,11 +229,14 @@ export const createMaterial = async (req: Request, res: Response) => {
 export const updateMaterial = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { name, category, brand, unit, standardPrice, minStockLevel, reorderQty, taxPercent } = req.body;
 
-    const existing = await prisma.material.findUnique({ where: { id } });
+    const existing = await prisma.material.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Material not found.' });
+      return res.status(404).json({ success: false, message: 'Material not found or not accessible.' });
     }
 
     const updated = await prisma.material.update({
@@ -250,14 +264,15 @@ export const updateMaterial = async (req: Request, res: Response) => {
 export const deleteMaterial = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.material.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.material.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         _count: { select: { stockBalances: true, poLineItems: true, requisitionItems: true } },
       },
     });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Material not found.' });
+      return res.status(404).json({ success: false, message: 'Material not found or not accessible.' });
     }
 
     if (existing._count.poLineItems > 0 || existing._count.requisitionItems > 0) {
@@ -282,7 +297,9 @@ export const deleteMaterial = async (req: Request, res: Response) => {
 
 export const getWarehouses = async (req: Request, res: Response) => {
   try {
+    const tenantFilter = getTenantFilter(req);
     const warehouses = await prisma.warehouse.findMany({
+      where: tenantFilter,
       include: {
         balances: {
           include: {
@@ -307,8 +324,10 @@ export const createWarehouse = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Code, name, and location are required.' });
     }
 
+    const tenantId = (req.user as any)?.companyId || null;
     const warehouse = await prisma.warehouse.create({
       data: {
+        tenantId,
         code,
         name,
         location,
@@ -329,11 +348,14 @@ export const createWarehouse = async (req: Request, res: Response) => {
 export const updateWarehouse = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { name, location, isSiteStore, contactPerson, projectId } = req.body;
 
-    const existing = await prisma.warehouse.findUnique({ where: { id } });
+    const existing = await prisma.warehouse.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Warehouse not found.' });
+      return res.status(404).json({ success: false, message: 'Warehouse not found or not accessible.' });
     }
 
     const updated = await prisma.warehouse.update({
@@ -356,14 +378,15 @@ export const updateWarehouse = async (req: Request, res: Response) => {
 export const deleteWarehouse = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.warehouse.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.warehouse.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         balances: { where: { currentQty: { gt: 0 } } },
       },
     });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Warehouse not found.' });
+      return res.status(404).json({ success: false, message: 'Warehouse not found or not accessible.' });
     }
 
     if (existing.balances.length > 0) {
@@ -385,8 +408,9 @@ export const deleteWarehouse = async (req: Request, res: Response) => {
 export const getRequisitions = async (req: Request, res: Response) => {
   try {
     const { projectId, status } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') {
       where.projectId = projectId;
     }
@@ -424,11 +448,14 @@ export const createRequisition = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Project, required date, and at least one item are required.' });
     }
 
-    const count = await prisma.materialRequisition.count();
+    const tenantFilter = getTenantFilter(req);
+    const count = await prisma.materialRequisition.count({ where: tenantFilter });
     const requisitionNumber = `MR-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
+    const tenantId = (req.user as any)?.companyId || null;
     const requisition = await prisma.materialRequisition.create({
       data: {
+        tenantId,
         requisitionNumber,
         projectId,
         siteId: siteId || null,
@@ -462,7 +489,15 @@ export const createRequisition = async (req: Request, res: Response) => {
 export const approveRequisition = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { status, remarks } = req.body; // APPROVED or REJECTED
+
+    const existing = await prisma.materialRequisition.findFirst({
+      where: { id, ...tenantFilter },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Requisition not found or not accessible.' });
+    }
 
     const updated = await prisma.materialRequisition.update({
       where: { id },
@@ -485,9 +520,12 @@ export const approveRequisition = async (req: Request, res: Response) => {
 export const deleteRequisition = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.materialRequisition.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.materialRequisition.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Requisition not found.' });
+      return res.status(404).json({ success: false, message: 'Requisition not found or not accessible.' });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -637,11 +675,13 @@ export const recordStockMovement = async (req: Request, res: Response) => {
       }
 
       // 3. Create Stock Ledger entry
-      const totalTxnCount = await tx.stockLedger.count();
+      const tenantId = (req.user as any)?.companyId || null;
+      const totalTxnCount = await tx.stockLedger.count({ where: tenantId ? { tenantId } : {} });
       const txnNumber = `STK-${new Date().getFullYear()}-${String(totalTxnCount + 1).padStart(5, '0')}`;
 
       const ledgerEntry = await tx.stockLedger.create({
         data: {
+          tenantId,
           txnNumber,
           txnType,
           materialId,
@@ -672,8 +712,9 @@ export const recordStockMovement = async (req: Request, res: Response) => {
 export const getStockLedger = async (req: Request, res: Response) => {
   try {
     const { materialId, warehouseId, projectId, txnType } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (materialId && typeof materialId === 'string') where.materialId = materialId;
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (txnType && typeof txnType === 'string') where.txnType = txnType;
@@ -705,8 +746,9 @@ export const getStockLedger = async (req: Request, res: Response) => {
 export const getProjectMaterials = async (req: Request, res: Response) => {
   try {
     const { projectId, search } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const projectWhere: any = {};
+    const projectWhere: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string' && projectId !== 'ALL') {
       projectWhere.id = projectId;
     }
@@ -746,8 +788,9 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
       orderBy: { txnDate: 'desc' },
     });
 
-    // 4. Fetch all warehouses
+    // 4. Fetch all warehouses of this tenant
     const warehouses = await prisma.warehouse.findMany({
+      where: tenantFilter,
       include: {
         balances: {
           include: { material: true },
@@ -943,19 +986,26 @@ export const addStock = async (req: Request, res: Response) => {
     }
 
     let targetWarehouseId = warehouseId;
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
     if (!targetWarehouseId) {
       if (projectId) {
         const siteStore = await prisma.warehouse.findFirst({
-          where: { projectId, isSiteStore: true },
+          where: { projectId, isSiteStore: true, ...tenantFilter },
         });
         if (siteStore) targetWarehouseId = siteStore.id;
       }
       if (!targetWarehouseId) {
-        const mainWh = await prisma.warehouse.findFirst({ orderBy: { createdAt: 'asc' } });
+        const mainWh = await prisma.warehouse.findFirst({
+          where: tenantFilter,
+          orderBy: { createdAt: 'asc' },
+        });
         if (mainWh) targetWarehouseId = mainWh.id;
         else {
           const newWh = await prisma.warehouse.create({
             data: {
+              tenantId,
               code: 'WH-MAIN',
               name: 'Central Yard & Logistics Hub',
               location: 'Main Yard',
@@ -1029,11 +1079,12 @@ export const addStock = async (req: Request, res: Response) => {
       }
 
       // 3. Create StockLedger entry
-      const totalTxnCount = await tx.stockLedger.count();
+      const totalTxnCount = await tx.stockLedger.count({ where: tenantId ? { tenantId } : {} });
       const txnNumber = `STK-${new Date().getFullYear()}-${String(totalTxnCount + 1).padStart(5, '0')}`;
 
       const ledgerEntry = await tx.stockLedger.create({
         data: {
+          tenantId,
           txnNumber,
           txnType: movementTxnType,
           materialId,
@@ -1071,25 +1122,32 @@ export const addStock = async (req: Request, res: Response) => {
 export const adjustStock = async (req: Request, res: Response) => {
   try {
     const { materialId, warehouseId, projectId, newQty, reason, remarks } = req.body;
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
 
     const targetQty = Number(newQty);
     if (!materialId || isNaN(targetQty) || targetQty < 0) {
       return res.status(400).json({ success: false, message: 'Valid material and non-negative stock quantity are required.' });
     }
 
-    const material = await prisma.material.findUnique({ where: { id: materialId } });
+    const material = await prisma.material.findFirst({
+      where: { id: materialId, ...tenantFilter },
+    });
     if (!material) {
-      return res.status(404).json({ success: false, message: 'Material not found.' });
+      return res.status(404).json({ success: false, message: 'Material not found or not accessible.' });
     }
 
     let targetWarehouseId = warehouseId;
     if (!targetWarehouseId) {
       const existingBalance = await prisma.stockBalance.findFirst({
-        where: { materialId, currentQty: { gt: 0 } },
+        where: { materialId, currentQty: { gt: 0 }, warehouse: { ...tenantFilter } },
       });
       if (existingBalance) targetWarehouseId = existingBalance.warehouseId;
       else {
-        const wh = await prisma.warehouse.findFirst({ orderBy: { createdAt: 'asc' } });
+        const wh = await prisma.warehouse.findFirst({
+          where: tenantFilter,
+          orderBy: { createdAt: 'asc' },
+        });
         targetWarehouseId = wh?.id;
       }
     }
@@ -1133,11 +1191,12 @@ export const adjustStock = async (req: Request, res: Response) => {
       }
 
       // Record StockLedger entry
-      const totalTxnCount = await tx.stockLedger.count();
+      const totalTxnCount = await tx.stockLedger.count({ where: tenantId ? { tenantId } : {} });
       const txnNumber = `STK-${new Date().getFullYear()}-${String(totalTxnCount + 1).padStart(5, '0')}`;
 
       const ledgerEntry = await tx.stockLedger.create({
         data: {
+          tenantId,
           txnNumber,
           txnType: 'PHYSICAL_ADJUSTMENT',
           materialId,

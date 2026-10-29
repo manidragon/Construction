@@ -114,9 +114,10 @@ export const getProjects = async (req: Request, res: Response) => {
 export const getProjectById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const project = await prisma.project.findUnique({
-      where: { id },
+    const project = await prisma.project.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         sites: true,
         phases: { orderBy: { sequence: 'asc' } },
@@ -535,6 +536,15 @@ export const createProject = async (req: Request, res: Response) => {
 export const updateProject = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+
+    const existing = await prisma.project.findFirst({
+      where: { id, ...tenantFilter },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Project not found or unauthorized.' });
+    }
+
     const {
       name,
       description,
@@ -607,9 +617,10 @@ export const confirmProjectAdvancePayment = async (req: Request, res: Response) 
   try {
     const id = String(req.params.id);
     const { referenceNo, notes } = req.body;
+    const tenantFilter = getTenantFilter(req);
 
-    const project = await prisma.project.findUnique({
-      where: { id },
+    const project = await prisma.project.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         clientInvoices: { where: { invoiceType: 'ADVANCE' } },
       },
@@ -677,9 +688,10 @@ export const confirmProjectAdvancePayment = async (req: Request, res: Response) 
 export const deleteProject = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const existing = await prisma.project.findUnique({
-      where: { id },
+    const existing = await prisma.project.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         _count: {
           select: {
@@ -757,9 +769,17 @@ export const createSite = async (req: Request, res: Response) => {
   try {
     const projectId = String(req.params.projectId);
     const { name, code, location, supervisorName, contactPhone } = req.body;
+    const tenantFilter = getTenantFilter(req);
 
     if (!name || !code || !location) {
       return res.status(400).json({ success: false, message: 'Name, code, and location are required.' });
+    }
+
+    const parentProject = await prisma.project.findFirst({
+      where: { id: projectId, ...tenantFilter },
+    });
+    if (!parentProject) {
+      return res.status(404).json({ success: false, message: 'Project not found or unauthorized.' });
     }
 
     const site = await prisma.site.create({
@@ -783,10 +803,13 @@ export const updateSite = async (req: Request, res: Response) => {
   try {
     const siteId = String(req.params.siteId || req.params.id);
     const { name, code, location, supervisorName, contactPhone } = req.body;
+    const tenantFilter = getTenantFilter(req);
 
-    const existing = await prisma.site.findUnique({ where: { id: siteId } });
+    const existing = await prisma.site.findFirst({
+      where: { id: siteId, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Site not found.' });
+      return res.status(404).json({ success: false, message: 'Site not found or unauthorized.' });
     }
 
     const updated = await prisma.site.update({
@@ -809,16 +832,17 @@ export const updateSite = async (req: Request, res: Response) => {
 export const deleteSite = async (req: Request, res: Response) => {
   try {
     const siteId = String(req.params.siteId || req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const existing = await prisma.site.findUnique({
-      where: { id: siteId },
+    const existing = await prisma.site.findFirst({
+      where: { id: siteId, project: { ...tenantFilter } },
       include: {
         _count: { select: { tasks: true, dailyReports: true } },
       },
     });
 
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Site not found.' });
+      return res.status(404).json({ success: false, message: 'Site not found or unauthorized.' });
     }
 
     if (existing._count.tasks > 0 || existing._count.dailyReports > 0) {

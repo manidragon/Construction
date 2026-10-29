@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { logAudit } from '../middleware/auth';
+import { getTenantFilter } from '../utils/tenant';
 
 export const getEquipment = async (req: Request, res: Response) => {
   try {
     const { status, category, assetType } = req.query;
 
-    const where: any = {};
+    const where: any = { ...getTenantFilter(req) };
     if (status && typeof status === 'string') where.status = status;
     if (category && typeof category === 'string') where.category = category;
     if (assetType && typeof assetType === 'string') where.assetType = assetType;
@@ -54,8 +55,11 @@ export const createEquipment = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Code, name, and category are required.' });
     }
 
+    const tenantId = req.user?.companyId || null;
+
     const eq = await prisma.equipmentAsset.create({
       data: {
+        tenantId,
         code,
         name,
         assetType: assetType || 'OWNED',
@@ -85,6 +89,13 @@ export const logEquipmentUsage = async (req: Request, res: Response) => {
     const id = String(req.params.id);
     const { projectId, siteId, logDate, startHours, endHours, fuelConsumedLitres, workDescription, operatorName } = req.body;
 
+    const equipment = await prisma.equipmentAsset.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
+    if (!equipment) {
+      return res.status(404).json({ success: false, message: 'Equipment asset not found.' });
+    }
+
     const startH = Number(startHours);
     const endH = Number(endHours);
     const hoursWorked = Math.max(0, endH - startH);
@@ -106,7 +117,7 @@ export const logEquipmentUsage = async (req: Request, res: Response) => {
       });
 
       await tx.equipmentAsset.update({
-        where: { id },
+        where: { id: equipment.id },
         data: {
           hoursRunTotal: { increment: hoursWorked },
           status: 'IN_USE',
@@ -127,9 +138,16 @@ export const recordMaintenance = async (req: Request, res: Response) => {
     const id = String(req.params.id);
     const { maintenanceType, description, cost, servicedBy, nextDueHours, nextDueDate } = req.body;
 
+    const equipment = await prisma.equipmentAsset.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
+    if (!equipment) {
+      return res.status(404).json({ success: false, message: 'Equipment asset not found.' });
+    }
+
     const maintenance = await prisma.equipmentMaintenance.create({
       data: {
-        equipmentId: id,
+        equipmentId: equipment.id,
         maintenanceDate: new Date(),
         maintenanceType: maintenanceType || 'ROUTINE',
         description,

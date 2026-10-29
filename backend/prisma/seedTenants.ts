@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -163,6 +165,152 @@ async function main() {
     },
   });
   console.log(`✓ Active Trial Tenant created: Skyline Urban Developers (${skylineAdmin.email}, 10 days remaining)`);
+
+  // Seed Skyline Project Manager user
+  const skylinePM = await prisma.user.upsert({
+    where: { email: 'pm@skyline.com' },
+    update: { companyId: skylineCompany.id, role: 'PROJECT_MANAGER' },
+    create: {
+      companyId: skylineCompany.id,
+      name: 'Naveen Kumar',
+      email: 'pm@skyline.com',
+      passwordHash,
+      role: 'PROJECT_MANAGER',
+      designation: 'Project Director',
+      phone: '+91 98450 44556',
+    },
+  });
+
+  // Seed isolated Client for Skyline
+  const skylineClient = await prisma.client.upsert({
+    where: {
+      tenantId_code: {
+        tenantId: skylineCompany.id,
+        code: 'CLI-SKY-001',
+      },
+    },
+    update: {},
+    create: {
+      tenant: { connect: { id: skylineCompany.id } },
+      code: 'CLI-SKY-001',
+      name: 'Dr. Ramesh & Sunita Nair',
+      phone: '+91 98451 99887',
+      email: 'ramesh.nair@example.com',
+      billingAddress: 'Villa 42, Palm Meadows, Whitefield, Bengaluru - 560066',
+    },
+  });
+
+  // Seed isolated Project for Skyline (Constructor B)
+  const skylineProject = await prisma.project.upsert({
+    where: {
+      tenantId_code: {
+        tenantId: skylineCompany.id,
+        code: 'PRJ-SKY-001',
+      },
+    },
+    update: {},
+    create: {
+      tenant: { connect: { id: skylineCompany.id } },
+      code: 'PRJ-SKY-001',
+      name: 'Skyline Palm Meadows Villa 42',
+      description: 'Exclusive 4BHK Luxury Villa Construction & Interior Turnkey Execution',
+      clientName: skylineClient.name,
+      clientContact: skylineClient.phone,
+      clientEmail: skylineClient.email,
+      siteAddress: skylineClient.billingAddress || 'Palm Meadows, Whitefield',
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      projectType: 'RESIDENTIAL',
+      contractType: 'ITEM_RATE',
+      contractValue: 8500000,
+      approvedBudget: 6500000,
+      plannedStartDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+      plannedEndDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
+      status: 'ACTIVE',
+      completionPercent: 24.5,
+      advancePaymentRequired: 2000000,
+      advancePaymentReceived: 2000000,
+      advancePaymentConfirmed: true,
+      advancePaymentConfirmedBy: 'Karan Mehra',
+      advancePaymentConfirmedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // Seed sample BOQ for Skyline's project
+  await prisma.bOQItem.upsert({
+    where: { id: `boq-skyline-001` },
+    update: {},
+    create: {
+      id: `boq-skyline-001`,
+      projectId: skylineProject.id,
+      itemCode: 'BOQ-001',
+      description: 'Substructure RCC Footings, Plinth Beam & Ground Slab with M25 RMC',
+      category: 'CIVIL_CONCRETE',
+      unit: 'CUM',
+      estimatedQty: 120,
+      unitRate: 6800,
+      estimatedTotal: 816000,
+      actualQtyCompleted: 120,
+      materialUnitCost: 4500,
+      labourUnitCost: 2300,
+      clientApprovalStatus: 'APPROVED',
+    },
+  });
+
+  // Seed isolated Lead for Skyline
+  await prisma.lead.upsert({
+    where: {
+      tenantId_leadNumber: {
+        tenantId: skylineCompany.id,
+        leadNumber: 'LEAD-2026-001',
+      },
+    },
+    update: {},
+    create: {
+      tenant: { connect: { id: skylineCompany.id } },
+      leadNumber: 'LEAD-2026-001',
+      clientName: 'Vikramaditya Rao',
+      contactNumber: '+91 98452 77889',
+      email: 'vikram.rao@example.com',
+      siteAddress: 'Plot 88, Prestige Golfshire, Nandi Hills Road',
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      projectType: 'VILLA_CONSTRUCTION',
+      budgetRange: '1CR_2CR',
+      source: 'DIRECT_REFERRAL',
+      stage: 'SITE_MEASUREMENT_COMPLETED',
+      assignedTeam: 'ARCHITECTURE_TEAM',
+      assignedProjectManager: { connect: { id: skylinePM.id } },
+    },
+  });
+
+  // Seed isolated Office Staff for Skyline
+  await prisma.officeStaff.upsert({
+    where: {
+      tenantId_staffCode: {
+        tenantId: skylineCompany.id,
+        staffCode: 'STF-001',
+      },
+    },
+    update: {},
+    create: {
+      tenant: { connect: { id: skylineCompany.id } },
+      staffCode: 'STF-001',
+      name: 'Aarti Deshmukh',
+      roleCategory: 'HR_OPERATIONS',
+      designation: 'Operations & HR Lead',
+      phone: '+91 98450 66778',
+      email: 'aarti@skyline.com',
+      address: 'Indiranagar 12th Main, Bengaluru',
+      fixedSalary: 55000,
+      basicSalary: 27500,
+      hra: 11000,
+      allowances: 16500,
+      isActive: true,
+    },
+  });
+
+  console.log(`✓ Skyline Urban Developers demo project, client, lead, BOQ & staff seeded.`);
 
   // 4. Create Expired Trial Tenant: Starlight Interiors & Design
   const starlightStart = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);

@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import { logAudit } from '../middleware/auth';
 import { postBalancedJournalEntry, COA } from '../utils/accounting';
 import { normalizeAttendanceDate, isFutureDate } from './labourController';
+import { getTenantFilter } from '../utils/tenant';
 
 // ======================================================================
 // 1. Office Staff Management
@@ -12,7 +13,7 @@ export const getStaffList = async (req: Request, res: Response) => {
   try {
     const { roleCategory, isActive, search } = req.query;
 
-    const where: any = {};
+    const where: any = { ...getTenantFilter(req) };
     if (roleCategory && typeof roleCategory === 'string') {
       where.roleCategory = roleCategory;
     }
@@ -20,11 +21,16 @@ export const getStaffList = async (req: Request, res: Response) => {
       where.isActive = isActive === 'true';
     }
     if (search && typeof search === 'string') {
-      where.OR = [
-        { name: { contains: search } },
-        { staffCode: { contains: search } },
-        { phone: { contains: search } },
-        { designation: { contains: search } },
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { name: { contains: search } },
+            { staffCode: { contains: search } },
+            { phone: { contains: search } },
+            { designation: { contains: search } },
+          ],
+        },
       ];
     }
 
@@ -124,8 +130,11 @@ export const createStaff = async (req: Request, res: Response) => {
     const hraVal = hra !== undefined && hra !== '' ? Number(hra) : Math.round(gross * 0.2);
     const allowVal = allowances !== undefined && allowances !== '' ? Number(allowances) : Math.max(0, gross - basic - hraVal);
 
-    // Auto-generate staff code: STF-001, STF-002, ...
-    const allStaff = await prisma.officeStaff.findMany({ select: { staffCode: true } });
+    // Auto-generate staff code: STF-001, STF-002, scoped by tenant
+    const allStaff = await prisma.officeStaff.findMany({
+      where: getTenantFilter(req),
+      select: { staffCode: true }
+    });
     let maxNum = 0;
     for (const s of allStaff) {
       if (s.staffCode && s.staffCode.startsWith('STF-')) {
@@ -134,11 +143,13 @@ export const createStaff = async (req: Request, res: Response) => {
       }
     }
     const staffCode = `STF-${String(maxNum + 1).padStart(3, '0')}`;
+    const tenantId = req.user?.companyId || null;
 
     const cleanedPhone = phone ? String(phone).replace(/\s+/g, '').trim() : '';
 
     const staff = await prisma.officeStaff.create({
       data: {
+        tenantId,
         staffCode,
         name: String(name).trim(),
         roleCategory: roleCategory || 'SUPPORT_STAFF',
@@ -189,7 +200,9 @@ export const updateStaff = async (req: Request, res: Response) => {
     const id = String(req.params.id);
     const data = req.body;
 
-    const existing = await prisma.officeStaff.findUnique({ where: { id } });
+    const existing = await prisma.officeStaff.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Staff record not found.' });
     }
@@ -218,7 +231,7 @@ export const updateStaff = async (req: Request, res: Response) => {
     const allowVal = data.allowances !== undefined && data.allowances !== '' ? Number(data.allowances) : existing.allowances;
 
     const updated = await prisma.officeStaff.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         name: data.name !== undefined ? String(data.name).trim() : undefined,
         roleCategory: data.roleCategory !== undefined ? data.roleCategory : undefined,
@@ -269,12 +282,14 @@ export const deleteStaff = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const staff = await prisma.officeStaff.findUnique({ where: { id } });
+    const staff = await prisma.officeStaff.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
     if (!staff) {
       return res.status(404).json({ success: false, message: 'Staff record not found.' });
     }
 
-    await prisma.officeStaff.delete({ where: { id } });
+    await prisma.officeStaff.delete({ where: { id: staff.id } });
 
     await logAudit(req.user?.id, 'DELETE_STAFF', 'OFFICE_STAFF', id, { name: staff.name, code: staff.staffCode }, req.ip);
 
@@ -292,7 +307,9 @@ export const getSalaryPayments = async (req: Request, res: Response) => {
   try {
     const { staffId, monthYear, paymentMethod } = req.query;
 
-    const where: any = {};
+    const where: any = {
+      staff: { ...getTenantFilter(req) },
+    };
     if (staffId && typeof staffId === 'string') where.staffId = staffId;
     if (monthYear && typeof monthYear === 'string') where.monthYear = monthYear;
     if (paymentMethod && typeof paymentMethod === 'string') where.paymentMethod = paymentMethod;
@@ -349,7 +366,9 @@ export const disburseSalary = async (req: Request, res: Response) => {
       });
     }
 
-    const staff = await prisma.officeStaff.findUnique({ where: { id: staffId } });
+    const staff = await prisma.officeStaff.findFirst({
+      where: { id: staffId, ...getTenantFilter(req) },
+    });
     if (!staff) {
       return res.status(404).json({ success: false, message: 'Staff record not found.' });
     }
@@ -360,8 +379,11 @@ export const disburseSalary = async (req: Request, res: Response) => {
     const netPaid = Math.max(0, basic + bon - ded);
     const method = paymentMethod || staff.paymentMode || 'BANK_TRANSFER';
 
-    const count = await prisma.staffSalaryPayment.count();
+    const count = await prisma.staffSalaryPayment.count({
+      where: { staff: { ...getTenantFilter(req) } },
+    });
     const paymentNumber = `SAL-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const tenantId = staff.tenantId || req.user?.companyId || null;
 
     const payment = await prisma.$transaction(async (tx) => {
       const created = await tx.staffSalaryPayment.create({
@@ -390,6 +412,7 @@ export const disburseSalary = async (req: Request, res: Response) => {
         referenceId: created.id,
         narration: `Monthly staff salary disbursed to ${staff.name} (${staff.designation}) for ${monthYear} via ${method}`,
         createdById: req.user?.id,
+        tenantId,
         lines: [
           {
             accountCode: COA.ADMIN_EXPENSE, // Debit Salary Overhead Expense
@@ -421,7 +444,9 @@ export const updateSalaryPayment = async (req: Request, res: Response) => {
     const id = String(req.params.id);
     const { paymentMethod, referenceNo, notes, disbursementDate } = req.body;
 
-    const existing = await prisma.staffSalaryPayment.findUnique({ where: { id } });
+    const existing = await prisma.staffSalaryPayment.findFirst({
+      where: { id, staff: { ...getTenantFilter(req) } },
+    });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Salary payment not found.' });
     }
@@ -449,8 +474,8 @@ export const deleteSalaryPayment = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const payment = await prisma.staffSalaryPayment.findUnique({
-      where: { id },
+    const payment = await prisma.staffSalaryPayment.findFirst({
+      where: { id, staff: { ...getTenantFilter(req) } },
       include: { staff: true },
     });
 
@@ -491,7 +516,7 @@ export const getOfficeExpenses = async (req: Request, res: Response) => {
   try {
     const { category, periodMonth, paymentMethod, startDate, endDate } = req.query;
 
-    const where: any = {};
+    const where: any = { ...getTenantFilter(req) };
     if (category && typeof category === 'string') where.category = category;
     if (periodMonth && typeof periodMonth === 'string') where.periodMonth = periodMonth;
     if (paymentMethod && typeof paymentMethod === 'string') where.paymentMethod = paymentMethod;
@@ -560,13 +585,15 @@ export const createOfficeExpense = async (req: Request, res: Response) => {
       });
     }
 
-    const count = await prisma.officeExpense.count();
+    const count = await prisma.officeExpense.count({ where: getTenantFilter(req) });
     const expenseNumber = `OFF-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
     const method = paymentMethod || 'BANK_TRANSFER';
+    const tenantId = req.user?.companyId || null;
 
     const expense = await prisma.$transaction(async (tx) => {
       const created = await tx.officeExpense.create({
         data: {
+          tenantId,
           expenseNumber,
           category,
           title: String(title).trim(),
@@ -590,6 +617,7 @@ export const createOfficeExpense = async (req: Request, res: Response) => {
         referenceId: created.id,
         narration: `Office Expense [${category}]: ${title} paid to ${paidTo} via ${method}`,
         createdById: req.user?.id,
+        tenantId,
         lines: [
           {
             accountCode: COA.ADMIN_EXPENSE, // Debit Office Overhead Expense
@@ -621,13 +649,15 @@ export const updateOfficeExpense = async (req: Request, res: Response) => {
     const id = String(req.params.id);
     const data = req.body;
 
-    const existing = await prisma.officeExpense.findUnique({ where: { id } });
+    const existing = await prisma.officeExpense.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Expense record not found.' });
     }
 
     const updated = await prisma.officeExpense.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         category: data.category !== undefined ? data.category : undefined,
         title: data.title !== undefined ? String(data.title).trim() : undefined,
@@ -654,12 +684,14 @@ export const deleteOfficeExpense = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const exp = await prisma.officeExpense.findUnique({ where: { id } });
+    const exp = await prisma.officeExpense.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
     if (!exp) {
       return res.status(404).json({ success: false, message: 'Expense not found.' });
     }
 
-    await prisma.officeExpense.delete({ where: { id } });
+    await prisma.officeExpense.delete({ where: { id: exp.id } });
 
     await logAudit(req.user?.id, 'DELETE_OFFICE_EXPENSE', 'OFFICE_EXPENSE', id, { expenseNumber: exp.expenseNumber }, req.ip);
 
@@ -675,7 +707,9 @@ export const deleteOfficeExpense = async (req: Request, res: Response) => {
 
 export const getCompanyOverallFinancials = async (req: Request, res: Response) => {
   try {
-    // 1. Fetch all financial streams concurrently
+    const tenantFilter = getTenantFilter(req);
+
+    // 1. Fetch all financial streams concurrently scoped by tenant
     const [
       projects,
       invoices,
@@ -687,6 +721,7 @@ export const getCompanyOverallFinancials = async (req: Request, res: Response) =
       staffSalaries,
     ] = await Promise.all([
       prisma.project.findMany({
+        where: tenantFilter,
         select: {
           id: true,
           code: true,
@@ -696,6 +731,7 @@ export const getCompanyOverallFinancials = async (req: Request, res: Response) =
         },
       }),
       prisma.clientInvoice.findMany({
+        where: tenantFilter,
         select: {
           id: true,
           projectId: true,
@@ -705,6 +741,7 @@ export const getCompanyOverallFinancials = async (req: Request, res: Response) =
         },
       }),
       prisma.clientReceipt.findMany({
+        where: tenantFilter,
         include: {
           client: { select: { name: true } },
           project: { select: { id: true, code: true, name: true, clientName: true } },
@@ -713,6 +750,7 @@ export const getCompanyOverallFinancials = async (req: Request, res: Response) =
         orderBy: { receiptDate: 'desc' },
       }),
       prisma.supplierPayment.findMany({
+        where: tenantFilter,
         include: {
           supplier: { select: { name: true } },
           invoice: { select: { invoiceNumber: true, purchaseOrder: { select: { poNumber: true } } } },
@@ -720,6 +758,7 @@ export const getCompanyOverallFinancials = async (req: Request, res: Response) =
         orderBy: { paymentDate: 'desc' },
       }),
       prisma.wagePayment.findMany({
+        where: { project: { ...tenantFilter } },
         include: {
           worker: { select: { name: true, workerCode: true, trade: true } },
           project: { select: { name: true, code: true } },
@@ -727,15 +766,18 @@ export const getCompanyOverallFinancials = async (req: Request, res: Response) =
         orderBy: { paymentDate: 'desc' },
       }),
       prisma.expense.findMany({
+        where: tenantFilter,
         include: {
           project: { select: { name: true, code: true } },
         },
         orderBy: { expenseDate: 'desc' },
       }),
       prisma.officeExpense.findMany({
+        where: tenantFilter,
         orderBy: { expenseDate: 'desc' },
       }),
       prisma.staffSalaryPayment.findMany({
+        where: { staff: { ...tenantFilter } },
         include: {
           staff: { select: { name: true, staffCode: true, designation: true } },
         },
@@ -1067,7 +1109,7 @@ export const getDailyStaffAttendance = async (req: Request, res: Response) => {
     const startOfDay = normalizeAttendanceDate(date as string);
     const endOfDay = new Date(startOfDay.getTime() + 24 * 3600 * 1000);
 
-    const whereStaff: any = { isActive: true };
+    const whereStaff: any = { isActive: true, ...getTenantFilter(req) };
     if (roleCategory && typeof roleCategory === 'string' && roleCategory !== 'ALL') {
       whereStaff.roleCategory = roleCategory;
     }
@@ -1083,6 +1125,7 @@ export const getDailyStaffAttendance = async (req: Request, res: Response) => {
             gte: startOfDay,
             lt: endOfDay,
           },
+          staff: { ...getTenantFilter(req) },
         },
         include: { staff: true },
         orderBy: { staff: { staffCode: 'asc' } },
@@ -1123,7 +1166,9 @@ export const saveBulkStaffAttendance = async (req: Request, res: Response) => {
       const saved: any[] = [];
 
       for (const rec of records) {
-        const staff = await tx.officeStaff.findUnique({ where: { id: rec.staffId } });
+        const staff = await tx.officeStaff.findFirst({
+          where: { id: rec.staffId, ...getTenantFilter(req) },
+        });
         if (!staff) continue;
 
         const regHours = rec.attendanceStatus === 'PRESENT' ? 8 : rec.attendanceStatus === 'HALF_DAY' ? 4 : 0;
@@ -1222,7 +1267,7 @@ export const getStaffPayrollSummary = async (req: Request, res: Response) => {
 
     const [allStaff, attendances, payments] = await Promise.all([
       prisma.officeStaff.findMany({
-        where: { isActive: true },
+        where: { isActive: true, ...getTenantFilter(req) },
         orderBy: { staffCode: 'asc' },
       }),
       prisma.staffAttendance.findMany({
@@ -1231,11 +1276,13 @@ export const getStaffPayrollSummary = async (req: Request, res: Response) => {
             gte: startOfMonth,
             lt: endOfMonth,
           },
+          staff: { ...getTenantFilter(req) },
         },
       }),
       prisma.staffSalaryPayment.findMany({
         where: {
           monthYear: { contains: monthStr },
+          staff: { ...getTenantFilter(req) },
         },
       }),
     ]);
@@ -1391,12 +1438,13 @@ export const getStaffMonthlyAttendanceMatrix = async (req: Request, res: Respons
 
     const [allStaff, attendances] = await Promise.all([
       prisma.officeStaff.findMany({
-        where: { isActive: true },
+        where: { isActive: true, ...getTenantFilter(req) },
         orderBy: { staffCode: 'asc' },
       }),
       prisma.staffAttendance.findMany({
         where: {
           date: { gte: startOfMonth, lt: endOfMonth },
+          staff: { ...getTenantFilter(req) },
         },
         orderBy: { date: 'asc' },
       }),
@@ -1443,6 +1491,13 @@ export const saveStaffAttendanceCell = async (req: Request, res: Response) => {
     const { staffId, date, attendanceStatus, overtimeHours, notes } = req.body;
     if (!staffId || !date || !attendanceStatus) {
       return res.status(400).json({ success: false, message: 'staffId, date, and attendanceStatus are required.' });
+    }
+
+    const staff = await prisma.officeStaff.findFirst({
+      where: { id: staffId, ...getTenantFilter(req) },
+    });
+    if (!staff) {
+      return res.status(404).json({ success: false, message: 'Staff member not found.' });
     }
 
     if (isFutureDate(date) && (attendanceStatus === 'PRESENT' || attendanceStatus === 'HALF_DAY')) {

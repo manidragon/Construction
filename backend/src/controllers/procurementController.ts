@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 import { postBalancedJournalEntry, COA } from '../utils/accounting';
 
 export const getSuppliers = async (req: Request, res: Response) => {
   try {
+    const tenantFilter = getTenantFilter(req);
     const suppliers = await prisma.supplier.findMany({
+      where: tenantFilter,
       include: {
         _count: {
           select: { purchaseOrders: true, invoices: true, payments: true },
@@ -44,21 +46,31 @@ export const createSupplier = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Code, name, phone, and address are required.' });
     }
 
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.supplier.findFirst({
+      where: { code: String(code).trim().toUpperCase(), ...tenantFilter },
+    });
+    if (existing) {
+      return res.status(400).json({ success: false, message: `Supplier code '${code}' already exists.` });
+    }
+
+    const tenantId = (req.user as any)?.companyId || null;
     const supplier = await prisma.supplier.create({
       data: {
-        code,
-        name,
-        contactPerson,
-        phone,
-        email,
-        address,
+        tenantId,
+        code: String(code).trim().toUpperCase(),
+        name: String(name).trim(),
+        contactPerson: contactPerson ? String(contactPerson).trim() : null,
+        phone: String(phone).trim(),
+        email: email ? String(email).trim() : null,
+        address: String(address).trim(),
         city: city || 'Bengaluru',
-        gstin,
-        pan,
+        gstin: gstin ? String(gstin).trim() : null,
+        pan: pan ? String(pan).trim() : null,
         paymentTerms: paymentTerms || 'Net 30 Days',
-        bankName,
-        bankAccountNo,
-        bankIfsc,
+        bankName: bankName ? String(bankName).trim() : null,
+        bankAccountNo: bankAccountNo ? String(bankAccountNo).trim() : null,
+        bankIfsc: bankIfsc ? String(bankIfsc).trim() : null,
         openingBalance: Number(openingBalance) || 0,
         currentBalance: Number(openingBalance) || 0,
       },
@@ -75,17 +87,20 @@ export const createSupplier = async (req: Request, res: Response) => {
 export const updateSupplier = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { code, name, contactPerson, phone, email, address, city, gstin, pan, paymentTerms, bankName, bankAccountNo, bankIfsc, openingBalance } = req.body;
 
-    const existing = await prisma.supplier.findUnique({ where: { id } });
+    const existing = await prisma.supplier.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Supplier not found' });
+      return res.status(404).json({ success: false, message: 'Supplier not found or not accessible.' });
     }
 
     const updated = await prisma.supplier.update({
       where: { id },
       data: {
-        code: code !== undefined ? String(code).trim() : existing.code,
+        code: code !== undefined ? String(code).trim().toUpperCase() : existing.code,
         name: name !== undefined ? String(name).trim() : existing.name,
         contactPerson: contactPerson !== undefined ? (contactPerson ? String(contactPerson).trim() : null) : existing.contactPerson,
         phone: phone !== undefined ? String(phone).trim() : existing.phone,
@@ -113,15 +128,16 @@ export const updateSupplier = async (req: Request, res: Response) => {
 export const deleteSupplier = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.supplier.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.supplier.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         _count: { select: { purchaseOrders: true, invoices: true, payments: true } },
       },
     });
 
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Supplier not found' });
+      return res.status(404).json({ success: false, message: 'Supplier not found or not accessible.' });
     }
 
     if (existing._count.purchaseOrders > 0 || existing._count.invoices > 0 || existing._count.payments > 0) {
@@ -140,12 +156,12 @@ export const deleteSupplier = async (req: Request, res: Response) => {
   }
 };
 
-
 export const getPurchaseOrders = async (req: Request, res: Response) => {
   try {
     const { projectId, status } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (status && typeof status === 'string') where.status = status;
 
@@ -181,7 +197,24 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Project, supplier, delivery date, and items are required.' });
     }
 
-    const count = await prisma.purchaseOrder.count();
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...tenantFilter },
+    });
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
+    }
+
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: supplierId, ...tenantFilter },
+    });
+    if (!supplier) {
+      return res.status(404).json({ success: false, message: 'Supplier not found or not accessible.' });
+    }
+
+    const count = await prisma.purchaseOrder.count({ where: tenantFilter });
     const poNumber = `PO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
     let subtotal = 0;
@@ -213,6 +246,7 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
 
     const po = await prisma.purchaseOrder.create({
       data: {
+        tenantId,
         poNumber,
         projectId,
         supplierId,
@@ -243,15 +277,16 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
 export const updatePurchaseOrder = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { supplierId, deliveryDueDate, termsConditions, freightCharges, items } = req.body;
 
-    const existingPO: any = await prisma.purchaseOrder.findUnique({
-      where: { id },
+    const existingPO: any = await prisma.purchaseOrder.findFirst({
+      where: { id, ...tenantFilter },
       include: { items: true, grns: true },
     });
 
     if (!existingPO) {
-      return res.status(404).json({ success: false, message: 'Purchase Order not found' });
+      return res.status(404).json({ success: false, message: 'Purchase Order not found or not accessible.' });
     }
 
     let subtotal = 0;
@@ -328,14 +363,15 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
 export const deletePurchaseOrder = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const po: any = await prisma.purchaseOrder.findUnique({
-      where: { id },
+    const po: any = await prisma.purchaseOrder.findFirst({
+      where: { id, ...tenantFilter },
       include: { grns: true, invoices: true },
     });
 
     if (!po) {
-      return res.status(404).json({ success: false, message: 'Purchase Order not found' });
+      return res.status(404).json({ success: false, message: 'Purchase Order not found or not accessible.' });
     }
 
     if (po.grns && po.grns.length > 0) {
@@ -368,8 +404,9 @@ export const deletePurchaseOrder = async (req: Request, res: Response) => {
 export const getGoodsReceiptNotes = async (req: Request, res: Response) => {
   try {
     const { projectId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
 
     const grns = await prisma.goodsReceiptNote.findMany({
@@ -408,21 +445,25 @@ export const createGoodsReceiptNote = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'PO, warehouse, and receipt items are required.' });
     }
 
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id: purchaseOrderId },
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
+    const po = await prisma.purchaseOrder.findFirst({
+      where: { id: purchaseOrderId, ...tenantFilter },
       include: { items: true, supplier: true },
     });
 
     if (!po) {
-      return res.status(404).json({ success: false, message: 'Purchase Order not found' });
+      return res.status(404).json({ success: false, message: 'Purchase Order not found or not accessible.' });
     }
 
-    const count = await prisma.goodsReceiptNote.count();
+    const count = await prisma.goodsReceiptNote.count({ where: tenantFilter });
     const grnNumber = `GRN-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
     const grn = await prisma.$transaction(async (tx) => {
       const createdGrn = await tx.goodsReceiptNote.create({
         data: {
+          tenantId,
           grnNumber,
           purchaseOrderId,
           projectId: po.projectId,
@@ -498,13 +539,14 @@ export const createGoodsReceiptNote = async (req: Request, res: Response) => {
           });
 
           // Create stock ledger entry
-          const ledgerCount = await tx.stockLedger.count();
+          const ledgerCount = await tx.stockLedger.count({ where: tenantId ? { tenantId } : {} });
           const txnNumber = `STK-${new Date().getFullYear()}-${String(ledgerCount + 1).padStart(5, '0')}`;
 
           const material = await tx.material.findUnique({ where: { id: it.materialId } });
 
           await tx.stockLedger.create({
             data: {
+              tenantId,
               txnNumber,
               txnType: 'PURCHASE_RECEIPT',
               materialId: it.materialId,
@@ -536,8 +578,9 @@ export const createGoodsReceiptNote = async (req: Request, res: Response) => {
 export const getSupplierInvoices = async (req: Request, res: Response) => {
   try {
     const { supplierId, status, projectId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (supplierId && typeof supplierId === 'string') where.supplierId = supplierId;
     if (status && typeof status === 'string') where.status = status;
     if (projectId && typeof projectId === 'string') {
@@ -624,9 +667,19 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Invoice number, supplier, dates, and subtotal are required.' });
     }
 
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: supplierId, ...tenantFilter },
+    });
+    if (!supplier) {
+      return res.status(404).json({ success: false, message: 'Supplier not found or not accessible.' });
+    }
+
     // Duplicate check
     const existing = await prisma.supplierInvoice.findFirst({
-      where: { invoiceNumber, supplierId },
+      where: { invoiceNumber, supplierId, ...tenantFilter },
     });
     if (existing) {
       return res.status(400).json({
@@ -642,7 +695,7 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
     let resolvedProjectId = projectId || null;
     let po = null;
     if (purchaseOrderId) {
-      po = await prisma.purchaseOrder.findUnique({ where: { id: purchaseOrderId } });
+      po = await prisma.purchaseOrder.findFirst({ where: { id: purchaseOrderId, ...tenantFilter } });
       if (po && po.projectId) {
         resolvedProjectId = po.projectId;
       }
@@ -651,6 +704,7 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.supplierInvoice.create({
         data: {
+          tenantId,
           invoiceNumber,
           supplierId,
           projectId: resolvedProjectId,
@@ -681,6 +735,7 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
     // Cr. Accounts Payable: total
     try {
       await postBalancedJournalEntry({
+        tenantId,
         entryDate: new Date(invoiceDate),
         referenceType: 'SUPPLIER_INVOICE',
         referenceId: invoice.id,
@@ -713,14 +768,24 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Supplier, payment amount (> 0), and payment method are required.' });
     }
 
-    const count = await prisma.supplierPayment.count();
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: supplierId, ...tenantFilter },
+    });
+    if (!supplier) {
+      return res.status(404).json({ success: false, message: 'Supplier not found or not accessible.' });
+    }
+
+    const count = await prisma.supplierPayment.count({ where: tenantFilter });
     const paymentNumber = `PMT-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
     const payment = await prisma.$transaction(async (tx) => {
       let resolvedInvoiceId = invoiceId || null;
 
       if (resolvedInvoiceId) {
-        const inv = await tx.supplierInvoice.findUnique({ where: { id: resolvedInvoiceId } });
+        const inv = await tx.supplierInvoice.findFirst({ where: { id: resolvedInvoiceId, ...tenantFilter } });
         if (inv) {
           const newPaid = inv.paidAmount + paymentAmount;
           const newBal = Math.max(0, inv.totalAmount - newPaid);
@@ -738,7 +803,7 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
       } else {
         // Automatically allocate payment to supplier's open unpaid invoices (FIFO)
         const openInvoices = await tx.supplierInvoice.findMany({
-          where: { supplierId, balanceDue: { gt: 0 } },
+          where: { supplierId, balanceDue: { gt: 0 }, ...tenantFilter },
           orderBy: { invoiceDate: 'asc' },
         });
 
@@ -768,6 +833,7 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
 
       const pmt = await tx.supplierPayment.create({
         data: {
+          tenantId,
           paymentNumber,
           supplierId,
           invoiceId: resolvedInvoiceId,
@@ -794,6 +860,7 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
     try {
       const bankCode = paymentMethod === 'CASH' ? COA.CASH : COA.HDFC_BANK;
       await postBalancedJournalEntry({
+        tenantId,
         entryDate: paymentDate ? new Date(paymentDate) : new Date(),
         referenceType: 'SUPPLIER_PAYMENT',
         referenceId: payment.id,
@@ -819,11 +886,14 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
 export const updateGoodsReceiptNote = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { deliveryNoteNo, vehicleNo, remarks } = req.body;
 
-    const existing = await prisma.goodsReceiptNote.findUnique({ where: { id } });
+    const existing = await prisma.goodsReceiptNote.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Goods Receipt Note not found' });
+      return res.status(404).json({ success: false, message: 'Goods Receipt Note not found or not accessible.' });
     }
 
     const updated = await prisma.goodsReceiptNote.update({
@@ -845,14 +915,15 @@ export const updateGoodsReceiptNote = async (req: Request, res: Response) => {
 export const deleteGoodsReceiptNote = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const grn = await prisma.goodsReceiptNote.findUnique({
-      where: { id },
+    const grn = await prisma.goodsReceiptNote.findFirst({
+      where: { id, ...tenantFilter },
       include: { items: true },
     });
 
     if (!grn) {
-      return res.status(404).json({ success: false, message: 'Goods Receipt Note not found' });
+      return res.status(404).json({ success: false, message: 'Goods Receipt Note not found or not accessible.' });
     }
 
     // Rollback stock quantities from warehouse stock balances
@@ -901,11 +972,14 @@ export const deleteGoodsReceiptNote = async (req: Request, res: Response) => {
 export const updateSupplierInvoice = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { invoiceDate, dueDate, status } = req.body;
 
-    const existing = await prisma.supplierInvoice.findUnique({ where: { id } });
+    const existing = await prisma.supplierInvoice.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Supplier invoice not found' });
+      return res.status(404).json({ success: false, message: 'Supplier invoice not found or not accessible.' });
     }
 
     const updated = await prisma.supplierInvoice.update({
@@ -927,13 +1001,14 @@ export const updateSupplierInvoice = async (req: Request, res: Response) => {
 export const deleteSupplierInvoice = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.supplierInvoice.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.supplierInvoice.findFirst({
+      where: { id, ...tenantFilter },
       include: { payments: true },
     });
 
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Supplier invoice not found' });
+      return res.status(404).json({ success: false, message: 'Supplier invoice not found or not accessible.' });
     }
 
     if (existing.paidAmount > 0 || (existing.payments && existing.payments.length > 0)) {
@@ -968,18 +1043,19 @@ export const deleteSupplierInvoice = async (req: Request, res: Response) => {
 export const deleteSupplierPayment = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const pmt = await prisma.supplierPayment.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const pmt = await prisma.supplierPayment.findFirst({
+      where: { id, ...tenantFilter },
     });
 
     if (!pmt) {
-      return res.status(404).json({ success: false, message: 'Supplier payment not found' });
+      return res.status(404).json({ success: false, message: 'Supplier payment not found or not accessible.' });
     }
 
     await prisma.$transaction(async (tx) => {
       // Restore invoice balance if linked
       if (pmt.invoiceId) {
-        const inv = await tx.supplierInvoice.findUnique({ where: { id: pmt.invoiceId } });
+        const inv = await tx.supplierInvoice.findFirst({ where: { id: pmt.invoiceId, ...tenantFilter } });
         if (inv) {
           const newPaid = Math.max(0, inv.paidAmount - pmt.amount);
           const newBal = Math.max(0, inv.totalAmount - newPaid);

@@ -10,9 +10,10 @@ export const getNextLeadNumber = async (req?: Request, res?: Response) => {
   try {
     const currentYear = new Date().getFullYear();
     const prefix = `LEAD-${currentYear}-`;
+    const tenantFilter = req ? getTenantFilter(req) : {};
 
     const latestLead = await prisma.lead.findFirst({
-      where: { leadNumber: { startsWith: prefix } },
+      where: { leadNumber: { startsWith: prefix }, ...tenantFilter },
       orderBy: { leadNumber: 'desc' },
       select: { leadNumber: true },
     });
@@ -70,11 +71,16 @@ export const getLeads = async (req: Request, res: Response) => {
     if (projectType && typeof projectType === 'string') where.projectType = projectType;
 
     if (search && typeof search === 'string') {
-      where.OR = [
-        { clientName: { contains: search } },
-        { contactNumber: { contains: search } },
-        { leadNumber: { contains: search } },
-        { siteAddress: { contains: search } },
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { clientName: { contains: search } },
+            { contactNumber: { contains: search } },
+            { leadNumber: { contains: search } },
+            { siteAddress: { contains: search } },
+          ],
+        },
       ];
     }
 
@@ -160,8 +166,8 @@ export const getLeadById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
 
-    const lead: any = await prisma.lead.findUnique({
-      where: { id },
+    const lead: any = await prisma.lead.findFirst({
+      where: { id, ...getTenantFilter(req) },
       include: {
         assignedProjectManager: {
           select: { id: true, name: true, email: true, role: true, phone: true },
@@ -324,7 +330,9 @@ export const createLead = async (req: Request, res: Response) => {
 export const updateLead = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.lead.findUnique({ where: { id } });
+    const existing = await prisma.lead.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
 
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Lead not found.' });
@@ -416,7 +424,9 @@ export const updateLead = async (req: Request, res: Response) => {
 export const deleteLead = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.lead.findUnique({ where: { id } });
+    const existing = await prisma.lead.findFirst({
+      where: { id, ...getTenantFilter(req) },
+    });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Lead not found.' });
     }
@@ -478,8 +488,8 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
       approvedBudget,
     } = req.body;
 
-    const lead: any = await prisma.lead.findUnique({
-      where: { id },
+    const lead: any = await prisma.lead.findFirst({
+      where: { id, ...getTenantFilter(req) },
       include: {
         quotations: { include: { items: true } },
         convertedProject: true,
@@ -517,8 +527,9 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
 
     // Generate unique project code: PRJ-YEAR-XXX
     const currentYear = new Date().getFullYear();
-    const count = await prisma.project.count();
+    const count = await prisma.project.count({ where: getTenantFilter(req) });
     const projectCode = `PRJ-${currentYear}-${String(count + 1).padStart(3, '0')}`;
+    const tenantId = lead.tenantId || (req as any).user?.companyId || null;
 
     const finalProjectName = projectName || `${lead.clientName} - ${lead.projectType.replace(/_/g, ' ')}`;
     const finalContractValue = Number(contractValue) || (selectedQuotation ? selectedQuotation.totalAmount : advAmt * 2);
@@ -526,14 +537,15 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
 
     // Check if client exists or create client
     let client = await prisma.client.findFirst({
-      where: { phone: lead.contactNumber },
+      where: { phone: lead.contactNumber, ...getTenantFilter(req) },
     });
 
     if (!client) {
-      const clientCount = await prisma.client.count();
+      const clientCount = await prisma.client.count({ where: getTenantFilter(req) });
       const clientCode = `CLI-${String(clientCount + 1).padStart(3, '0')}`;
       client = await prisma.client.create({
         data: {
+          tenantId,
           code: clientCode,
           name: lead.clientName,
           phone: lead.contactNumber,
@@ -559,6 +571,7 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
     // Create the Project with Kickoff Gate status
     const project = await prisma.project.create({
       data: {
+        tenantId,
         code: projectCode,
         name: finalProjectName,
         description: `Project converted from Lead ${lead.leadNumber}. Client: ${lead.clientName}`,
@@ -630,7 +643,7 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
     }
 
     // Auto-create initial Advance Milestone Invoice & Receipt
-    const invCount = await prisma.clientInvoice.count();
+    const invCount = await prisma.clientInvoice.count({ where: getTenantFilter(req) });
     const invoiceNumber = `INV-${currentYear}-${String(invCount + 1).padStart(3, '0')}`;
     const gstRate = 18.0;
     const baseSubtotal = advAmt / (1 + gstRate / 100);
@@ -638,6 +651,7 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
 
     const invoice = await prisma.clientInvoice.create({
       data: {
+        tenantId,
         invoiceNumber,
         clientId: client.id,
         projectId: project.id,
@@ -663,10 +677,11 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
 
     if (advancePaymentConfirmed) {
       // Create ClientReceipt
-      const rcpCount = await prisma.clientReceipt.count();
+      const rcpCount = await prisma.clientReceipt.count({ where: getTenantFilter(req) });
       const receiptNumber = `RCP-${currentYear}-${String(rcpCount + 1).padStart(3, '0')}`;
       await prisma.clientReceipt.create({
         data: {
+          tenantId,
           receiptNumber,
           clientId: client.id,
           projectId: project.id,

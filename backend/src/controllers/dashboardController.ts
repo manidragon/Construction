@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { getTenantFilter } from '../middleware/auth';
 
 export const getExecutiveMetrics = async (req: Request, res: Response) => {
   try {
     const { projectId, startDate, endDate } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const projectWhere: any = {};
+    const projectWhere: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') {
       projectWhere.id = projectId;
     }
@@ -45,12 +47,18 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
 
     // Client Billing & Collections & Tax Compliance
     const clientInvoices = await prisma.clientInvoice.findMany({
-      where: projectId ? { projectId: String(projectId) } : {},
+      where: {
+        ...tenantFilter,
+        ...(projectId ? { projectId: String(projectId) } : {}),
+      },
     });
     const totalClientBilling = clientInvoices.reduce((sum, inv) => sum + inv.netInvoiceAmount, 0);
 
     const clientReceipts = await prisma.clientReceipt.findMany({
-      where: projectId ? { projectId: String(projectId) } : {},
+      where: {
+        ...tenantFilter,
+        ...(projectId ? { projectId: String(projectId) } : {}),
+      },
     });
     const totalMoneyReceived = clientReceipts.reduce((sum, rcp) => sum + rcp.amount, 0);
     const outstandingReceivables = Math.max(0, totalClientBilling - totalMoneyReceived);
@@ -69,25 +77,26 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     const pendingTaxLiability = Math.max(0, totalBilledTaxLiability - totalCollectedTaxLiability);
 
     // Leads & Quotations Metrics
-    const leads = await prisma.lead.findMany();
+    const leads = await prisma.lead.findMany({ where: { ...tenantFilter } });
     const totalLeads = leads.length;
     const leadsWon = leads.filter((l) => l.stage === 'LEAD_WON').length;
     const leadsLost = leads.filter((l) => l.stage === 'LEAD_LOST').length;
     const activeLeads = leads.filter((l) => l.stage !== 'LEAD_WON' && l.stage !== 'LEAD_LOST').length;
     const boqSharedLeads = leads.filter((l) => l.stage === 'BOQ_QUOTATION_SHARED').length;
 
-    const quotations = await prisma.quotation.findMany();
+    const quotations = await prisma.quotation.findMany({ where: { ...tenantFilter } });
     const totalQuotations = quotations.length;
     const totalQuotationValue = quotations.reduce((sum, q) => sum + (q.totalAmount || 0), 0);
     const totalInternalTaxLiability = Math.round(quotations.reduce((sum, q) => sum + (q.gstAmount || 0), 0));
 
     // Supplier Payables
-    const suppliers = await prisma.supplier.findMany();
+    const suppliers = await prisma.supplier.findMany({ where: { ...tenantFilter } });
     const supplierPayables = suppliers.reduce((sum, s) => sum + (s.currentBalance || 0), 0);
 
     // Direct Expenses
     const directExpenses = await prisma.expense.findMany({
       where: {
+        ...tenantFilter,
         isPaid: true,
         ...(projectId ? { projectId: String(projectId) } : {}),
       },
@@ -96,12 +105,17 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
 
     // Labour Wages
     const labourAttendances = await prisma.labourAttendance.findMany({
-      where: projectId ? { projectId: String(projectId) } : {},
+      where: {
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
+      },
     });
     const totalLabourCost = labourAttendances.reduce((sum, a) => sum + a.totalWageEarned, 0);
 
     // Material Purchases & Stock Valuation
     const stockBalances = await prisma.stockBalance.findMany({
+      where: {
+        warehouse: { ...tenantFilter },
+      },
       include: { material: true },
     });
     const materialStockValue = stockBalances.reduce((sum, sb) => sum + (sb.totalValuation || 0), 0);
@@ -109,6 +123,7 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     // Material Purchases
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where: {
+        ...tenantFilter,
         status: { not: 'CANCELLED' },
         ...(projectId ? { projectId: String(projectId) } : {}),
       },
@@ -117,23 +132,26 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
 
     // BOQ Actual Expenditure
     const boqItems = await prisma.bOQItem.findMany({
-      where: projectId ? { projectId: String(projectId) } : {},
+      where: {
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
+      },
     });
     // Incurred site costs to date (Expenses + Labour + Materials). BOQ is tracking/reference only.
     const actualExpenditureToDate = totalExpenses + totalLabourCost + totalMaterialsCost;
 
     // 3. Operational Counts & Alerts
     const pendingRequisitions = await prisma.materialRequisition.count({
-      where: { status: 'PENDING' },
+      where: { ...tenantFilter, status: 'PENDING' },
     });
 
     const pendingApprovalsCount =
-      (await prisma.purchaseOrder.count({ where: { status: 'DRAFT' } })) +
-      (await prisma.expense.count({ where: { status: 'PENDING' } })) +
+      (await prisma.purchaseOrder.count({ where: { ...tenantFilter, status: 'DRAFT' } })) +
+      (await prisma.expense.count({ where: { ...tenantFilter, status: 'PENDING' } })) +
       pendingRequisitions;
 
     const overdueTasksCount = await prisma.task.count({
       where: {
+        ...tenantFilter,
         status: { in: ['NOT_STARTED', 'IN_PROGRESS'] },
         dueDate: { lt: now },
       },

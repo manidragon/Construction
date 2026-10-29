@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 import { postBalancedJournalEntry, COA } from '../utils/accounting';
 
 export const getPettyCashAccounts = async (req: Request, res: Response) => {
   try {
     const { projectId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
 
     const accounts = await prisma.pettyCashAccount.findMany({
@@ -32,10 +33,12 @@ export const getPettyCashAccounts = async (req: Request, res: Response) => {
 export const createPettyCashAccount = async (req: Request, res: Response) => {
   try {
     const { name, projectId, siteId, custodianUserId, openingBalance, minFloatThreshold } = req.body;
+    const tenantId = (req.user as any)?.companyId || null;
 
     const bal = Number(openingBalance) || 0;
     const account = await prisma.pettyCashAccount.create({
       data: {
+        tenantId,
         name,
         projectId,
         siteId: siteId || null,
@@ -61,9 +64,12 @@ export const recordPettyCashTxn = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Account, positive amount, txnType, and description are required.' });
     }
 
-    const account = await prisma.pettyCashAccount.findUnique({ where: { id: pettyCashAccountId } });
+    const tenantFilter = getTenantFilter(req);
+    const account = await prisma.pettyCashAccount.findFirst({
+      where: { id: pettyCashAccountId, ...tenantFilter },
+    });
     if (!account) {
-      return res.status(404).json({ success: false, message: 'Petty cash account not found.' });
+      return res.status(404).json({ success: false, message: 'Petty cash account not found or not accessible.' });
     }
 
     if (txnType === 'EXPENSE' && account.currentBalance < txnAmount) {
@@ -110,8 +116,9 @@ export const recordPettyCashTxn = async (req: Request, res: Response) => {
 export const getExpenses = async (req: Request, res: Response) => {
   try {
     const { projectId, category, status } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (category && typeof category === 'string') where.category = category;
     if (status && typeof status === 'string') where.status = status;
@@ -163,11 +170,14 @@ export const createExpense = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Description, paidTo, valid amount, and payment method are required.' });
     }
 
-    const count = await prisma.expense.count();
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+    const count = await prisma.expense.count({ where: tenantFilter });
     const expenseNumber = `EXP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
     const expense = await prisma.expense.create({
       data: {
+        tenantId,
         expenseNumber,
         projectId: projectId || null,
         siteId: siteId || null,
@@ -235,6 +245,7 @@ export const createExpense = async (req: Request, res: Response) => {
       }
 
       await postBalancedJournalEntry({
+        tenantId,
         entryDate: expenseDate ? new Date(expenseDate) : new Date(),
         referenceType: 'EXPENSE',
         referenceId: expense.id,
@@ -257,6 +268,7 @@ export const createExpense = async (req: Request, res: Response) => {
 export const updateExpense = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const {
       projectId,
       siteId,
@@ -274,9 +286,11 @@ export const updateExpense = async (req: Request, res: Response) => {
       status,
     } = req.body;
 
-    const existing = await prisma.expense.findUnique({ where: { id } });
+    const existing = await prisma.expense.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Expense not found.' });
+      return res.status(404).json({ success: false, message: 'Expense not found or not accessible.' });
     }
 
     const sub = amountBeforeTax !== undefined ? Number(amountBeforeTax) : existing.amountBeforeTax;
@@ -377,9 +391,12 @@ export const updateExpense = async (req: Request, res: Response) => {
 export const deleteExpense = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.expense.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.expense.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Expense not found.' });
+      return res.status(404).json({ success: false, message: 'Expense not found or not accessible.' });
     }
 
     // Reconcile BOQ Item actualExpenditure
@@ -416,11 +433,14 @@ export const deleteExpense = async (req: Request, res: Response) => {
 export const updatePettyCashTxn = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { description, recipient, voucherNo, txnDate } = req.body;
 
-    const existing = await prisma.pettyCashTransaction.findUnique({ where: { id } });
+    const existing = await prisma.pettyCashTransaction.findFirst({
+      where: { id, pettyCashAccount: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Voucher transaction not found.' });
+      return res.status(404).json({ success: false, message: 'Voucher transaction not found or not accessible.' });
     }
 
     const updated = await prisma.pettyCashTransaction.update({
@@ -442,9 +462,12 @@ export const updatePettyCashTxn = async (req: Request, res: Response) => {
 export const deletePettyCashTxn = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const txn = await prisma.pettyCashTransaction.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const txn = await prisma.pettyCashTransaction.findFirst({
+      where: { id, pettyCashAccount: { ...tenantFilter } },
+    });
     if (!txn) {
-      return res.status(404).json({ success: false, message: 'Voucher transaction not found.' });
+      return res.status(404).json({ success: false, message: 'Voucher transaction not found or not accessible.' });
     }
 
     const account = await prisma.pettyCashAccount.findUnique({ where: { id: txn.pettyCashAccountId } });
@@ -467,6 +490,13 @@ export const deletePettyCashTxn = async (req: Request, res: Response) => {
 export const deletePettyCashAccount = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.pettyCashAccount.findFirst({
+      where: { id, ...tenantFilter },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Petty cash account not found or not accessible.' });
+    }
     await prisma.pettyCashAccount.delete({ where: { id } });
     return res.json({ success: true, message: 'Petty cash account deleted successfully' });
   } catch (error: any) {

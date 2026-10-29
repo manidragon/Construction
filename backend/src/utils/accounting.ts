@@ -12,6 +12,7 @@ export interface JournalLineInput {
 }
 
 export async function postBalancedJournalEntry({
+  tenantId,
   entryDate,
   referenceType,
   referenceId,
@@ -20,6 +21,7 @@ export async function postBalancedJournalEntry({
   createdById,
   tx,
 }: {
+  tenantId?: string | null;
   entryDate?: Date;
   referenceType: string;
   referenceId?: string;
@@ -40,12 +42,13 @@ export async function postBalancedJournalEntry({
 
   // Generate unique entry number using either tx or prisma
   const client = tx || prisma;
-  const entryCount = await client.journalEntry.count();
+  const entryCount = await client.journalEntry.count({ where: tenantId ? { tenantId } : {} });
   const entryNumber = `JE-${new Date().getFullYear()}-${String(entryCount + 1).padStart(5, '0')}-${Date.now().toString().slice(-4)}`;
 
   const executeEntry = async (txClient: any) => {
     const journalEntry = await txClient.journalEntry.create({
       data: {
+        tenantId: tenantId || null,
         entryNumber,
         entryDate: entryDate || new Date(),
         referenceType,
@@ -59,14 +62,15 @@ export async function postBalancedJournalEntry({
     for (const line of lines) {
       if (line.debit === 0 && line.credit === 0) continue;
 
-      let account = await txClient.account.findUnique({
-        where: { code: line.accountCode },
+      let account = await txClient.account.findFirst({
+        where: { code: line.accountCode, ...(tenantId ? { tenantId } : {}) },
       });
 
       if (!account) {
         // Create standard account if missing
         account = await txClient.account.create({
           data: {
+            tenantId: tenantId || null,
             code: line.accountCode,
             name: line.accountCode.replace(/_/g, ' '),
             type: determineAccountType(line.accountCode),
@@ -165,3 +169,52 @@ export const COA = {
   SITE_OVERHEAD_EXPENSE: '5120',
   ADMIN_EXPENSE: '5200',
 };
+
+export const DEFAULT_COA_ACCOUNTS = [
+  { code: '1010', name: 'Cash in Hand', type: 'ASSET', subType: 'CASH_BANK' },
+  { code: '1020', name: 'Petty Cash - Sites', type: 'ASSET', subType: 'CASH_BANK' },
+  { code: '1030', name: 'HDFC Current Account (Operating)', type: 'ASSET', subType: 'CASH_BANK' },
+  { code: '1040', name: 'SBI Project Escrow Account', type: 'ASSET', subType: 'CASH_BANK' },
+  { code: '1100', name: 'Accounts Receivable (Clients)', type: 'ASSET', subType: 'RECEIVABLE' },
+  { code: '1150', name: 'Retention Money Receivable', type: 'ASSET', subType: 'RECEIVABLE' },
+  { code: '1200', name: 'Construction Materials Inventory', type: 'ASSET', subType: 'INVENTORY' },
+  { code: '1300', name: 'Input GST Credit (18%)', type: 'ASSET', subType: 'TAX' },
+  { code: '1500', name: 'Plant, Machinery & Heavy Equipment', type: 'ASSET', subType: 'CAPITAL' },
+  { code: '2010', name: 'Accounts Payable (Suppliers & Vendors)', type: 'LIABILITY', subType: 'PAYABLE' },
+  { code: '2020', name: 'Labour Wages Payable', type: 'LIABILITY', subType: 'PAYABLE' },
+  { code: '2030', name: 'Subcontractor Liabilities', type: 'LIABILITY', subType: 'PAYABLE' },
+  { code: '2050', name: 'Client Retention Withheld Payable', type: 'LIABILITY', subType: 'PAYABLE' },
+  { code: '2200', name: 'Output GST Payable (18%)', type: 'LIABILITY', subType: 'TAX' },
+  { code: '2250', name: 'TDS Payable (Section 194C)', type: 'LIABILITY', subType: 'TAX' },
+  { code: '3010', name: 'Share Capital / Partners Equity', type: 'EQUITY', subType: 'CAPITAL' },
+  { code: '3020', name: 'Retained Earnings', type: 'EQUITY', subType: 'CAPITAL' },
+  { code: '4010', name: 'Construction Contract Revenue (Certified)', type: 'REVENUE', subType: 'GENERAL' },
+  { code: '5010', name: 'Direct Material Consumed', type: 'EXPENSE', subType: 'DIRECT_COST' },
+  { code: '5020', name: 'Direct Labour Wages', type: 'EXPENSE', subType: 'DIRECT_COST' },
+  { code: '5030', name: 'Equipment Hire & Machinery Operations', type: 'EXPENSE', subType: 'DIRECT_COST' },
+  { code: '5040', name: 'Subcontracting Charges', type: 'EXPENSE', subType: 'DIRECT_COST' },
+  { code: '5110', name: 'Site Transport & Fuel Costs', type: 'EXPENSE', subType: 'DIRECT_COST' },
+  { code: '5120', name: 'Site Overhead & Safety Expenses', type: 'EXPENSE', subType: 'DIRECT_COST' },
+  { code: '5200', name: 'Administrative & Head Office Overheads', type: 'EXPENSE', subType: 'OVERHEAD' },
+];
+
+export async function ensureStandardCOA(tenantId?: string | null) {
+  if (!tenantId) return;
+  const existingCount = await prisma.account.count({
+    where: { tenantId },
+  });
+  if (existingCount === 0) {
+    for (const acc of DEFAULT_COA_ACCOUNTS) {
+      await prisma.account.create({
+        data: {
+          tenantId,
+          code: acc.code,
+          name: acc.name,
+          type: acc.type,
+          subType: acc.subType,
+          currentBalance: 0,
+        },
+      });
+    }
+  }
+}

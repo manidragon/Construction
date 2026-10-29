@@ -1,11 +1,17 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 import { moveToRecycleBin } from './recycleBinController';
 
 export const getBOQByProject = async (req: Request, res: Response) => {
   try {
     const projectId = String(req.params.projectId);
+    const tenantFilter = getTenantFilter(req);
+
+    const proj = await prisma.project.findFirst({ where: { id: projectId, ...tenantFilter } });
+    if (!proj) {
+      return res.status(404).json({ success: false, message: 'Project not found or unauthorized.' });
+    }
 
     const items = await prisma.bOQItem.findMany({
       where: { projectId },
@@ -52,6 +58,13 @@ export const getBOQByProject = async (req: Request, res: Response) => {
 export const createBOQItem = async (req: Request, res: Response) => {
   try {
     const projectId = String(req.params.projectId);
+    const tenantFilter = getTenantFilter(req);
+
+    const proj = await prisma.project.findFirst({ where: { id: projectId, ...tenantFilter } });
+    if (!proj) {
+      return res.status(404).json({ success: false, message: 'Project not found or unauthorized.' });
+    }
+
     const {
       itemCode,
       description,
@@ -124,6 +137,7 @@ export const createBOQItem = async (req: Request, res: Response) => {
 export const updateBOQItem = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const {
       itemCode,
       description,
@@ -145,9 +159,11 @@ export const updateBOQItem = async (req: Request, res: Response) => {
       scopeVariationNotes,
     } = req.body;
 
-    const existing = await prisma.bOQItem.findUnique({ where: { id } });
+    const existing = await prisma.bOQItem.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'BOQ item not found' });
+      return res.status(404).json({ success: false, message: 'BOQ item not found or unauthorized' });
     }
 
     const mat = materialUnitCost !== undefined ? Number(materialUnitCost) : existing.materialUnitCost;
@@ -207,9 +223,12 @@ export const updateBOQItem = async (req: Request, res: Response) => {
 export const deleteBOQItem = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.bOQItem.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.bOQItem.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'BOQ item not found' });
+      return res.status(404).json({ success: false, message: 'BOQ item not found or unauthorized' });
     }
 
     // Archive to Recycle Bin before deleting
@@ -245,10 +264,13 @@ export const updateBOQProgress = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const { actualQtyCompleted, actualExpenditure } = req.body;
+    const tenantFilter = getTenantFilter(req);
 
-    const existing = await prisma.bOQItem.findUnique({ where: { id } });
+    const existing = await prisma.bOQItem.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'BOQ item not found' });
+      return res.status(404).json({ success: false, message: 'BOQ item not found or unauthorized' });
     }
 
     const updated = await prisma.bOQItem.update({

@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { postBalancedJournalEntry, JournalLineInput } from '../utils/accounting';
+import { postBalancedJournalEntry, JournalLineInput, ensureStandardCOA } from '../utils/accounting';
 import { logAudit } from '../middleware/auth';
+import { getTenantFilter } from '../utils/tenant';
 
 /**
  * Standard Indian Chart of Accounts (COA) Groups aligned with Tally ERP 9 / Tally Prime & Schedule III
@@ -110,7 +111,12 @@ export function getTallyVoucherDetails(referenceType: string, narration: string 
 
 export const getChartOfAccounts = async (req: Request, res: Response) => {
   try {
+    if (req.user?.companyId) {
+      await ensureStandardCOA(req.user.companyId);
+    }
+
     const rawAccounts = await prisma.account.findMany({
+      where: getTenantFilter(req),
       orderBy: { code: 'asc' },
     });
 
@@ -173,7 +179,7 @@ export const getJournalEntries = async (req: Request, res: Response) => {
   try {
     const { referenceType, voucherType, projectId, startDate, endDate, search, limit } = req.query;
 
-    const where: any = {};
+    const where: any = { ...getTenantFilter(req) };
 
     // Filter by standard Tally Voucher Type (Payment, Receipt, Sales, Purchase, Contra, Journal)
     if (voucherType && typeof voucherType === 'string' && voucherType !== 'ALL') {
@@ -216,12 +222,17 @@ export const getJournalEntries = async (req: Request, res: Response) => {
     // Search query across entry number, narration, and account name
     if (search && typeof search === 'string' && search.trim()) {
       const q = search.trim();
-      where.OR = [
-        { entryNumber: { contains: q } },
-        { narration: { contains: q } },
-        { referenceId: { contains: q } },
-        { lines: { some: { account: { name: { contains: q } } } } },
-        { lines: { some: { account: { code: { contains: q } } } } },
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { entryNumber: { contains: q } },
+            { narration: { contains: q } },
+            { referenceId: { contains: q } },
+            { lines: { some: { account: { name: { contains: q } } } } },
+            { lines: { some: { account: { code: { contains: q } } } } },
+          ],
+        },
       ];
     }
 
@@ -278,7 +289,9 @@ export const createManualJournal = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Narration and at least 2 balanced journal lines are required.' });
     }
 
+    const tenantId = req.user?.companyId || null;
     const journal = await postBalancedJournalEntry({
+      tenantId,
       entryDate: entryDate ? new Date(entryDate) : new Date(),
       referenceType: 'MANUAL',
       narration,
@@ -296,9 +309,16 @@ export const createManualJournal = async (req: Request, res: Response) => {
 
 export const getTrialBalance = async (req: Request, res: Response) => {
   try {
+    if (req.user?.companyId) {
+      await ensureStandardCOA(req.user.companyId);
+    }
+
     const accounts = await prisma.account.findMany({
+      where: getTenantFilter(req),
       include: {
-        journalLines: true,
+        journalLines: {
+          where: { journalEntry: { ...getTenantFilter(req) } },
+        },
       },
       orderBy: { code: 'asc' },
     });
@@ -354,8 +374,12 @@ export const getTrialBalance = async (req: Request, res: Response) => {
 export const getProfitAndLoss = async (req: Request, res: Response) => {
   try {
     const accounts = await prisma.account.findMany({
-      where: { type: { in: ['REVENUE', 'EXPENSE'] } },
-      include: { journalLines: true },
+      where: { type: { in: ['REVENUE', 'EXPENSE'] }, ...getTenantFilter(req) },
+      include: {
+        journalLines: {
+          where: { journalEntry: { ...getTenantFilter(req) } },
+        },
+      },
     });
 
     let totalRevenue = 0;
@@ -411,8 +435,12 @@ export const getProfitAndLoss = async (req: Request, res: Response) => {
 export const getBalanceSheet = async (req: Request, res: Response) => {
   try {
     const accounts = await prisma.account.findMany({
-      where: { type: { in: ['ASSET', 'LIABILITY', 'EQUITY'] } },
-      include: { journalLines: true },
+      where: { type: { in: ['ASSET', 'LIABILITY', 'EQUITY'] }, ...getTenantFilter(req) },
+      include: {
+        journalLines: {
+          where: { journalEntry: { ...getTenantFilter(req) } },
+        },
+      },
     });
 
     let totalAssets = 0;
@@ -462,7 +490,7 @@ export const getAgingReports = async (req: Request, res: Response) => {
 
     // Accounts Receivable (Client Invoices)
     const openInvoices = await prisma.clientInvoice.findMany({
-      where: { balanceDue: { gt: 0 } },
+      where: { balanceDue: { gt: 0 }, ...getTenantFilter(req) },
       include: { client: true, project: { select: { code: true, name: true } } },
     });
 
@@ -491,7 +519,7 @@ export const getAgingReports = async (req: Request, res: Response) => {
 
     // Accounts Payable (Supplier Invoices)
     const openSupplierInvoices = await prisma.supplierInvoice.findMany({
-      where: { balanceDue: { gt: 0 } },
+      where: { balanceDue: { gt: 0 }, ...getTenantFilter(req) },
       include: { supplier: true },
     });
 
@@ -544,7 +572,7 @@ export const exportTallyXML = async (req: Request, res: Response) => {
   try {
     const { voucherType, startDate, endDate, projectId } = req.query;
 
-    const where: any = {};
+    const where: any = { ...getTenantFilter(req) };
     if (voucherType && typeof voucherType === 'string' && voucherType !== 'ALL') {
       const vUpper = voucherType.toUpperCase();
       if (vUpper === 'PAYMENT' || vUpper === 'F5') {
@@ -671,6 +699,7 @@ ${vouchersXml}
 export const exportDaybookCSV = async (req: Request, res: Response) => {
   try {
     const entries = await prisma.journalEntry.findMany({
+      where: getTenantFilter(req),
       include: {
         lines: {
           include: {
@@ -735,11 +764,16 @@ export const exportDaybookCSV = async (req: Request, res: Response) => {
  */
 export const getIndianStatutorySummary = async (req: Request, res: Response) => {
   try {
-    const accounts = await prisma.account.findMany();
-    const journalCount = await prisma.journalEntry.count();
+    const accounts = await prisma.account.findMany({
+      where: getTenantFilter(req),
+    });
+    const journalCount = await prisma.journalEntry.count({
+      where: getTenantFilter(req),
+    });
 
     const voucherCounts = await prisma.journalEntry.groupBy({
       by: ['referenceType'],
+      where: getTenantFilter(req),
       _count: { id: true },
     });
 

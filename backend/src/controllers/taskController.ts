@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 import { sendSuccess, sendError } from '../utils/responseHelper';
 import whatsappService from '../services/whatsappService';
 import { moveToRecycleBin } from './recycleBinController';
@@ -8,8 +8,11 @@ import { moveToRecycleBin } from './recycleBinController';
 export const getTasks = async (req: Request, res: Response) => {
   try {
     const { projectId, status, priority, siteId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = {
+      project: { ...tenantFilter },
+    };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (siteId && typeof siteId === 'string') where.siteId = siteId;
     if (status && typeof status === 'string') where.status = status;
@@ -76,12 +79,17 @@ export const createTask = async (req: Request, res: Response) => {
 
     // MODULE 3: Lead Conversion & Project Kickoff Gate
     // Block creation of execution schedules or site task assignments until finance confirms advance payment
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
+    const tenantFilter = getTenantFilter(req);
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...tenantFilter },
       select: { id: true, name: true, advancePaymentConfirmed: true, advancePaymentRequired: true },
     });
 
-    if (project && project.advancePaymentConfirmed === false) {
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
+    }
+
+    if (project.advancePaymentConfirmed === false) {
       return res.status(400).json({
         success: false,
         kickoffBlocked: true,
@@ -169,6 +177,15 @@ const syncProjectProgress = async (projectId: string) => {
 export const updateTask = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+
+    const existing = await prisma.task.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Task not found or not accessible.' });
+    }
+
     const {
       title,
       description,
@@ -237,12 +254,13 @@ export const updateTask = async (req: Request, res: Response) => {
 export const deleteTask = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const task = await prisma.task.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const task = await prisma.task.findFirst({
+      where: { id, project: { ...tenantFilter } },
       include: { project: true, boqItem: true },
     });
     if (!task) {
-      return res.status(404).json({ success: false, message: 'Task not found.' });
+      return res.status(404).json({ success: false, message: 'Task not found or not accessible.' });
     }
 
     // Archive to Recycle Bin before deleting
@@ -271,6 +289,15 @@ export const deleteTask = async (req: Request, res: Response) => {
 export const addTaskComment = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+
+    const task = await prisma.task.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found or not accessible.' });
+    }
+
     const { comment } = req.body;
 
     if (!comment) {
@@ -302,6 +329,7 @@ export const addTaskComment = async (req: Request, res: Response) => {
 export const quickAddTask = async (req: Request, res: Response) => {
   try {
     const { title, projectId, assignedToId, priority, dueDate, startDate, status, description } = req.body;
+    const tenantFilter = getTenantFilter(req);
 
     if (!title || !title.trim()) {
       return sendError(res, {
@@ -314,16 +342,30 @@ export const quickAddTask = async (req: Request, res: Response) => {
 
     // Resolve target project
     let targetProjectId = projectId;
-    if (!targetProjectId) {
+    if (targetProjectId) {
+      const proj = await prisma.project.findFirst({
+        where: { id: targetProjectId, ...tenantFilter },
+      });
+      if (!proj) {
+        return sendError(res, {
+          message: 'Project not found or not accessible.',
+          entity: 'Task',
+          errors: ['Project not found'],
+          statusCode: 404,
+        });
+      }
+    } else {
       const defaultProj = await prisma.project.findFirst({
-        where: { status: 'ACTIVE' },
+        where: { status: 'ACTIVE', ...tenantFilter },
         orderBy: { updatedAt: 'desc' },
       });
       targetProjectId = defaultProj?.id;
     }
 
     if (!targetProjectId) {
-      const anyProj = await prisma.project.findFirst();
+      const anyProj = await prisma.project.findFirst({
+        where: tenantFilter,
+      });
       targetProjectId = anyProj?.id;
     }
 

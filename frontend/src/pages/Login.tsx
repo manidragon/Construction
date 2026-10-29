@@ -69,6 +69,17 @@ const DEMO_ROLES: DemoRole[] = [
     badge: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
   },
   {
+    role: 'PROJECT_MANAGER',
+    name: 'Naveen Kumar',
+    email: 'pm@skyline.com',
+    targetRoute: '/projects',
+    title: 'Constructor B Staff (Project Manager - Skyline)',
+    description: 'Constructor B staff login: manages only Skyline Palm Meadows project & muster',
+    icon: Briefcase,
+    color: 'from-teal-500 to-teal-600',
+    badge: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
+  },
+  {
     role: 'EXPIRED_TRIAL',
     name: 'Ananya Roy',
     email: 'owner@starlight.com',

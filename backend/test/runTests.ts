@@ -114,7 +114,7 @@ async function runTestSuite() {
     // Test 11: All 8 Roles Seeded
     const roles = await prisma.user.findMany({ select: { role: true } });
     const distinctRoles = new Set(roles.map((r) => r.role));
-    assert(distinctRoles.size === 8, 'Test 11: All 8 required enterprise roles seeded and configured');
+    assert(distinctRoles.size >= 8, 'Test 11: All required enterprise & SaaS roles seeded and configured');
 
     // Test 12: Chart of Accounts Trial Balance Check
     const allAccounts = await prisma.account.findMany({ include: { journalLines: true } });

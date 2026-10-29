@@ -1,12 +1,15 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 
 export const getDailyReports = async (req: Request, res: Response) => {
   try {
     const { projectId, siteId, date, status } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = {
+      project: { ...tenantFilter },
+    };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (siteId && typeof siteId === 'string') where.siteId = siteId;
     if (status && typeof status === 'string') where.status = status;
@@ -41,9 +44,10 @@ export const getDailyReports = async (req: Request, res: Response) => {
 export const getDailyReportById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const report = await prisma.dailySiteReport.findUnique({
-      where: { id },
+    const report = await prisma.dailySiteReport.findFirst({
+      where: { id, project: { ...tenantFilter } },
       include: {
         project: true,
         site: true,
@@ -57,7 +61,7 @@ export const getDailyReportById = async (req: Request, res: Response) => {
     });
 
     if (!report) {
-      return res.status(404).json({ success: false, message: 'DPR not found' });
+      return res.status(404).json({ success: false, message: 'DPR not found or not accessible.' });
     }
 
     return res.json({ success: true, report });
@@ -86,6 +90,14 @@ export const createDailyReport = async (req: Request, res: Response) => {
 
     if (!projectId || !siteId || !reportDate) {
       return res.status(400).json({ success: false, message: 'Project, site, and report date are required.' });
+    }
+
+    const tenantFilter = getTenantFilter(req);
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...tenantFilter },
+    });
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
     }
 
     const dpr = await prisma.dailySiteReport.create({
@@ -154,6 +166,14 @@ export const createDailyReport = async (req: Request, res: Response) => {
 export const approveDailyReport = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
+
+    const existing = await prisma.dailySiteReport.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'DPR not found or not accessible.' });
+    }
 
     const report = await prisma.dailySiteReport.update({
       where: { id },
@@ -174,6 +194,7 @@ export const approveDailyReport = async (req: Request, res: Response) => {
 export const updateDailyReport = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const {
       weather,
       temperature,
@@ -184,9 +205,11 @@ export const updateDailyReport = async (req: Request, res: Response) => {
       status,
     } = req.body;
 
-    const existing = await prisma.dailySiteReport.findUnique({ where: { id } });
+    const existing = await prisma.dailySiteReport.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'DPR not found.' });
+      return res.status(404).json({ success: false, message: 'DPR not found or not accessible.' });
     }
 
     const updated = await prisma.dailySiteReport.update({
@@ -223,10 +246,13 @@ export const updateDailyReport = async (req: Request, res: Response) => {
 export const deleteDailyReport = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const existing = await prisma.dailySiteReport.findUnique({ where: { id } });
+    const existing = await prisma.dailySiteReport.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'DPR not found.' });
+      return res.status(404).json({ success: false, message: 'DPR not found or not accessible.' });
     }
 
     await prisma.$transaction(async (tx) => {

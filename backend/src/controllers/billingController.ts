@@ -5,7 +5,9 @@ import { postBalancedJournalEntry, COA } from '../utils/accounting';
 
 export const getClients = async (req: Request, res: Response) => {
   try {
+    const tenantFilter = getTenantFilter(req);
     const clients = await prisma.client.findMany({
+      where: tenantFilter,
       include: {
         _count: { select: { invoices: true, receipts: true } },
       },
@@ -26,12 +28,18 @@ export const createClient = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Client name is required.' });
     }
 
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
     // Automatically remove spaces from contact number
     const cleanedPhone = phone ? String(phone).replace(/\s+/g, '').trim() : '-';
 
     let finalCode = code ? String(code).trim() : '';
     if (!finalCode) {
-      const allClients = await prisma.client.findMany({ select: { code: true } });
+      const allClients = await prisma.client.findMany({
+        where: tenantFilter,
+        select: { code: true },
+      });
       let maxNum = 0;
       for (const c of allClients) {
         if (c.code && c.code.startsWith('CLI-')) {
@@ -44,6 +52,7 @@ export const createClient = async (req: Request, res: Response) => {
 
     const client = await prisma.client.create({
       data: {
+        tenantId,
         code: finalCode,
         name: String(name).trim(),
         companyName: companyName ? String(companyName).trim() : null,
@@ -70,8 +79,9 @@ export const createClient = async (req: Request, res: Response) => {
 export const getClientInvoices = async (req: Request, res: Response) => {
   try {
     const { projectId, clientId, status } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (clientId && typeof clientId === 'string') where.clientId = clientId;
     if (status && typeof status === 'string') where.status = status;
@@ -105,8 +115,9 @@ export const getClientInvoices = async (req: Request, res: Response) => {
  * Automatically calculate the next sequential RA Bill number with project tag.
  * e.g. RA-01-SKYLINE, RA-02-Greenfield, RA-03-SKYLINE, etc.
  */
-export const generateNextInvoiceNumber = async (projectId?: string) => {
+export const generateNextInvoiceNumber = async (projectId?: string, tenantFilter?: any) => {
   const allInvoices = await prisma.clientInvoice.findMany({
+    where: tenantFilter ? tenantFilter : {},
     select: { invoiceNumber: true, projectId: true },
   });
 
@@ -128,8 +139,8 @@ export const generateNextInvoiceNumber = async (projectId?: string) => {
 
   let projectTag = '';
   if (projectId) {
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...(tenantFilter || {}) },
       select: { id: true, code: true, name: true },
     });
 
@@ -163,7 +174,8 @@ export const generateNextInvoiceNumber = async (projectId?: string) => {
 export const getNextInvoiceNumber = async (req: Request, res: Response) => {
   try {
     const { projectId } = req.query;
-    const result = await generateNextInvoiceNumber(projectId as string | undefined);
+    const tenantFilter = getTenantFilter(req);
+    const result = await generateNextInvoiceNumber(projectId as string | undefined, tenantFilter);
     return res.json({ success: true, ...result });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -196,11 +208,21 @@ export const createClientInvoice = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Project, dates, and subtotal are required.' });
     }
 
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...tenantFilter },
+    });
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
+    }
+
     // MODULE 4: Block final invoice generation if any payment dues remain outstanding!
     const isFinal = invoiceType === 'FINAL' || Boolean(isFinalHandover);
     if (isFinal) {
       const priorInvoices = await prisma.clientInvoice.findMany({
-        where: { projectId, status: { not: 'CANCELLED' } },
+        where: { projectId, status: { not: 'CANCELLED' }, ...tenantFilter },
       });
       const outstandingPriorDues = priorInvoices.reduce((sum, inv) => sum + inv.balanceDue, 0);
       if (outstandingPriorDues > 0) {
@@ -215,16 +237,15 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     // Auto-generate invoice number if missing, or ensure uniqueness
     let finalInvoiceNumber = invoiceNumber ? String(invoiceNumber).trim() : '';
     if (!finalInvoiceNumber) {
-      const generated = await generateNextInvoiceNumber(projectId);
+      const generated = await generateNextInvoiceNumber(projectId, tenantFilter);
       finalInvoiceNumber = generated.nextInvoiceNumber;
     } else {
       // Check for collision and auto-increment if duplicate
-      const tenantFilter = getTenantFilter(req);
       const existing = await prisma.clientInvoice.findFirst({
         where: { invoiceNumber: finalInvoiceNumber, ...tenantFilter },
       });
       if (existing) {
-        const generated = await generateNextInvoiceNumber(projectId);
+        const generated = await generateNextInvoiceNumber(projectId, tenantFilter);
         finalInvoiceNumber = generated.nextInvoiceNumber;
       }
     }
@@ -244,7 +265,7 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     // Auto-resolve or create client record if needed
     let finalClientId = clientId && clientId !== '__PROJECT_CLIENT__' ? clientId : null;
     if (!finalClientId && projectId) {
-      const proj = await prisma.project.findUnique({ where: { id: projectId } });
+      const proj = await prisma.project.findFirst({ where: { id: projectId, ...tenantFilter } });
       if (proj && proj.clientName) {
         let matchedClient = await prisma.client.findFirst({
           where: {
@@ -252,10 +273,11 @@ export const createClientInvoice = async (req: Request, res: Response) => {
               { name: proj.clientName },
               { companyName: proj.clientName },
             ],
+            ...tenantFilter,
           },
         });
         if (!matchedClient) {
-          const allClients = await prisma.client.findMany({ select: { code: true } });
+          const allClients = await prisma.client.findMany({ where: tenantFilter, select: { code: true } });
           let maxNum = 0;
           for (const c of allClients) {
             if (c.code && c.code.startsWith('CLI-')) {
@@ -266,6 +288,7 @@ export const createClientInvoice = async (req: Request, res: Response) => {
           const finalCode = `CLI-${String(maxNum + 1).padStart(3, '0')}`;
           matchedClient = await prisma.client.create({
             data: {
+              tenantId,
               code: finalCode,
               name: proj.clientName,
               companyName: proj.clientName,
@@ -283,6 +306,7 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.clientInvoice.create({
         data: {
+          tenantId,
           invoiceNumber: finalInvoiceNumber,
           clientId: finalClientId || null,
           projectId,
@@ -333,6 +357,7 @@ export const createClientInvoice = async (req: Request, res: Response) => {
     // Cr. Output GST: gstAmount
     try {
       await postBalancedJournalEntry({
+        tenantId,
         entryDate: new Date(invoiceDate),
         referenceType: 'CLIENT_INVOICE',
         referenceId: invoice.id,
@@ -361,8 +386,9 @@ export const createClientInvoice = async (req: Request, res: Response) => {
 export const getClientReceipts = async (req: Request, res: Response) => {
   try {
     const { projectId, clientId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (clientId && typeof clientId === 'string') where.clientId = clientId;
 
@@ -385,6 +411,8 @@ export const getClientReceipts = async (req: Request, res: Response) => {
 export const recordClientReceipt = async (req: Request, res: Response) => {
   try {
     const { clientId, projectId, invoiceId, receiptDate, amount, paymentMethod, referenceNo, notes } = req.body;
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
 
     const rcpAmount = Number(amount);
 
@@ -393,8 +421,8 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
     let finalClientId = clientId ? String(clientId).trim() : '';
 
     if (invoiceId) {
-      const inv = await prisma.clientInvoice.findUnique({
-        where: { id: invoiceId },
+      const inv = await prisma.clientInvoice.findFirst({
+        where: { id: invoiceId, ...tenantFilter },
         select: { id: true, projectId: true, clientId: true },
       });
       if (inv) {
@@ -409,7 +437,7 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
 
     // Fallback: If still no project, check if default project exists in DB
     if (!finalProjectId && !invoiceId) {
-      const firstProj = await prisma.project.findFirst({ select: { id: true } });
+      const firstProj = await prisma.project.findFirst({ where: tenantFilter, select: { id: true } });
       if (firstProj) finalProjectId = firstProj.id;
     }
 
@@ -419,23 +447,25 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
 
     // Auto-resolve client from project if still not set
     if (!finalClientId && finalProjectId) {
-      const proj = await prisma.project.findUnique({ where: { id: finalProjectId } });
+      const proj = await prisma.project.findFirst({ where: { id: finalProjectId, ...tenantFilter } });
       if (proj?.clientName) {
         const matched = await prisma.client.findFirst({
           where: {
             OR: [{ name: proj.clientName }, { companyName: proj.clientName }],
+            ...tenantFilter,
           },
         });
         if (matched) finalClientId = matched.id;
       }
     }
 
-    const count = await prisma.clientReceipt.count();
+    const count = await prisma.clientReceipt.count({ where: tenantFilter });
     const receiptNumber = `RCP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
     const receipt = await prisma.$transaction(async (tx) => {
       const rcp = await tx.clientReceipt.create({
         data: {
+          tenantId,
           receiptNumber,
           clientId: finalClientId || null,
           projectId: finalProjectId,
@@ -450,7 +480,7 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
 
       // Update invoice if linked
       if (invoiceId) {
-        const inv = await tx.clientInvoice.findUnique({ where: { id: invoiceId } });
+        const inv = await tx.clientInvoice.findFirst({ where: { id: invoiceId, ...tenantFilter } });
         if (inv) {
           const newPaid = inv.paidAmount + rcpAmount;
           const newBal = Math.max(0, inv.netInvoiceAmount - newPaid);
@@ -476,6 +506,7 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
     try {
       const debitAccount = paymentMethod === 'CASH' ? COA.CASH : COA.HDFC_BANK;
       await postBalancedJournalEntry({
+        tenantId,
         entryDate: receiptDate ? new Date(receiptDate) : new Date(),
         referenceType: 'CLIENT_RECEIPT',
         referenceId: receipt.id,
@@ -493,8 +524,8 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
     await logAudit(req.user?.id, 'CLIENT_RECEIPT', 'CLIENT_RECEIPT', receipt.id, { receiptNumber, amount: rcpAmount }, req.ip);
 
     // Fetch full receipt details with relations for instant client sharing
-    const fullReceipt = await prisma.clientReceipt.findUnique({
-      where: { id: receipt.id },
+    const fullReceipt = await prisma.clientReceipt.findFirst({
+      where: { id: receipt.id, ...tenantFilter },
       include: {
         client: true,
         project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true } },
@@ -511,11 +542,14 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
 export const updateClient = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { code, name, companyName, contactPerson, phone, email, billingAddress, gstin, pan } = req.body;
 
-    const existing = await prisma.client.findUnique({ where: { id } });
+    const existing = await prisma.client.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Client not found.' });
+      return res.status(404).json({ success: false, message: 'Client not found or not accessible.' });
     }
 
     // Automatically remove spaces from contact number
@@ -545,7 +579,7 @@ export const updateClient = async (req: Request, res: Response) => {
 
     // Also find any projects linked via client invoices
     const linkedInvoices = await prisma.clientInvoice.findMany({
-      where: { clientId: id },
+      where: { clientId: id, ...tenantFilter },
       select: { projectId: true },
       distinct: ['projectId'],
     });
@@ -553,9 +587,14 @@ export const updateClient = async (req: Request, res: Response) => {
 
     await prisma.project.updateMany({
       where: {
-        OR: [
-          { clientName: { in: namesToMatch } },
-          ...(linkedProjectIds.length > 0 ? [{ id: { in: linkedProjectIds } }] : []),
+        AND: [
+          tenantFilter,
+          {
+            OR: [
+              { clientName: { in: namesToMatch } },
+              ...(linkedProjectIds.length > 0 ? [{ id: { in: linkedProjectIds } }] : []),
+            ],
+          },
         ],
       },
       data: {
@@ -578,14 +617,15 @@ export const updateClient = async (req: Request, res: Response) => {
 export const deleteClient = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.client.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.client.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         _count: { select: { invoices: true, receipts: true } },
       },
     });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Client not found.' });
+      return res.status(404).json({ success: false, message: 'Client not found or not accessible.' });
     }
 
     if (existing._count.invoices > 0 || existing._count.receipts > 0) {
@@ -607,6 +647,7 @@ export const deleteClient = async (req: Request, res: Response) => {
 export const updateClientInvoice = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const {
       invoiceNumber,
       invoiceType,
@@ -622,9 +663,11 @@ export const updateClientInvoice = async (req: Request, res: Response) => {
       status,
     } = req.body;
 
-    const existing = await prisma.clientInvoice.findUnique({ where: { id } });
+    const existing = await prisma.clientInvoice.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Client invoice not found.' });
+      return res.status(404).json({ success: false, message: 'Client invoice not found or not accessible.' });
     }
 
     const sub = subtotal !== undefined ? Number(subtotal) : existing.subtotal;
@@ -677,12 +720,13 @@ export const updateClientInvoice = async (req: Request, res: Response) => {
 export const deleteClientInvoice = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.clientInvoice.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.clientInvoice.findFirst({
+      where: { id, ...tenantFilter },
       include: { receipts: true },
     });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Client invoice not found.' });
+      return res.status(404).json({ success: false, message: 'Client invoice not found or not accessible.' });
     }
 
     if (existing.receipts.length > 0) {
@@ -711,11 +755,14 @@ export const deleteClientInvoice = async (req: Request, res: Response) => {
 export const updateClientReceipt = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { receiptDate, amount, paymentMethod, referenceNo, notes } = req.body;
 
-    const existing = await prisma.clientReceipt.findUnique({ where: { id } });
+    const existing = await prisma.clientReceipt.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Client receipt not found.' });
+      return res.status(404).json({ success: false, message: 'Client receipt not found or not accessible.' });
     }
 
     const newAmount = amount !== undefined ? Number(amount) : existing.amount;
@@ -735,7 +782,7 @@ export const updateClientReceipt = async (req: Request, res: Response) => {
 
       // Update linked invoice if any
       if (existing.invoiceId && diff !== 0) {
-        const inv = await tx.clientInvoice.findUnique({ where: { id: existing.invoiceId } });
+        const inv = await tx.clientInvoice.findFirst({ where: { id: existing.invoiceId, ...tenantFilter } });
         if (inv) {
           const newPaid = Math.max(0, inv.paidAmount + diff);
           const newBal = Math.max(0, inv.netInvoiceAmount - newPaid);
@@ -762,14 +809,17 @@ export const updateClientReceipt = async (req: Request, res: Response) => {
 export const deleteClientReceipt = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.clientReceipt.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.clientReceipt.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Client receipt not found.' });
+      return res.status(404).json({ success: false, message: 'Client receipt not found or not accessible.' });
     }
 
     await prisma.$transaction(async (tx) => {
       if (existing.invoiceId) {
-        const inv = await tx.clientInvoice.findUnique({ where: { id: existing.invoiceId } });
+        const inv = await tx.clientInvoice.findFirst({ where: { id: existing.invoiceId, ...tenantFilter } });
         if (inv) {
           const newPaid = Math.max(0, inv.paidAmount - existing.amount);
           const newBal = Math.max(0, inv.netInvoiceAmount - newPaid);

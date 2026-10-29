@@ -319,6 +319,10 @@ class ApiService {
     this.request<any>(`/superadmin/tenants/${id}/extend-trial`, { method: 'PATCH', body: JSON.stringify(data) });
   updateTenantStatus = (id: string, data: any) =>
     this.request<any>(`/superadmin/tenants/${id}/status`, { method: 'PATCH', body: JSON.stringify(data) });
+  resetDemoTenant = (id: string) =>
+    this.request<any>(`/superadmin/tenants/${id}/reset-demo`, { method: 'POST' });
+  resetMyDemoCompany = () =>
+    this.request<any>('/company/reset-demo', { method: 'POST' });
   getTenantCurrentStatus = () => this.request<any>('/company/current-status');
 
   // COMPANY CONFIGURATION & OUTBOUND WHATSAPP LOGS

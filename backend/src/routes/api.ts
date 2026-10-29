@@ -19,6 +19,7 @@ import {
   extendTrial,
   updateTenantStatus,
   getTenantCurrentStatus,
+  resetDemoTenantData,
 } from '../controllers/tenantController';
 import {
   getCompanySettings,
@@ -267,6 +268,8 @@ router.get('/superadmin/tenants', requireRole('SUPER_ADMIN'), getAllTenants);
 router.post('/superadmin/tenants', requireRole('SUPER_ADMIN'), createTenant);
 router.patch('/superadmin/tenants/:id/extend-trial', requireRole('SUPER_ADMIN'), extendTrial);
 router.patch('/superadmin/tenants/:id/status', requireRole('SUPER_ADMIN'), updateTenantStatus);
+router.post('/superadmin/tenants/:id/reset-demo', requireRole('SUPER_ADMIN'), resetDemoTenantData);
+router.post('/company/reset-demo', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), resetDemoTenantData);
 
 // ----------------------------------------------------------------------
 // Company Branding, Invoice Prefs & Outbound WhatsApp Configuration

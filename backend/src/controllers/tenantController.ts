@@ -432,3 +432,189 @@ export const getTenantCurrentStatus = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * POST /api/superadmin/tenants/:id/reset-demo
+ * OR POST /api/company/reset-demo
+ * Reset and re-seed clean isolated sample data for prospective constructors / demo accounts
+ */
+export const resetDemoTenantData = async (req: Request, res: Response) => {
+  try {
+    const targetId = String(req.params.id || req.user?.companyId || '');
+    if (!targetId) {
+      return res.status(400).json({ success: false, message: 'Target tenant ID is required.' });
+    }
+
+    // Role check: Only SUPER_ADMIN or TENANT_ADMIN / OWNER of that company can trigger reset
+    if (req.user?.role !== 'SUPER_ADMIN' && req.user?.companyId !== targetId) {
+      return res.status(403).json({ success: false, message: 'Access denied: Cannot reset other tenants.' });
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: targetId } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Tenant company not found.' });
+    }
+
+    // Find all projects belonging to this tenant to delete project children
+    const projects = await prisma.project.findMany({
+      where: { tenantId: targetId },
+      select: { id: true },
+    });
+    const projectIds = projects.map((p) => p.id);
+
+    // Clean up all transactional data safely for this tenant
+    if (projectIds.length > 0) {
+      await prisma.dailySiteReport.deleteMany({ where: { projectId: { in: projectIds } } });
+      await prisma.bOQItem.deleteMany({ where: { projectId: { in: projectIds } } });
+      await prisma.phase.deleteMany({ where: { projectId: { in: projectIds } } });
+      await prisma.site.deleteMany({ where: { projectId: { in: projectIds } } });
+    }
+
+    await prisma.task.deleteMany({ where: { tenantId: targetId } });
+    await prisma.clientInvoice.deleteMany({ where: { tenantId: targetId } });
+    await prisma.clientReceipt.deleteMany({ where: { tenantId: targetId } });
+    await prisma.quotation.deleteMany({ where: { tenantId: targetId } });
+    await prisma.lead.deleteMany({ where: { tenantId: targetId } });
+    await prisma.expense.deleteMany({ where: { tenantId: targetId } });
+    await prisma.materialRequisition.deleteMany({ where: { tenantId: targetId } });
+    await prisma.goodsReceiptNote.deleteMany({ where: { tenantId: targetId } });
+    await prisma.purchaseOrder.deleteMany({ where: { tenantId: targetId } });
+    await prisma.supplierPayment.deleteMany({ where: { tenantId: targetId } });
+    await prisma.supplierInvoice.deleteMany({ where: { tenantId: targetId } });
+    await prisma.supplier.deleteMany({ where: { tenantId: targetId } });
+    await prisma.stockLedger.deleteMany({ where: { tenantId: targetId } });
+    await prisma.material.deleteMany({ where: { tenantId: targetId } });
+    await prisma.warehouse.deleteMany({ where: { tenantId: targetId } });
+    await prisma.equipmentAsset.deleteMany({ where: { tenantId: targetId } });
+    await prisma.documentAttachment.deleteMany({ where: { tenantId: targetId } });
+    await prisma.officeExpense.deleteMany({ where: { tenantId: targetId } });
+    await prisma.officeStaff.deleteMany({ where: { tenantId: targetId } });
+    await prisma.subcontractor.deleteMany({ where: { tenantId: targetId } });
+    await prisma.pettyCashTransaction.deleteMany({
+      where: { pettyCashAccount: { tenantId: targetId } },
+    });
+    await prisma.pettyCashAccount.deleteMany({ where: { tenantId: targetId } });
+    await prisma.journalLine.deleteMany({
+      where: { journalEntry: { tenantId: targetId } },
+    });
+    await prisma.journalEntry.deleteMany({ where: { tenantId: targetId } });
+    await prisma.project.deleteMany({ where: { tenantId: targetId } });
+    await prisma.client.deleteMany({ where: { tenantId: targetId } });
+
+    // Refresh Trial status with 14 fresh days
+    const trialStartDate = new Date();
+    const trialEndDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    await prisma.company.update({
+      where: { id: targetId },
+      data: {
+        status: 'TRIAL',
+        trialStartDate,
+        trialEndDate,
+      },
+    });
+
+    // Re-seed clean isolated demo records
+    const demoClient = await prisma.client.create({
+      data: {
+        tenant: { connect: { id: targetId } },
+        code: `CLI-${company.code.slice(0, 4)}-01`,
+        name: 'Dr. Ramesh & Sunita Nair',
+        phone: '+91 98451 99887',
+        email: 'ramesh.nair@example.com',
+        billingAddress: 'Villa 42, Palm Meadows, Whitefield, Bengaluru - 560066',
+      },
+    });
+
+    const demoProject = await prisma.project.create({
+      data: {
+        tenant: { connect: { id: targetId } },
+        code: `PRJ-${company.code.slice(0, 4)}-01`,
+        name: `${company.name} Showcase Villa 42`,
+        description: 'Exclusive 4BHK Turnkey Villa Construction & Interior Finishing Demo Project',
+        clientName: demoClient.name,
+        clientContact: demoClient.phone,
+        clientEmail: demoClient.email,
+        siteAddress: demoClient.billingAddress,
+        city: company.city || 'Bengaluru',
+        state: company.state || 'Karnataka',
+        projectType: 'RESIDENTIAL',
+        contractType: 'ITEM_RATE',
+        contractValue: 8500000,
+        approvedBudget: 6500000,
+        plannedStartDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+        plannedEndDate: new Date(Date.now() + 105 * 24 * 60 * 60 * 1000),
+        status: 'ACTIVE',
+        completionPercent: 28.5,
+        advancePaymentRequired: 2000000,
+        advancePaymentReceived: 2000000,
+        advancePaymentConfirmed: true,
+      },
+    });
+
+    await prisma.bOQItem.create({
+      data: {
+        projectId: demoProject.id,
+        itemCode: 'BOQ-001',
+        description: 'Substructure RCC Footings, Plinth Beam & Ground Slab with M25 RMC',
+        category: 'CIVIL_CONCRETE',
+        unit: 'CUM',
+        estimatedQty: 120,
+        unitRate: 6800,
+        estimatedTotal: 816000,
+        actualQtyCompleted: 120,
+        materialUnitCost: 4500,
+        labourUnitCost: 2300,
+        clientApprovalStatus: 'APPROVED',
+      },
+    });
+
+    await prisma.lead.create({
+      data: {
+        tenant: { connect: { id: targetId } },
+        leadNumber: `LEAD-${company.code.slice(0, 4)}-01`,
+        clientName: 'Vikramaditya Rao',
+        contactNumber: '+91 98452 77889',
+        email: 'vikram.rao@example.com',
+        siteAddress: 'Plot 88, Prestige Golfshire, Nandi Hills Road',
+        city: company.city || 'Bengaluru',
+        state: company.state || 'Karnataka',
+        projectType: 'VILLA_CONSTRUCTION',
+        budgetRange: '1CR_2CR',
+        source: 'DIRECT_REFERRAL',
+        stage: 'SITE_MEASUREMENT_COMPLETED',
+        assignedTeam: 'ARCHITECTURE_TEAM',
+      },
+    });
+
+    await prisma.officeStaff.create({
+      data: {
+        tenant: { connect: { id: targetId } },
+        staffCode: `STF-${company.code.slice(0, 4)}-01`,
+        name: 'Aarti Deshmukh',
+        roleCategory: 'HR_OPERATIONS',
+        designation: 'Operations & HR Lead',
+        phone: '+91 98450 66778',
+        email: `aarti@${company.ownerEmail?.split('@')[1] || 'demo.com'}`,
+        address: 'Indiranagar 12th Main, Bengaluru',
+        fixedSalary: 55000,
+        basicSalary: 27500,
+        hra: 11000,
+        allowances: 16500,
+        isActive: true,
+      },
+    });
+
+    await logAudit(req.user?.id, 'RESET_DEMO_DATA', 'COMPANY', targetId, {
+      companyName: company.name,
+      code: company.code,
+    }, req.ip);
+
+    return res.json({
+      success: true,
+      message: `Demo environment for "${company.name}" has been successfully reset to fresh sample data with 14 trial days!`,
+    });
+  } catch (error: any) {
+    console.error('Error resetting demo tenant data:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -6,8 +6,9 @@ import { postBalancedJournalEntry, COA } from '../utils/accounting';
 export const getWorkers = async (req: Request, res: Response) => {
   try {
     const { projectId, trade, search } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, ...tenantFilter };
     if (trade && typeof trade === 'string') where.trade = trade;
     if (search && typeof search === 'string') {
       where.OR = [
@@ -79,8 +80,11 @@ export function computeGlobalNextWorkerCode(allWorkers: { workerCode: string | n
 
 export const getNextWorkerCode = async (req: Request, res: Response) => {
   try {
-    // Global sequence across entire enterprise / all projects
-    const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
+    const tenantFilter = getTenantFilter(req);
+    const allWorkers = await prisma.worker.findMany({
+      where: tenantFilter,
+      select: { workerCode: true },
+    });
     const nextWorkerCode = computeGlobalNextWorkerCode(allWorkers);
     return res.json({ success: true, nextWorkerCode });
   } catch (error: any) {
@@ -112,6 +116,9 @@ export const createWorker = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Worker name and trade are required.' });
     }
 
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
+
     // Process uploaded files if multipart
     if (req.files) {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -126,20 +133,24 @@ export const createWorker = async (req: Request, res: Response) => {
       }
     }
 
-    // Auto-generate global worker code across all projects if not supplied or empty
+    // Auto-generate worker code if not supplied or empty
     let finalCode = workerCode ? String(workerCode).trim() : '';
     if (!finalCode) {
-      const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
+      const allWorkers = await prisma.worker.findMany({
+        where: tenantFilter,
+        select: { workerCode: true },
+      });
       finalCode = computeGlobalNextWorkerCode(allWorkers);
     } else {
       // Check if code already exists for this tenant
-      const tenantFilter = getTenantFilter(req);
       const existing = await prisma.worker.findFirst({
         where: { workerCode: finalCode, ...tenantFilter },
       });
       if (existing) {
-        // Find next available global code to suggest
-        const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
+        const allWorkers = await prisma.worker.findMany({
+          where: tenantFilter,
+          select: { workerCode: true },
+        });
         const suggestedCode = computeGlobalNextWorkerCode(allWorkers);
         return res.status(400).json({
           success: false,
@@ -151,6 +162,7 @@ export const createWorker = async (req: Request, res: Response) => {
 
     const worker = await prisma.worker.create({
       data: {
+        tenantId,
         workerCode: finalCode,
         name: String(name).trim(),
         phone: phone ? String(phone).trim() : null,
@@ -206,8 +218,9 @@ export const createWorker = async (req: Request, res: Response) => {
 export const getWorkerById = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const worker = await prisma.worker.findUnique({
-      where: { id },
+    const tenantFilter = getTenantFilter(req);
+    const worker = await prisma.worker.findFirst({
+      where: { id, ...tenantFilter },
       include: {
         project: { select: { id: true, code: true, name: true } },
         attendances: {
@@ -222,7 +235,7 @@ export const getWorkerById = async (req: Request, res: Response) => {
     });
 
     if (!worker) {
-      return res.status(404).json({ success: false, message: 'Worker not found' });
+      return res.status(404).json({ success: false, message: 'Worker not found or not accessible.' });
     }
 
     return res.json({ success: true, worker });
@@ -234,6 +247,7 @@ export const getWorkerById = async (req: Request, res: Response) => {
 export const updateWorker = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     let {
       workerCode,
       name,
@@ -251,9 +265,11 @@ export const updateWorker = async (req: Request, res: Response) => {
       documentName,
     } = req.body;
 
-    const existing = await prisma.worker.findUnique({ where: { id } });
+    const existing = await prisma.worker.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Worker not found' });
+      return res.status(404).json({ success: false, message: 'Worker not found or not accessible.' });
     }
 
     // Process files if uploaded
@@ -316,9 +332,12 @@ export const updateWorker = async (req: Request, res: Response) => {
 export const deleteWorker = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.worker.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.worker.findFirst({
+      where: { id, ...tenantFilter },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Worker not found' });
+      return res.status(404).json({ success: false, message: 'Worker not found or not accessible.' });
     }
 
     try {
@@ -355,6 +374,7 @@ export const isFutureDate = (inputDate: string | Date): boolean => {
 export const getDailyAttendance = async (req: Request, res: Response) => {
   try {
     const { date, projectId, siteId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
     if (!date || !projectId) {
       return res.status(400).json({ success: false, message: 'Date and project ID are required.' });
@@ -366,6 +386,7 @@ export const getDailyAttendance = async (req: Request, res: Response) => {
     const attendances = await prisma.labourAttendance.findMany({
       where: {
         projectId: projectId as string,
+        project: { ...tenantFilter },
         date: {
           gte: startOfDay,
           lt: endOfDay,
@@ -391,9 +412,17 @@ export const getDailyAttendance = async (req: Request, res: Response) => {
 export const saveBulkAttendance = async (req: Request, res: Response) => {
   try {
     const { date, projectId, siteId, records } = req.body;
+    const tenantFilter = getTenantFilter(req);
 
     if (!date || !projectId || !records || !Array.isArray(records)) {
       return res.status(400).json({ success: false, message: 'Date, project, and attendance records array are required.' });
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...tenantFilter },
+    });
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
     }
 
     // Future-date validation: PRESENT or HALF_DAY cannot be marked in advance
@@ -417,7 +446,7 @@ export const saveBulkAttendance = async (req: Request, res: Response) => {
       const saved: any[] = [];
 
       for (const rec of records) {
-        const worker = await tx.worker.findUnique({ where: { id: rec.workerId } });
+        const worker = await tx.worker.findFirst({ where: { id: rec.workerId, ...tenantFilter } });
         if (!worker) continue;
 
         let regularWage = 0;
@@ -511,8 +540,9 @@ export const saveBulkAttendance = async (req: Request, res: Response) => {
 export const getMusterRoll = async (req: Request, res: Response) => {
   try {
     const { projectId, startDate, endDate, workerId } = req.query;
+    const tenantFilter = getTenantFilter(req);
 
-    const where: any = {};
+    const where: any = { project: { ...tenantFilter } };
     if (projectId && typeof projectId === 'string') where.projectId = projectId;
     if (workerId && typeof workerId === 'string') where.workerId = workerId;
 
@@ -529,7 +559,7 @@ export const getMusterRoll = async (req: Request, res: Response) => {
     }
 
     // Fetch all active workers for project so workers with 0 attendance in this period also appear
-    const workersWhere: any = { isActive: true };
+    const workersWhere: any = { isActive: true, ...tenantFilter };
     if (projectId && typeof projectId === 'string') workersWhere.projectId = projectId;
     if (workerId && typeof workerId === 'string') workersWhere.id = workerId;
 
@@ -551,7 +581,7 @@ export const getMusterRoll = async (req: Request, res: Response) => {
     // Wage payments in this period
     let wagePayments: any[] = [];
     try {
-      const wpWhere: any = {};
+      const wpWhere: any = { project: { ...tenantFilter } };
       if (projectId && typeof projectId === 'string') wpWhere.projectId = projectId;
       if (startDate || endDate) {
         wpWhere.paymentDate = {};
@@ -749,7 +779,9 @@ export const getMusterRoll = async (req: Request, res: Response) => {
 
 export const getSubcontractors = async (req: Request, res: Response) => {
   try {
+    const tenantFilter = getTenantFilter(req);
     const subcontractors = await prisma.subcontractor.findMany({
+      where: tenantFilter,
       orderBy: { name: 'asc' },
     });
     return res.json({ success: true, subcontractors });
@@ -765,6 +797,8 @@ export const getSubcontractors = async (req: Request, res: Response) => {
 export const recordWagePayment = async (req: Request, res: Response) => {
   try {
     const { projectId, workerId, amount, paymentMethod, paymentAccountCode, paymentDate, narration, wagePeriod } = req.body;
+    const tenantFilter = getTenantFilter(req);
+    const tenantId = (req.user as any)?.companyId || null;
 
     if (!projectId) {
       return res.status(400).json({ success: false, message: 'Project is required.' });
@@ -780,12 +814,15 @@ export const recordWagePayment = async (req: Request, res: Response) => {
 
     let workerName = 'All Project Workers (Bulk Payout)';
     if (workerId) {
-      const w = await prisma.worker.findUnique({ where: { id: workerId } });
+      const w = await prisma.worker.findFirst({ where: { id: workerId, ...tenantFilter } });
       if (w) workerName = `${w.name} (${w.workerCode})`;
     }
 
-    const prj = await prisma.project.findUnique({ where: { id: projectId }, select: { code: true, name: true } });
-    const prjLabel = prj ? `[${prj.code}]` : '';
+    const prj = await prisma.project.findFirst({ where: { id: projectId, ...tenantFilter }, select: { code: true, name: true } });
+    if (!prj) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
+    }
+    const prjLabel = `[${prj.code}]`;
 
     const finalNarration =
       narration?.trim() ||
@@ -794,6 +831,7 @@ export const recordWagePayment = async (req: Request, res: Response) => {
       }`;
 
     const journal = await postBalancedJournalEntry({
+      tenantId,
       entryDate: paymentDate ? new Date(paymentDate) : new Date(),
       referenceType: 'WAGE_PAYMENT',
       referenceId: workerId || projectId,
@@ -845,15 +883,16 @@ export const recordWagePayment = async (req: Request, res: Response) => {
 export const updateAttendanceRecord = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
     const { attendanceStatus, regularHours, overtimeHours, workActivity } = req.body;
 
-    const existing = await prisma.labourAttendance.findUnique({
-      where: { id },
+    const existing = await prisma.labourAttendance.findFirst({
+      where: { id, project: { ...tenantFilter } },
       include: { worker: true },
     });
 
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Attendance record not found.' });
+      return res.status(404).json({ success: false, message: 'Attendance record not found or not accessible.' });
     }
 
     const worker = existing.worker;
@@ -906,9 +945,12 @@ export const updateAttendanceRecord = async (req: Request, res: Response) => {
 export const deleteAttendanceRecord = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const existing = await prisma.labourAttendance.findUnique({ where: { id } });
+    const tenantFilter = getTenantFilter(req);
+    const existing = await prisma.labourAttendance.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!existing) {
-      return res.status(404).json({ success: false, message: 'Attendance record not found.' });
+      return res.status(404).json({ success: false, message: 'Attendance record not found or not accessible.' });
     }
 
     await prisma.labourAttendance.delete({ where: { id } });
@@ -923,10 +965,13 @@ export const deleteAttendanceRecord = async (req: Request, res: Response) => {
 export const deleteWagePayment = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
+    const tenantFilter = getTenantFilter(req);
 
-    const wp = await (prisma as any).wagePayment.findUnique({ where: { id } });
+    const wp = await (prisma as any).wagePayment.findFirst({
+      where: { id, project: { ...tenantFilter } },
+    });
     if (!wp) {
-      return res.status(404).json({ success: false, message: 'Wage payment not found.' });
+      return res.status(404).json({ success: false, message: 'Wage payment not found or not accessible.' });
     }
 
     if (wp.referenceNo) {
@@ -948,14 +993,17 @@ export const assignWorkerToProject = async (req: Request, res: Response) => {
   try {
     const { projectId, workerId, workerIds } = req.body;
     const targetProjectId = projectId || (req.params as any).projectId;
+    const tenantFilter = getTenantFilter(req);
 
     if (!targetProjectId) {
       return res.status(400).json({ success: false, message: 'Project ID is required.' });
     }
 
-    const targetProject = await prisma.project.findUnique({ where: { id: targetProjectId } });
+    const targetProject = await prisma.project.findFirst({
+      where: { id: targetProjectId, ...tenantFilter },
+    });
     if (!targetProject) {
-      return res.status(404).json({ success: false, message: 'Project not found.' });
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
     }
 
     const idsToAssign: string[] = [];
@@ -971,7 +1019,9 @@ export const assignWorkerToProject = async (req: Request, res: Response) => {
 
     const assigned: any[] = [];
     for (const wId of idsToAssign) {
-      const worker = await prisma.worker.findUnique({ where: { id: wId } });
+      const worker = await prisma.worker.findFirst({
+        where: { id: wId, ...tenantFilter },
+      });
       if (!worker) continue;
 
       await prisma.projectWorker.upsert({
@@ -1023,9 +1073,17 @@ export const unassignWorkerFromProject = async (req: Request, res: Response) => 
     const { projectId, workerId } = req.body;
     const targetProjectId = projectId || (req.params as any).projectId;
     const targetWorkerId = workerId || (req.params as any).workerId;
+    const tenantFilter = getTenantFilter(req);
 
     if (!targetProjectId || !targetWorkerId) {
       return res.status(400).json({ success: false, message: 'Project ID and Worker ID are required.' });
+    }
+
+    const targetProject = await prisma.project.findFirst({
+      where: { id: targetProjectId, ...tenantFilter },
+    });
+    if (!targetProject) {
+      return res.status(404).json({ success: false, message: 'Project not found or not accessible.' });
     }
 
     await prisma.projectWorker.deleteMany({
