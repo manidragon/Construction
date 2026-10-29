@@ -90,6 +90,24 @@ async function main() {
     await prisma.clientInvoice.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
     await prisma.lead.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
     await prisma.quotation.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.material.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.warehouse.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.stockLedger.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.supplier.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.materialRequisition.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.purchaseOrder.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.goodsReceiptNote.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.supplierInvoice.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.supplierPayment.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.clientReceipt.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.account.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.journalEntry.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.equipmentAsset.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.documentAttachment.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.officeStaff.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.officeExpense.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.subcontractor.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
+    await prisma.pettyCashAccount.updateMany({ where: { tenantId: null }, data: { tenantId: apexCompany.id } });
 
     console.log(`✓ Updated Apex Buildtech as ACTIVE Enterprise Tenant & backfilled tenantId.`);
   }

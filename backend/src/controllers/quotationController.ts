@@ -266,9 +266,12 @@ export const createQuotation = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Client name, phone, and site address are required.' });
     }
 
+    const tenantId = (req as any).user?.companyId || null;
     let finalNumber = quotationNumber ? String(quotationNumber).trim() : '';
     if (finalNumber) {
-      const existing = await prisma.quotation.findUnique({ where: { quotationNumber: finalNumber } });
+      const existing = await prisma.quotation.findFirst({
+        where: { quotationNumber: finalNumber, ...(tenantId ? { tenantId } : {}) },
+      });
       if (existing) {
         // Update in-place to prevent duplicate quotation records
         req.params.id = existing.id;

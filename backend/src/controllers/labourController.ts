@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 import { postBalancedJournalEntry, COA } from '../utils/accounting';
 
 export const getWorkers = async (req: Request, res: Response) => {
@@ -132,9 +132,10 @@ export const createWorker = async (req: Request, res: Response) => {
       const allWorkers = await prisma.worker.findMany({ select: { workerCode: true } });
       finalCode = computeGlobalNextWorkerCode(allWorkers);
     } else {
-      // Check if code already exists globally
-      const existing = await prisma.worker.findUnique({
-        where: { workerCode: finalCode },
+      // Check if code already exists for this tenant
+      const tenantFilter = getTenantFilter(req);
+      const existing = await prisma.worker.findFirst({
+        where: { workerCode: finalCode, ...tenantFilter },
       });
       if (existing) {
         // Find next available global code to suggest

@@ -268,7 +268,9 @@ export const createLead = async (req: Request, res: Response) => {
       const generated = await getNextLeadNumber();
       finalLeadNumber = (generated as any).nextLeadNumber;
     } else {
-      const existing = await prisma.lead.findUnique({ where: { leadNumber: finalLeadNumber } });
+      const existing = await prisma.lead.findFirst({
+        where: { leadNumber: finalLeadNumber, ...(tenantId ? { tenantId } : {}) },
+      });
       if (existing) {
         const generated = await getNextLeadNumber();
         finalLeadNumber = (generated as any).nextLeadNumber;

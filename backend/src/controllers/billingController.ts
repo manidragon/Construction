@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 import { postBalancedJournalEntry, COA } from '../utils/accounting';
 
 export const getClients = async (req: Request, res: Response) => {
@@ -219,8 +219,9 @@ export const createClientInvoice = async (req: Request, res: Response) => {
       finalInvoiceNumber = generated.nextInvoiceNumber;
     } else {
       // Check for collision and auto-increment if duplicate
-      const existing = await prisma.clientInvoice.findUnique({
-        where: { invoiceNumber: finalInvoiceNumber },
+      const tenantFilter = getTenantFilter(req);
+      const existing = await prisma.clientInvoice.findFirst({
+        where: { invoiceNumber: finalInvoiceNumber, ...tenantFilter },
       });
       if (existing) {
         const generated = await generateNextInvoiceNumber(projectId);

@@ -352,12 +352,13 @@ export const createProject = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Required fields are missing.' });
     }
 
-    const existing = await prisma.project.findUnique({ where: { code: finalCode } });
+    const tenantId = (req as any).user?.companyId || null;
+    const existing = await prisma.project.findFirst({
+      where: { code: finalCode, ...(tenantId ? { tenantId } : {}) },
+    });
     if (existing) {
       return res.status(400).json({ success: false, message: `Project code '${finalCode}' already exists.` });
     }
-
-    const tenantId = (req as any).user?.companyId || null;
 
     // Check if quotationId is provided
     let quotation: any = null;

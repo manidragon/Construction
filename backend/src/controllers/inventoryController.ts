@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
+import { logAudit, getTenantFilter } from '../middleware/auth';
 
 export const getMaterials = async (req: Request, res: Response) => {
   try {
@@ -159,14 +159,17 @@ export const createMaterial = async (req: Request, res: Response) => {
       code = `MAT-GEN-${String(maxNum + 1).padStart(3, '0')}`;
     } else {
       code = String(code).trim().toUpperCase();
-      const existing = await prisma.material.findUnique({ where: { code } });
+      const tenantFilter = getTenantFilter(req);
+      const existing = await prisma.material.findFirst({ where: { code, ...tenantFilter } });
       if (existing) {
         return res.status(400).json({ success: false, message: `Material code '${code}' already exists.` });
       }
     }
 
+    const tenantId = (req.user as any)?.companyId || null;
     const material = await prisma.material.create({
       data: {
+        tenantId,
         code,
         name,
         category: category || 'GENERAL',

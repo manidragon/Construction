@@ -143,7 +143,9 @@ export const restoreRecycleBinItem = async (req: Request, res: Response) => {
       const { items, lead, project, invoices, ...quotationFields } = parsedData;
 
       // Check if quotation with this quotationNumber already exists
-      const existing = await prisma.quotation.findUnique({ where: { quotationNumber: quotationFields.quotationNumber } });
+      const existing = await prisma.quotation.findFirst({
+        where: { quotationNumber: quotationFields.quotationNumber, ...(binItem.tenantId ? { tenantId: binItem.tenantId } : {}) },
+      });
       if (existing) {
         // Append restored suffix to avoid collision
         quotationFields.quotationNumber = `${quotationFields.quotationNumber}-REST`;
@@ -172,7 +174,9 @@ export const restoreRecycleBinItem = async (req: Request, res: Response) => {
     } else if (entityType === 'Lead') {
       const { quotations, convertedProject, assignedProjectManager, ...leadFields } = parsedData;
       
-      const existing = await prisma.lead.findUnique({ where: { leadNumber: leadFields.leadNumber } });
+      const existing = await prisma.lead.findFirst({
+        where: { leadNumber: leadFields.leadNumber, ...(binItem.tenantId ? { tenantId: binItem.tenantId } : {}) },
+      });
       if (existing) {
         leadFields.leadNumber = `${leadFields.leadNumber}-REST`;
       }
@@ -189,7 +193,9 @@ export const restoreRecycleBinItem = async (req: Request, res: Response) => {
     } else if (entityType === 'Project') {
       const { sites, phases, members, boqItems, tasks, dailyReports, requisitions, ...projectFields } = parsedData;
 
-      const existing = await prisma.project.findUnique({ where: { code: projectFields.code } });
+      const existing = await prisma.project.findFirst({
+        where: { code: projectFields.code, ...(binItem.tenantId ? { tenantId: binItem.tenantId } : {}) },
+      });
       if (existing) {
         projectFields.code = `${projectFields.code}-REST`;
       }
@@ -246,7 +252,9 @@ export const restoreRecycleBinItem = async (req: Request, res: Response) => {
     } else if (entityType === 'Material') {
       const { stocks, requisitionItems, poItems, ...matFields } = parsedData;
 
-      const existing = await prisma.material.findUnique({ where: { code: matFields.code } });
+      const existing = await prisma.material.findFirst({
+        where: { code: matFields.code, ...(binItem.tenantId ? { tenantId: binItem.tenantId } : {}) },
+      });
       if (existing) {
         matFields.code = `${matFields.code}-REST`;
       }
