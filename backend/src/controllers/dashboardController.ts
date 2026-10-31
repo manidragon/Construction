@@ -259,8 +259,17 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
       take: 5,
     });
 
-    // 7. Recent Audit Activities
+    // 7. Recent Audit Activities (strictly scoped to logged-in constructor/tenant)
+    const auditWhere: any = {};
+    if (tenantFilter.tenantId) {
+      auditWhere.OR = [
+        { tenantId: tenantFilter.tenantId },
+        { user: { companyId: tenantFilter.tenantId } },
+      ];
+    }
+
     const recentActivities = await prisma.auditLog.findMany({
+      where: auditWhere,
       include: { user: { select: { name: true, role: true } } },
       orderBy: { createdAt: 'desc' },
       take: 8,

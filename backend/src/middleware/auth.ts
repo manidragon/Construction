@@ -174,12 +174,19 @@ export const logAudit = async (
   entity: string,
   entityId: string,
   details?: Record<string, any>,
-  ipAddress?: string
+  ipAddress?: string,
+  tenantIdOverride?: string
 ) => {
   try {
+    let tenantId = tenantIdOverride || null;
+    if (!tenantId && userId) {
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { companyId: true } });
+      tenantId = u?.companyId || null;
+    }
     await prisma.auditLog.create({
       data: {
         userId: userId || null,
+        tenantId,
         action,
         entity,
         entityId,
