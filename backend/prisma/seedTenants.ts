@@ -53,7 +53,22 @@ async function main() {
       phone: '+91 98450 00000',
     },
   });
-  console.log(`✓ Super Admin created: ${superAdminUser.email} (Role: ${superAdminUser.role})`);
+
+  const secondarySuperAdmin = await prisma.user.upsert({
+    where: { email: 'admin@apexbuild.com' },
+    update: { role: 'SUPER_ADMIN', isActive: true },
+    create: {
+      companyId: saasCompany.id,
+      name: 'ApexBuild Platform Operator',
+      email: 'admin@apexbuild.com',
+      passwordHash: superAdminHash,
+      role: 'SUPER_ADMIN',
+      designation: 'Secondary Platform Operator',
+      phone: '+91 98450 11111',
+      isActive: true,
+    },
+  });
+  console.log(`✓ Super Admins created: ${superAdminUser.email}, ${secondarySuperAdmin.email}`);
 
   // 2. Update Primary Tenant: Apex Buildtech & Infrastructure
   const apexCompany = await prisma.company.findFirst({ where: { code: 'APEX-INFRA' } });
