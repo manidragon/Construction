@@ -80,7 +80,7 @@ export const AppLayout: React.FC = () => {
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main
           id="main-scroll-container"
-          className="flex-1 h-full overflow-y-auto min-h-0 min-w-0 p-4 sm:p-6 lg:p-8 pb-32 sm:pb-36 lg:pb-44 bg-slate-100/70"
+          className="flex-1 h-full overflow-y-auto min-h-0 min-w-0 p-3 sm:p-6 lg:p-8 pb-28 sm:pb-36 lg:pb-44 bg-slate-100/70"
           tabIndex={0}
         >
           <Outlet />
@@ -101,14 +101,14 @@ export const AppLayout: React.FC = () => {
       {!aiModalOpen && !sidebarOpen && (
         <button
           onClick={() => setAiModalOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 hover:from-amber-400 hover:to-amber-200 text-slate-950 font-extrabold px-4 py-3 rounded-2xl shadow-2xl shadow-amber-500/30 flex items-center space-x-2.5 transition-all transform hover:scale-105 active:scale-95 border border-amber-200 group cursor-pointer"
+          className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-40 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 hover:from-amber-400 hover:to-amber-200 text-slate-950 font-extrabold px-3 py-2 sm:px-4 sm:py-3 rounded-2xl shadow-xl shadow-amber-500/25 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 border border-amber-200 group cursor-pointer"
           title="Open ApexBuild AI Chatbot & Automation Assistant"
         >
-          <div className="w-6 h-6 rounded-lg bg-slate-950 text-amber-400 flex items-center justify-center font-black group-hover:rotate-12 transition-transform">
-            <Sparkles className="w-3.5 h-3.5" />
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-slate-950 text-amber-400 flex items-center justify-center font-black group-hover:rotate-12 transition-transform shrink-0">
+            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           </div>
           <span className="text-xs tracking-wide">ApexBuild AI Bot</span>
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse border-2 border-white" />
+          <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 animate-pulse border-2 border-white shrink-0" />
         </button>
       )}
 
