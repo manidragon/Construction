@@ -157,14 +157,14 @@ const WorkerRegistrationFormCard: React.FC<{
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-3 p-3.5 bg-slate-900/95 border border-amber-500/40 rounded-xl space-y-2.5 text-xs text-slate-200 shadow-lg"
+      className="mt-3 p-3 sm:p-3.5 bg-slate-900/95 border border-amber-500/40 rounded-xl space-y-2.5 text-xs text-slate-200 shadow-lg min-w-0"
     >
-      <div className="flex items-center justify-between border-b border-slate-700/80 pb-2">
-        <div className="flex items-center space-x-1.5 text-amber-400 font-bold">
-          <UserCheck className="w-4 h-4" />
-          <span>Enter Worker Details to Save</span>
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-700/80 pb-2 gap-1">
+        <div className="flex items-center space-x-1.5 text-amber-400 font-bold min-w-0">
+          <UserCheck className="w-4 h-4 shrink-0" />
+          <span className="truncate">Enter Worker Details to Save</span>
         </div>
-        <span className="font-mono text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
+        <span className="font-mono text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 truncate shrink-0">
           {data?.projectName || 'Project Site'}
         </span>
       </div>
@@ -176,7 +176,7 @@ const WorkerRegistrationFormCard: React.FC<{
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Worker Code</label>
           <input
@@ -201,7 +201,7 @@ const WorkerRegistrationFormCard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Trade / Skill</label>
           <select
@@ -228,7 +228,7 @@ const WorkerRegistrationFormCard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Daily Wage (₹/day)</label>
           <input
@@ -251,7 +251,7 @@ const WorkerRegistrationFormCard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Phone Number</label>
           <input
@@ -385,14 +385,14 @@ const LeadRegistrationFormCard: React.FC<{
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-3 p-3.5 bg-slate-900/95 border border-amber-500/50 rounded-xl space-y-2.5 text-xs text-slate-200 shadow-xl animate-in fade-in duration-150"
+      className="mt-3 p-3 sm:p-3.5 bg-slate-900/95 border border-amber-500/50 rounded-xl space-y-2.5 text-xs text-slate-200 shadow-xl animate-in fade-in duration-150 min-w-0"
     >
-      <div className="flex items-center justify-between border-b border-slate-700/80 pb-2">
-        <div className="flex items-center space-x-1.5 text-amber-400 font-bold">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>New Client Lead Registration Form</span>
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-700/80 pb-2 gap-1">
+        <div className="flex items-center space-x-1.5 text-amber-400 font-bold min-w-0">
+          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="truncate">New Client Lead Registration Form</span>
         </div>
-        <span className="font-mono text-[10px] bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded text-amber-300 font-bold">
+        <span className="font-mono text-[10px] bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded text-amber-300 font-bold shrink-0 truncate">
           {data?.suggestedLeadNumber || 'LEAD-2026-NEW'}
         </span>
       </div>
@@ -404,7 +404,7 @@ const LeadRegistrationFormCard: React.FC<{
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Client Full Name *</label>
           <input
@@ -430,7 +430,7 @@ const LeadRegistrationFormCard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Site Address *</label>
           <input
@@ -454,7 +454,7 @@ const LeadRegistrationFormCard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Project Scope</label>
           <select
@@ -484,7 +484,7 @@ const LeadRegistrationFormCard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-slate-400 font-bold block mb-0.5">Lead Source</label>
           <select
@@ -1077,51 +1077,55 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
 
   return (
     <div
-      className={`fixed z-50 transition-all duration-300 border border-slate-700/80 bg-slate-900 text-white shadow-2xl rounded-2xl overflow-hidden ${
+      className={`fixed z-50 transition-all duration-300 border-slate-700/80 bg-slate-900 text-white shadow-2xl overflow-hidden flex flex-col ${
         isMinimized
-          ? 'bottom-5 right-5 w-[94vw] sm:w-[480px] max-w-full ring-1 ring-amber-500/20'
-          : 'bottom-5 right-5 sm:right-6 w-[95vw] sm:w-[580px] max-w-full h-[88vh] sm:h-[700px] flex flex-col'
+          ? 'bottom-3 inset-x-3 sm:inset-x-auto sm:bottom-5 sm:right-6 sm:w-[480px] max-w-full rounded-2xl border ring-1 ring-amber-500/20'
+          : 'inset-0 sm:inset-auto sm:bottom-5 sm:right-6 w-full sm:w-[580px] sm:max-w-[calc(100vw-3rem)] h-[100dvh] sm:h-[700px] sm:max-h-[calc(100vh-3rem)] rounded-none sm:rounded-2xl border-0 sm:border'
       }`}
     >
       {/* Header Bar */}
       <div
         onClick={isMinimized ? () => setIsMinimized(false) : undefined}
-        className={`bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 px-4 py-3.5 border-b border-slate-800 flex items-center justify-between gap-3 shadow-md ${
+        className={`bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 px-3 sm:px-4 py-2.5 sm:py-3.5 border-b border-slate-800 flex items-center justify-between gap-2 shadow-md shrink-0 ${
           isMinimized ? 'cursor-pointer hover:bg-slate-850/60 transition' : ''
         }`}
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/20 shrink-0">
-            <Sparkles className="w-4 h-4" />
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="relative shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/20">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <span className="sm:hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-slate-900 animate-pulse" />
           </div>
+
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-nowrap">
-              <h3 className="text-sm font-bold text-white tracking-wide whitespace-nowrap truncate">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide truncate">
                 ApexBuild AI Engine
               </h3>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap shrink-0 flex items-center gap-1">
+              <span className="hidden sm:inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap shrink-0 items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 ACTIVE
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 truncate whitespace-nowrap">
+            <p className="text-[10px] sm:text-[11px] text-slate-400 truncate hidden sm:block">
               Natural language workflow automation
             </p>
           </div>
         </div>
 
         <div
-          className="flex items-center gap-1.5 text-slate-400 shrink-0"
+          className="flex items-center gap-1 sm:gap-1.5 text-slate-400 shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
           {/* New Chat Button */}
           <button
             onClick={handleCreateNewChat}
             title="Start New Chat"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/30 transition shrink-0"
+            className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/30 transition shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New</span>
+            <span className="hidden sm:inline">New</span>
           </button>
 
           {/* History Drawer Toggle Button */}
@@ -1131,7 +1135,7 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
               setShowHistory(!showHistory);
             }}
             title="Chat History"
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg transition shrink-0 ${
+            className={`flex items-center gap-1 p-1.5 sm:px-2 sm:py-1.5 rounded-lg transition shrink-0 ${
               showHistory ? 'bg-amber-500 text-slate-950 font-bold' : 'hover:bg-slate-800 hover:text-white'
             }`}
           >
@@ -1142,7 +1146,7 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
           <button
             onClick={() => setIsMinimized(!isMinimized)}
             title={isMinimized ? 'Expand' : 'Minimize'}
-            className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition shrink-0"
+            className="hidden sm:flex p-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition shrink-0"
           >
             {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
           </button>
@@ -1162,18 +1166,18 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
           {/* History Drawer Overlay Panel */}
           {showHistory && (
             <div className="absolute inset-0 z-20 bg-slate-900 flex flex-col animate-in fade-in slide-in-from-left-4 duration-150">
-              <div className="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950">
-                <div className="flex items-center space-x-2">
-                  <Clock className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">Past Chat History</span>
+              <div className="p-3 sm:p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950 shrink-0 gap-2">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider truncate">Past Chat History</span>
                 </div>
-                <div className="flex items-center space-x-1">
+                <div className="flex items-center space-x-1 shrink-0">
                   <button
                     onClick={handleCreateNewChat}
                     className="flex items-center space-x-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-extrabold transition shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>New Chat</span>
+                    <span className="hidden sm:inline">New Chat</span>
                   </button>
                   <button
                     onClick={() => setShowHistory(false)}
@@ -1359,12 +1363,12 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
 
                   {/* Suggested Follow-up Prompts */}
                   {m.suggestedPrompts && m.suggestedPrompts.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2 max-w-[92%]">
+                    <div className="flex flex-wrap gap-1.5 mt-2 max-w-full">
                       {m.suggestedPrompts.map((p, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSend(p)}
-                          className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-slate-700 text-amber-300/90 hover:text-amber-200 border border-slate-700 transition"
+                          className="text-[10px] sm:text-xs font-medium px-2.5 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-amber-300/90 hover:text-amber-200 border border-slate-700 transition text-left break-words max-w-full"
                         >
                           ⚡ {p}
                         </button>
@@ -1379,16 +1383,16 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
               ))}
 
               {loading && (
-                <div className="flex items-center space-x-2 text-slate-400 bg-slate-850/80 p-3 rounded-2xl border border-slate-800 w-fit">
-                  <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                  <span className="text-xs font-medium">Querying live project track & database...</span>
+                <div className="flex items-center space-x-2 text-slate-400 bg-slate-850/80 p-3 rounded-2xl border border-slate-800 w-fit max-w-[90%]">
+                  <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+                  <span className="text-xs font-medium truncate">Querying live project track & database...</span>
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Quick Action Category Bar */}
-            <div className="px-3 py-1.5 bg-slate-900 border-t border-slate-800 flex items-center space-x-1.5 overflow-x-auto custom-scrollbar">
+            <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center space-x-1.5 overflow-x-auto custom-scrollbar shrink-0">
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider shrink-0">Quick Actions:</span>
               {[
                 { label: '📐 BOQ Variance', text: 'Show BOQ budget and variance for Bakery' },
@@ -1407,7 +1411,7 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
                 <button
                   key={idx}
                   onClick={() => handleSend(qp.text)}
-                  className="text-[10px] whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition"
+                  className="text-[10px] whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition shrink-0"
                 >
                   {qp.label}
                 </button>
@@ -1415,20 +1419,20 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
             </div>
 
             {/* Input Box */}
-            <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-end space-x-2">
+            <div className="p-2.5 sm:p-3 bg-slate-900 border-t border-slate-800 flex items-end gap-2 shrink-0">
               <textarea
                 rows={2}
                 value={inputPrompt}
                 onChange={(e) => setInputPrompt(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your action prompt (e.g. 'What is the balance due for greenfield', 'Need to add a worker to greenfield', 'Export ledger')..."
-                className="flex-1 bg-slate-800/90 text-xs text-slate-100 placeholder-slate-400 rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none custom-scrollbar"
+                placeholder="Type your action prompt (e.g. 'What is the balance due for greenfield', 'Need to add a worker', 'Export ledger')..."
+                className="flex-1 min-w-0 bg-slate-800/90 text-xs text-slate-100 placeholder-slate-400 rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none custom-scrollbar"
               />
 
               <button
                 onClick={() => handleSend()}
                 disabled={!inputPrompt.trim() || loading}
-                className="p-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition disabled:opacity-40 disabled:hover:bg-amber-500 shadow-md shadow-amber-500/20"
+                className="p-2.5 sm:p-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition disabled:opacity-40 disabled:hover:bg-amber-500 shadow-md shadow-amber-500/20 shrink-0"
                 title="Send Prompt (Enter)"
               >
                 <Send className="w-4 h-4" />
