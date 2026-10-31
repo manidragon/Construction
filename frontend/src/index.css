@@ -60,6 +60,30 @@
   background: #94a3b8;
 }
 
+/* Dedicated Super Admin SaaS Portal Scroll Module */
+#superadmin-scroll-container {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+#superadmin-scroll-container::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+#superadmin-scroll-container::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+#superadmin-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 9999px;
+}
+
+#superadmin-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.7);
+}
+
 /* Generic fallback scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

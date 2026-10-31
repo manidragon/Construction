@@ -43,7 +43,7 @@ export const SelfServeSignup: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div className="h-screen overflow-y-auto bg-slate-950 text-white flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative">
       {/* Background Glows */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />

@@ -214,7 +214,10 @@ export const SuperAdmin: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div
+      id="superadmin-scroll-container"
+      className="h-screen w-full overflow-y-auto overscroll-contain bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 pb-16 space-y-6"
+    >
       {/* Standalone Vendor Operator Navigation Strip */}
       <div className="bg-slate-900/90 border border-indigo-900/40 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg">
         <div className="flex items-center gap-3">
