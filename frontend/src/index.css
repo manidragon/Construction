@@ -84,6 +84,30 @@
   background: rgba(99, 102, 241, 0.7);
 }
 
+/* Dedicated Login Page Scroll Module */
+#login-scroll-container {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+#login-scroll-container::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+#login-scroll-container::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+#login-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.4);
+  border-radius: 9999px;
+}
+
+#login-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.7);
+}
+
 /* Generic fallback scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

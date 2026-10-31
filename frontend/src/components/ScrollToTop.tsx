@@ -23,7 +23,7 @@ export const ScrollToTop = () => {
       if (document.documentElement) document.documentElement.scrollTop = 0;
       if (document.body) document.body.scrollTop = 0;
 
-      // 2. Reset the main application layout and superadmin scroll containers
+      // 2. Reset the main application layout, superadmin, and login scroll containers
       const mainContainer = document.getElementById('main-scroll-container');
       if (mainContainer) {
         mainContainer.scrollTop = 0;
@@ -31,6 +31,10 @@ export const ScrollToTop = () => {
       const superadminContainer = document.getElementById('superadmin-scroll-container');
       if (superadminContainer) {
         superadminContainer.scrollTop = 0;
+      }
+      const loginContainer = document.getElementById('login-scroll-container');
+      if (loginContainer) {
+        loginContainer.scrollTop = 0;
       }
 
       // 3. Reset any child scrollable elements
