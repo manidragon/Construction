@@ -23,6 +23,7 @@ import {
   Building2,
   Clock,
   Layers,
+  Calendar,
 } from 'lucide-react';
 
 export const Inventory: React.FC = () => {
@@ -866,6 +867,7 @@ export const Inventory: React.FC = () => {
                         <th className="py-3 px-3">Material Code & Name</th>
                         <th className="py-3 px-3">Project</th>
                         <th className="py-3 px-3">Purchase Order & Supplier</th>
+                        <th className="py-3 px-3 whitespace-nowrap">PO Date</th>
                         <th className="py-3 px-3 text-right">Ordered Qty</th>
                         <th className="py-3 px-3 text-right">Inward / Received</th>
                         <th className="py-3 px-3 text-right">Issued to Site</th>
@@ -927,6 +929,29 @@ export const Inventory: React.FC = () => {
                               </div>
                             ) : (
                               <span className="text-[11px] text-slate-400 italic">Direct Site Stock</span>
+                            )}
+                          </td>
+
+                          {/* Purchase Order Date */}
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            {pm.purchaseOrders && pm.purchaseOrders.length > 0 ? (
+                              <div className="space-y-1">
+                                {pm.purchaseOrders.slice(0, 2).map((po, idx) => (
+                                  <div key={idx} className="flex items-center space-x-1.5 text-slate-700">
+                                    <Calendar className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="font-semibold text-xs text-slate-800">
+                                      {formatDate(po.poDate)}
+                                    </span>
+                                  </div>
+                                ))}
+                                {pm.purchaseOrders.length > 2 && (
+                                  <span className="text-[10px] text-slate-400 italic block">
+                                    &nbsp;
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">—</span>
                             )}
                           </td>
 

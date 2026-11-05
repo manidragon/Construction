@@ -837,7 +837,7 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
         entry.purchaseOrders.push({
           id: po.id,
           poNumber: po.poNumber,
-          poDate: po.poDate,
+          poDate: po.poDate || po.createdAt,
           supplierName: po.supplier?.name || 'Vendor',
           orderQty: item.orderQty,
           receivedQty: item.receivedQty,
