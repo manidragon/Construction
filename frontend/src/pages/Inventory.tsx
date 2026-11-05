@@ -672,12 +672,12 @@ export const Inventory: React.FC = () => {
   const activeSelectedProject = projects.find((p) => p.id === selectedProjectId);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full overflow-x-hidden">
       {/* Top Header & Project Selection Bar */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                 Material & Store Stock Panel
               </h1>
@@ -693,42 +693,42 @@ export const Inventory: React.FC = () => {
           </div>
 
           {/* Action Buttons Toolbar */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
             {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
               <button
                 onClick={() => setShowRequisitionModal(true)}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition border border-slate-200 flex items-center space-x-1.5"
+                className="flex-1 sm:flex-initial justify-center px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition border border-slate-200 flex items-center space-x-1.5 cursor-pointer"
               >
-                <FileCheck className="w-3.5 h-3.5 text-slate-600" />
-                <span>Raise Requisition</span>
+                <FileCheck className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                <span className="whitespace-nowrap">Raise Requisition</span>
               </button>
             )}
 
             {hasRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER') && (
               <button
                 onClick={() => openAddStockModal()}
-                className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
+                className="flex-1 sm:flex-initial justify-center flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition cursor-pointer"
                 title="Inward incoming material shipment or add stock directly"
               >
-                <PackagePlus className="w-4 h-4" />
-                <span>+ Inward / Add Stock</span>
+                <PackagePlus className="w-4 h-4 shrink-0" />
+                <span className="whitespace-nowrap">+ Inward / Add Stock</span>
               </button>
             )}
 
             {hasRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER') && (
               <button
                 onClick={openGenericIssueModal}
-                className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition"
+                className="flex-1 sm:flex-initial justify-center flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition cursor-pointer"
               >
-                <ArrowRightLeft className="w-4 h-4" />
-                <span>Issue Stock</span>
+                <ArrowRightLeft className="w-4 h-4 shrink-0" />
+                <span className="whitespace-nowrap">Issue Stock</span>
               </button>
             )}
 
             {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
               <button
                 onClick={() => setShowAddMaterialModal(true)}
-                className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition"
+                className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shrink-0 cursor-pointer"
                 title="Add New Material Master Catalog Item"
               >
                 <Plus className="w-4 h-4" />
@@ -738,14 +738,16 @@ export const Inventory: React.FC = () => {
         </div>
 
         {/* Project Selector Bar */}
-        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <Building2 className="w-4 h-4 text-amber-600 shrink-0" />
-            <span className="text-xs font-bold text-slate-700">Project Order Filter:</span>
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0 w-full md:w-auto">
+            <div className="flex items-center space-x-2 shrink-0">
+              <Building2 className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Project Order Filter:</span>
+            </div>
             <select
               value={selectedProjectId || 'ALL'}
               onChange={(e) => setSelectedProjectId(e.target.value === 'ALL' ? '' : e.target.value)}
-              className="text-xs font-semibold py-1.5 px-3 bg-amber-50/60 border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+              className="text-xs font-semibold py-1.5 px-3 bg-amber-50/60 border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer w-full sm:w-auto max-w-full truncate"
             >
               <option value="ALL">🌐 All Projects (Consolidated Site Orders)</option>
               {projects.map((p) => (
@@ -756,58 +758,58 @@ export const Inventory: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center space-x-3 text-xs text-slate-500">
+          <div className="flex items-center space-x-3 text-xs text-slate-500 min-w-0">
             {activeSelectedProject ? (
-              <div className="flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-semibold text-[11px]">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Showing materials ordered for <strong>{activeSelectedProject.name}</strong></span>
+              <div className="flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-semibold text-[11px] max-w-full truncate">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Showing materials ordered for <strong>{activeSelectedProject.name}</strong></span>
                 <button
                   onClick={() => setSelectedProjectId('')}
-                  className="ml-1 text-slate-400 hover:text-slate-700 underline text-[10px]"
+                  className="ml-1 text-slate-400 hover:text-slate-700 underline text-[10px] shrink-0 cursor-pointer"
                 >
                   Clear
                 </button>
               </div>
             ) : (
-              <span className="text-slate-400 text-[11px]">Displaying materials across all active project orders</span>
+              <span className="text-slate-400 text-[11px] truncate">Displaying materials across all active project orders</span>
             )}
           </div>
         </div>
       </div>
 
       {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Project Orders Tracked</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-bold font-mono text-slate-900">{projectMaterials.length}</span>
-            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-bold">Ordered Materials</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Project Orders Tracked</span>
+          <div className="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-slate-900">{projectMaterials.length}</span>
+            <span className="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-bold">Ordered Materials</span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Available On-Site Stock</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-bold font-mono text-emerald-700">{totalProjectStockItems}</span>
-            <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">Ready to Issue</span>
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Available On-Site Stock</span>
+          <div className="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-emerald-700">{totalProjectStockItems}</span>
+            <span className="text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">Ready to Issue</span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Store Inventory Valuation</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-bold font-mono text-amber-700">{formatCurrency(totalValuation)}</span>
-            <span className="text-xs text-slate-400">Weighted Avg</span>
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Store Inventory Valuation</span>
+          <div className="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
+            <span className="text-lg sm:text-2xl font-bold font-mono text-amber-700">{formatCurrency(totalValuation)}</span>
+            <span className="text-[11px] text-slate-400">Weighted Avg</span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Stock Alert Status</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className={`text-2xl font-bold font-mono ${lowStockCount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Stock Alert Status</span>
+          <div className="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
+            <span className={`text-xl sm:text-2xl font-bold font-mono ${lowStockCount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
               {lowStockCount}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${lowStockCount > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${lowStockCount > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
               {lowStockCount > 0 ? 'Low Stock Warning' : 'Healthy Levels'}
             </span>
           </div>
@@ -816,23 +818,23 @@ export const Inventory: React.FC = () => {
 
       {/* Low Stock Warning Banner */}
       {lowStockCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 min-w-0">
+          <div className="flex items-start sm:items-center space-x-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
               <AlertTriangle className="w-4 h-4" />
             </div>
-            <div>
-              <p className="text-xs font-bold text-red-900">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-red-900 break-words">
                 Low Stock Threshold Warning: {lowStockCount} materials have fallen below safety reorder levels!
               </p>
-              <p className="text-[11px] text-red-700 mt-0.5">
+              <p className="text-[11px] text-red-700 mt-0.5 break-words">
                 Inward pending deliveries or raise purchase requisitions to keep site construction on schedule.
               </p>
             </div>
           </div>
           <button
             onClick={() => setActiveTab('requisitions')}
-            className="text-xs font-bold text-red-800 underline hover:text-red-950 shrink-0"
+            className="text-xs font-bold text-red-800 underline hover:text-red-950 shrink-0 self-end sm:self-auto cursor-pointer"
           >
             View Requisitions →
           </button>
@@ -840,7 +842,7 @@ export const Inventory: React.FC = () => {
       )}
 
       {/* Main Tab Navigation */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto custom-scrollbar">
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto custom-scrollbar no-scrollbar w-full">
         {[
           { id: 'materials', label: `Materials & Stock (${projectMaterials.length > 0 ? projectMaterials.length : materials.length})`, icon: Boxes },
           { id: 'stores', label: `Stores & Warehouses (${warehouses.length})`, icon: WarehouseIcon },
@@ -850,7 +852,7 @@ export const Inventory: React.FC = () => {
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id as any)}
-            className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+            className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === t.id
                 ? 'bg-slate-900 text-amber-400 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -864,37 +866,37 @@ export const Inventory: React.FC = () => {
 
       {/* TAB 1: Materials & Stock Panel */}
       {activeTab === 'materials' && (
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0">
           {/* Sub-view Switch & Search Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm min-w-0">
             {/* View Toggle */}
-            <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-full md:w-auto">
               <button
                 onClick={() => setMaterialView('project_orders')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition cursor-pointer text-center ${
                   materialView === 'project_orders'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5 text-amber-600" />
-                <span>Materials Ordered for Projects ({projectMaterials.length})</span>
+                <Layers className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="truncate">Materials Ordered for Projects ({projectMaterials.length})</span>
               </button>
               <button
                 onClick={() => setMaterialView('catalog')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition cursor-pointer text-center ${
                   materialView === 'catalog'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Boxes className="w-3.5 h-3.5 text-blue-600" />
-                <span>Central Material Catalog ({materials.length})</span>
+                <Boxes className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="truncate">Central Material Catalog ({materials.length})</span>
               </button>
             </div>
 
             {/* Search Input */}
-            <div className="relative w-full sm:w-80">
+            <div className="relative w-full md:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
@@ -908,7 +910,7 @@ export const Inventory: React.FC = () => {
 
           {/* VIEW A: Materials Ordered for Projects */}
           {materialView === 'project_orders' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-w-0">
               <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -944,33 +946,33 @@ export const Inventory: React.FC = () => {
                   <div className="pt-2 flex justify-center space-x-2">
                     <button
                       onClick={() => openAddStockModal()}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                     >
                       + Inward Direct Stock
                     </button>
                     <button
                       onClick={() => setMaterialView('catalog')}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
                     >
                       Browse Material Catalog
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-left text-xs min-w-[950px]">
                     <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 uppercase font-bold tracking-wider text-[11px]">
                       <tr>
-                        <th className="py-3 px-3">Material Code & Name</th>
-                        <th className="py-3 px-3">Project</th>
-                        <th className="py-3 px-3">Purchase Order & Supplier</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Material Code & Name</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Project</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Purchase Order & Supplier</th>
                         <th className="py-3 px-3 whitespace-nowrap">PO Date</th>
-                        <th className="py-3 px-3 text-right">Ordered Qty</th>
-                        <th className="py-3 px-3 text-right">Inward / Received</th>
-                        <th className="py-3 px-3 text-right">Issued to Site</th>
-                        <th className="py-3 px-3 text-right">Available On-Site Stock</th>
-                        <th className="py-3 px-3 text-center">Status</th>
-                        <th className="py-3 px-3 text-center">Stock Actions</th>
+                        <th className="py-3 px-3 text-right whitespace-nowrap">Ordered Qty</th>
+                        <th className="py-3 px-3 text-right whitespace-nowrap">Inward / Received</th>
+                        <th className="py-3 px-3 text-right whitespace-nowrap">Issued to Site</th>
+                        <th className="py-3 px-3 text-right whitespace-nowrap">Available On-Site Stock</th>
+                        <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
+                        <th className="py-3 px-3 text-center whitespace-nowrap">Stock Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
@@ -1181,7 +1183,7 @@ export const Inventory: React.FC = () => {
 
           {/* VIEW B: Central Material Master Catalog */}
           {materialView === 'catalog' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-w-0">
               <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -1194,7 +1196,7 @@ export const Inventory: React.FC = () => {
                 {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
                   <button
                     onClick={() => setShowAddMaterialModal(true)}
-                    className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs transition"
+                    className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs transition cursor-pointer self-start sm:self-auto"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Material Master</span>
@@ -1202,20 +1204,20 @@ export const Inventory: React.FC = () => {
                 )}
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left text-xs min-w-[850px]">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider">
                     <tr>
-                      <th className="py-3 px-3">Material Code</th>
-                      <th className="py-3 px-3">Name & Brand</th>
-                      <th className="py-3 px-3">Category</th>
-                      <th className="py-3 px-3">UOM</th>
-                      <th className="py-3 px-3 text-right">Standard Price</th>
-                      <th className="py-3 px-3 text-right">Total Available Stock</th>
-                      <th className="py-3 px-3 text-right">Min Stock / Reorder</th>
-                      <th className="py-3 px-3 text-right">Stock Valuation</th>
-                      <th className="py-3 px-3 text-center">Status</th>
-                      <th className="py-3 px-3 text-center">Actions</th>
+                      <th className="py-3 px-3 whitespace-nowrap">Material Code</th>
+                      <th className="py-3 px-3 whitespace-nowrap">Name & Brand</th>
+                      <th className="py-3 px-3 whitespace-nowrap">Category</th>
+                      <th className="py-3 px-3 whitespace-nowrap">UOM</th>
+                      <th className="py-3 px-3 text-right whitespace-nowrap">Standard Price</th>
+                      <th className="py-3 px-3 text-right whitespace-nowrap">Total Available Stock</th>
+                      <th className="py-3 px-3 text-right whitespace-nowrap">Min Stock / Reorder</th>
+                      <th className="py-3 px-3 text-right whitespace-nowrap">Stock Valuation</th>
+                      <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
+                      <th className="py-3 px-3 text-center whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -1318,8 +1320,8 @@ export const Inventory: React.FC = () => {
 
       {/* TAB 2: Stores & Warehouses */}
       {activeTab === 'stores' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Stores & Warehouse Locations</h3>
               <p className="text-xs text-slate-500">Central logistics yards and on-site project stores</p>
@@ -1327,16 +1329,16 @@ export const Inventory: React.FC = () => {
             {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
               <button
                 onClick={() => setShowAddWarehouseModal(true)}
-                className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs transition"
+                className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs transition cursor-pointer self-start sm:self-auto"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Warehouse / Store</span>
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {warehouses.map((wh) => (
-              <div key={wh.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div key={wh.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -1353,7 +1355,7 @@ export const Inventory: React.FC = () => {
                       {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
                         <button
                           onClick={() => openEditWarehouse(wh)}
-                          className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
+                          className="p-1 text-slate-400 hover:text-blue-600 rounded transition cursor-pointer"
                           title="Edit Warehouse"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1362,7 +1364,7 @@ export const Inventory: React.FC = () => {
                       {hasRole('OWNER', 'PURCHASE_MANAGER') && (
                         <button
                           onClick={() => setDeletingWarehouse(wh)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
                           title="Delete Warehouse"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1370,10 +1372,10 @@ export const Inventory: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 mt-2">{wh.name}</h3>
-                  <p className="text-xs text-slate-500 mt-1">{wh.location}</p>
+                  <h3 className="text-base font-bold text-slate-900 mt-2 break-words">{wh.name}</h3>
+                  <p className="text-xs text-slate-500 mt-1 break-words">{wh.location}</p>
                   {wh.contactPerson && (
-                    <p className="text-[11px] text-slate-600 mt-2 font-medium">In-Charge: {wh.contactPerson}</p>
+                    <p className="text-[11px] text-slate-600 mt-2 font-medium break-words">In-Charge: {wh.contactPerson}</p>
                   )}
                 </div>
               </div>
@@ -1384,8 +1386,8 @@ export const Inventory: React.FC = () => {
 
       {/* TAB 3: Material Requisitions */}
       {activeTab === 'requisitions' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-4 sm:p-5 space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Site Engineer Material Requisitions</h3>
               <p className="text-xs text-slate-500">Approval gated by Storekeeper / Project Manager</p>
@@ -1393,7 +1395,7 @@ export const Inventory: React.FC = () => {
             {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
               <button
                 onClick={() => setShowRequisitionModal(true)}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Raise Requisition</span>
@@ -1403,9 +1405,9 @@ export const Inventory: React.FC = () => {
 
           <div className="space-y-3">
             {requisitions.map((r) => (
-              <div key={r.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center space-x-2">
+              <div key={r.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                     <span className="font-mono text-xs font-bold text-slate-900">{r.requisitionNumber}</span>
                     <span className="text-xs font-semibold text-slate-700">[{r.project?.code}] {r.project?.name}</span>
                     <span
@@ -1433,18 +1435,18 @@ export const Inventory: React.FC = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
                   {r.status === 'PENDING' && hasRole('OWNER', 'PROJECT_MANAGER', 'STOREKEEPER') && (
                     <>
                       <button
                         onClick={() => handleApproveReq(r.id, 'APPROVED')}
-                        className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
+                        className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition cursor-pointer"
                       >
                         Approve
                       </button>
                       <button
                         onClick={() => handleApproveReq(r.id, 'REJECTED')}
-                        className="px-3 py-1.5 text-xs font-bold bg-red-100 hover:bg-red-200 text-red-800 rounded-lg transition"
+                        className="px-3 py-1.5 text-xs font-bold bg-red-100 hover:bg-red-200 text-red-800 rounded-lg transition cursor-pointer"
                       >
                         Reject
                       </button>
@@ -1453,7 +1455,7 @@ export const Inventory: React.FC = () => {
                   {hasRole('OWNER', 'PROJECT_MANAGER') && (
                     <button
                       onClick={() => handleDeleteRequisition(r.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                       title="Delete Requisition"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1468,16 +1470,16 @@ export const Inventory: React.FC = () => {
 
       {/* TAB 4: Stock Ledger */}
       {activeTab === 'ledger' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-4 sm:p-5 space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Stock Ledger & Movement Audit Trail</h3>
               <p className="text-xs text-slate-500">Atomic inventory transactions with weighted average valuation</p>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[950px] text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider">
                 <tr>
                   <th className="py-2.5 px-3 whitespace-nowrap">Txn #</th>
@@ -1543,8 +1545,8 @@ export const Inventory: React.FC = () => {
       {/* MODAL 1: ISSUE STOCK (Locked to Particular Project)        */}
       {/* ========================================================= */}
       {showIssueModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Issue Stock to Project Site</h3>
@@ -1743,8 +1745,8 @@ export const Inventory: React.FC = () => {
       {/* MODAL 2: INWARD / ADD STOCK DIRECTLY                      */}
       {/* ========================================================= */}
       {showAddStockModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Inward / Add Stock to Store</h3>
@@ -1895,8 +1897,8 @@ export const Inventory: React.FC = () => {
       {/* MODAL 3: ADJUST / UPDATE PHYSICAL STOCK COUNT             */}
       {/* ========================================================= */}
       {showAdjustStockModal && adjustStockTarget && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Adjust / Update Physical Stock</h3>
@@ -2043,8 +2045,8 @@ export const Inventory: React.FC = () => {
       {/* MODAL 4: RAISE REQUISITION                                */}
       {/* ========================================================= */}
       {showRequisitionModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900">Raise Material Requisition</h3>
               <button onClick={() => setShowRequisitionModal(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -2174,8 +2176,8 @@ export const Inventory: React.FC = () => {
       {/* MODAL 5: ADD MATERIAL MASTER CATALOG ITEM                */}
       {/* ========================================================= */}
       {showAddMaterialModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900">Add Central Material Master</h3>
               <button onClick={() => setShowAddMaterialModal(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -2301,8 +2303,8 @@ export const Inventory: React.FC = () => {
 
       {/* MODAL 6: EDIT MATERIAL MASTER */}
       {editingMaterial && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Edit Material Master</h3>
@@ -2405,8 +2407,8 @@ export const Inventory: React.FC = () => {
 
       {/* MODAL 7: DELETE MATERIAL CONFIRMATION */}
       {deletingMaterial && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-4 sm:p-5 my-auto max-h-[90vh] overflow-y-auto space-y-4">
             <div className="flex items-center space-x-3 text-rose-600">
               <div className="p-2 bg-rose-50 rounded-xl">
                 <AlertTriangle className="w-5 h-5 text-rose-600" />
@@ -2439,8 +2441,8 @@ export const Inventory: React.FC = () => {
 
       {/* MODAL 8: ADD WAREHOUSE */}
       {showAddWarehouseModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900">Add Warehouse / Store</h3>
               <button onClick={() => setShowAddWarehouseModal(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -2530,8 +2532,8 @@ export const Inventory: React.FC = () => {
 
       {/* MODAL 9: EDIT WAREHOUSE */}
       {editingWarehouse && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Edit Warehouse</h3>
@@ -2596,8 +2598,8 @@ export const Inventory: React.FC = () => {
 
       {/* MODAL 10: DELETE WAREHOUSE */}
       {deletingWarehouse && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-4 sm:p-5 my-auto max-h-[90vh] overflow-y-auto space-y-4">
             <div className="flex items-center space-x-3 text-rose-600">
               <div className="p-2 bg-rose-50 rounded-xl">
                 <AlertTriangle className="w-5 h-5 text-rose-600" />
@@ -2632,8 +2634,8 @@ export const Inventory: React.FC = () => {
       {/* MODAL 11: EDIT PROJECT MATERIAL ORDER ROW                 */}
       {/* ========================================================= */}
       {editingProjectMaterial && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 my-8">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-4 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-100 pb-4">
               <div>
                 <div className="flex items-center space-x-2">
