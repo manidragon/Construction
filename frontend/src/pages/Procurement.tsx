@@ -189,6 +189,14 @@ export const Procurement: React.FC = () => {
       const res = await api.createPurchaseOrder(poForm);
       if (res.success) {
         setShowPOModal(false);
+        setPoForm({
+          projectId: '',
+          supplierId: '',
+          deliveryDueDate: '',
+          termsConditions: 'Delivery at Site Store A. Test certificate required. Payment 30 days.',
+          freightCharges: '0',
+          items: [{ materialId: '', orderQty: '', unitPrice: '', taxPercent: '18' }],
+        });
         fetchData();
       }
     } catch (err: any) {
@@ -1050,94 +1058,136 @@ export const Procurement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Line item */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <span className="text-xs font-bold text-slate-700 block">Order Line Item</span>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-[10px] font-bold text-slate-700">Material *</label>
-                    <button
-                      type="button"
-                      onClick={() => openQuickMaterialModal('PO', 0)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-700 transition cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add New Material
-                    </button>
-                  </div>
-                  <select
-                    required
-                    value={poForm.items[0].materialId}
-                    onChange={(e) => {
-                      if (e.target.value === '__ADD_NEW__') {
-                        openQuickMaterialModal('PO', 0);
-                        return;
-                      }
-                      const sel = materials.find((m) => m.id === e.target.value);
-                      const updated = [...poForm.items];
-                      updated[0].materialId = e.target.value;
-                      if (sel) {
-                        updated[0].unitPrice = String(sel.standardPrice);
-                        updated[0].taxPercent = String(sel.taxPercent);
-                      }
-                      setPoForm({ ...poForm, items: updated });
+              {/* Line items */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">Order Line Items</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPoForm({
+                        ...poForm,
+                        items: [...poForm.items, { materialId: '', orderQty: '1', unitPrice: '', taxPercent: '18' }],
+                      });
                     }}
-                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    className="text-[11px] font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1 cursor-pointer"
                   >
-                    <option value="">Select Material</option>
-                    <option value="__ADD_NEW__" className="font-bold text-amber-700 bg-amber-50">
-                      ➕ Add New Material (Saves for upcoming selection)...
-                    </option>
-                    {materials.map((m) => (
-                      <option key={m.id} value={m.id}>[{m.code}] {m.name} ({m.unit})</option>
-                    ))}
-                  </select>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Item</span>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-slate-500">Order Quantity</label>
-                    <input
-                      type="number"
-                      required
-                      placeholder="e.g. 100"
-                      value={poForm.items[0].orderQty}
-                      onChange={(e) => {
-                        const updated = [...poForm.items];
-                        updated[0].orderQty = e.target.value;
-                        setPoForm({ ...poForm, items: updated });
-                      }}
-                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
-                    />
+                {poForm.items.map((item, index) => (
+                  <div key={index} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Item #{index + 1}</label>
+                      {poForm.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPoForm({
+                              ...poForm,
+                              items: poForm.items.filter((_, i) => i !== index),
+                            });
+                          }}
+                          className="text-rose-500 hover:text-rose-700 text-xs flex items-center space-x-0.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] font-bold text-slate-700">Material *</label>
+                        <button
+                          type="button"
+                          onClick={() => openQuickMaterialModal('PO', index)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-700 transition cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add New Material
+                        </button>
+                      </div>
+                      <select
+                        required
+                        value={item.materialId}
+                        onChange={(e) => {
+                          if (e.target.value === '__ADD_NEW__') {
+                            openQuickMaterialModal('PO', index);
+                            return;
+                          }
+                          const sel = materials.find((m) => m.id === e.target.value);
+                          const updated = [...poForm.items];
+                          updated[index].materialId = e.target.value;
+                          if (sel) {
+                            updated[index].unitPrice = String(sel.standardPrice);
+                            updated[index].taxPercent = String(sel.taxPercent);
+                          }
+                          setPoForm({ ...poForm, items: updated });
+                        }}
+                        className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      >
+                        <option value="">Select Material</option>
+                        <option value="__ADD_NEW__" className="font-bold text-amber-700 bg-amber-50">
+                          ➕ Add New Material (Saves for upcoming selection)...
+                        </option>
+                        {materials.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            [{m.code}] {m.name} ({m.unit})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-slate-500">Order Quantity</label>
+                        <input
+                          type="number"
+                          required
+                          placeholder="e.g. 100"
+                          value={item.orderQty}
+                          onChange={(e) => {
+                            const updated = [...poForm.items];
+                            updated[index].orderQty = e.target.value;
+                            setPoForm({ ...poForm, items: updated });
+                          }}
+                          className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500">Unit Price (₹)</label>
+                        <input
+                          type="number"
+                          required
+                          placeholder="e.g. 380"
+                          value={item.unitPrice}
+                          onChange={(e) => {
+                            const updated = [...poForm.items];
+                            updated[index].unitPrice = e.target.value;
+                            setPoForm({ ...poForm, items: updated });
+                          }}
+                          className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500">GST %</label>
+                        <input
+                          type="number"
+                          value={item.taxPercent}
+                          onChange={(e) => {
+                            const updated = [...poForm.items];
+                            updated[index].taxPercent = e.target.value;
+                            setPoForm({ ...poForm, items: updated });
+                          }}
+                          className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded font-mono"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500">Unit Price (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      value={poForm.items[0].unitPrice}
-                      onChange={(e) => {
-                        const updated = [...poForm.items];
-                        updated[0].unitPrice = e.target.value;
-                        setPoForm({ ...poForm, items: updated });
-                      }}
-                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500">GST %</label>
-                    <input
-                      type="number"
-                      value={poForm.items[0].taxPercent}
-                      onChange={(e) => {
-                        const updated = [...poForm.items];
-                        updated[0].taxPercent = e.target.value;
-                        setPoForm({ ...poForm, items: updated });
-                      }}
-                      className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded"
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
 
               <div>
@@ -1152,22 +1202,32 @@ export const Procurement: React.FC = () => {
 
               {/* Live PO Calculation Summary */}
               {(() => {
-                const poQty = Number(poForm.items[0]?.orderQty) || 0;
-                const poPrice = Number(poForm.items[0]?.unitPrice) || 0;
-                const poTaxPct = poForm.items[0]?.taxPercent !== '' && poForm.items[0]?.taxPercent !== undefined ? Number(poForm.items[0]?.taxPercent) : 0;
+                let poSubtotal = 0;
+                let poTaxAmount = 0;
+                let poTotalQty = 0;
+
+                poForm.items.forEach((it) => {
+                  const qty = Number(it.orderQty) || 0;
+                  const price = Number(it.unitPrice) || 0;
+                  const taxPct = it.taxPercent !== '' && it.taxPercent !== undefined ? Number(it.taxPercent) : 18;
+                  const lineSubtotal = qty * price;
+                  const lineTax = (lineSubtotal * taxPct) / 100;
+                  poSubtotal += lineSubtotal;
+                  poTaxAmount += lineTax;
+                  poTotalQty += qty;
+                });
+
                 const poFreight = Number(poForm.freightCharges) || 0;
-                const poSubtotal = poQty * poPrice;
-                const poTaxAmount = (poSubtotal * poTaxPct) / 100;
                 const poTotal = poSubtotal + poTaxAmount + poFreight;
 
                 return (
                   <div className="p-3.5 bg-amber-50/70 rounded-xl border border-amber-200/90 space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-slate-600">
-                      <span>Subtotal ({poQty} × {formatCurrency(poPrice)}):</span>
+                      <span>Subtotal ({poTotalQty} items across {poForm.items.length} line{poForm.items.length > 1 ? 's' : ''}):</span>
                       <span className="font-mono font-semibold text-slate-800">{formatCurrency(poSubtotal)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-slate-600">
-                      <span>GST Tax ({poTaxPct}%):</span>
+                      <span>GST Tax Total:</span>
                       <span className="font-mono font-semibold text-slate-800">{formatCurrency(poTaxAmount)}</span>
                     </div>
                     {poFreight > 0 && (
