@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import { logAudit } from '../middleware/auth';
-import { provisionTenantDatabase, getTenantDbSize } from '../utils/tenantDb';
+import { provisionTenantDatabase, getTenantDbSize, getTenantPrisma } from '../utils/tenantDb';
 
 /**
  * GET /api/superadmin/stats
@@ -241,6 +241,36 @@ export const createTenant = async (req: Request, res: Response) => {
         isActive: true,
       },
     });
+
+    // Also sync the newly created user into the tenant dedicated database
+    try {
+      const tenantPrisma = getTenantPrisma(company.id);
+      await tenantPrisma.user.upsert({
+        where: { email: user.email },
+        update: {
+          companyId: company.id,
+          name: user.name,
+          passwordHash,
+          phone: user.phone,
+          role: 'TENANT_ADMIN',
+          designation: 'Managing Director / Business Owner',
+          isActive: true,
+        },
+        create: {
+          id: user.id,
+          companyId: company.id,
+          name: user.name,
+          email: user.email,
+          passwordHash,
+          phone: user.phone,
+          role: 'TENANT_ADMIN',
+          designation: 'Managing Director / Business Owner',
+          isActive: true,
+        },
+      });
+    } catch (e) {
+      console.warn('[Multi-DB] Notice: Could not sync user to tenant DB during manual creation:', e);
+    }
 
     // Automatically record onboarding welcome WhatsApp Log entry
     const logDelegate = (prisma as any).whatsAppLog || (prisma as any).whatsappLog;
