@@ -41,11 +41,13 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       return res.status(403).json({ success: false, message: 'User account is inactive or not found.' });
     }
 
+    const effectiveRole = (decoded.role && decoded.role !== 'TENANT_ADMIN') ? decoded.role : (user.role === 'TENANT_ADMIN' ? 'OWNER' : user.role);
+
     req.user = {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role,
+      role: effectiveRole,
       companyId: user.companyId,
     };
 

@@ -196,33 +196,150 @@ export const superAdminLogin = async (req: Request, res: Response) => {
 };
 
 /**
- * Demo Quick Switcher: Allows evaluators to switch roles with a single click
+ * Demo Quick Switcher: Allows evaluators to switch roles with a single click.
+ * Strictly scoped to the current user's company / tenant to prevent tenant data leakage.
  */
 export const switchRole = async (req: Request, res: Response) => {
   try {
-    const { role } = req.body;
-    let roleFilter: any = role;
-    if (role === 'OWNER' || role === 'TENANT_ADMIN') {
-      roleFilter = { in: ['OWNER', 'TENANT_ADMIN'] };
+    const { role, companyId: bodyCompanyId } = req.body;
+    if (!role) {
+      return res.status(400).json({ success: false, message: 'Role parameter is required' });
     }
 
-    const user = await prisma.user.findFirst({
+    // 1. Identify active user and tenant from Authorization header or req.user
+    const authHeader = req.headers['authorization'];
+    const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+    let callerUserId: string | null = (req.user as any)?.id || null;
+    let callerCompanyId: string | null = (req.user as any)?.companyId || null;
+
+    if (bearerToken && (!callerUserId || !callerCompanyId)) {
+      try {
+        const decoded = jwt.verify(bearerToken, JWT_SECRET) as any;
+        callerUserId = callerUserId || decoded.id || null;
+        callerCompanyId = callerCompanyId || decoded.companyId || null;
+      } catch (err) {
+        // Token invalid, ignore
+      }
+    }
+
+    let targetCompanyId = callerCompanyId || bodyCompanyId;
+
+    let callerUser: any = null;
+    if (callerUserId) {
+      callerUser = await prisma.user.findUnique({
+        where: { id: callerUserId },
+        include: { company: true },
+      });
+      if (callerUser && !targetCompanyId) {
+        targetCompanyId = callerUser.companyId;
+      }
+    }
+
+    const roleDesignations: Record<string, string> = {
+      OWNER: 'Managing Director / Business Owner',
+      TENANT_ADMIN: 'Managing Director / Business Owner',
+      PROJECT_MANAGER: 'Project Manager (GM/PM)',
+      SITE_ENGINEER: 'Site Engineer / Supervisor',
+      ACCOUNTS_MANAGER: 'Accounts Manager / CA',
+      PURCHASE_MANAGER: 'Purchase / Procurement Lead',
+      STOREKEEPER: 'Storekeeper / Inventory Mgr',
+      HR_MANAGER: 'HR / Labour Welfare Mgr',
+      AUDITOR: 'Read-only Internal Auditor',
+    };
+
+    const cleanRequestedRole = (role === 'OWNER' || role === 'TENANT_ADMIN') ? 'OWNER' : role;
+    const roleFilter = cleanRequestedRole === 'OWNER' ? { in: ['OWNER', 'TENANT_ADMIN'] } : cleanRequestedRole;
+
+    // 2. Scenario A: If tenant company is known, STAY STRICTLY WITHIN THIS COMPANY
+    if (targetCompanyId) {
+      // Check if this company already has a registered user with this role
+      const staffUser = await prisma.user.findFirst({
+        where: {
+          companyId: targetCompanyId,
+          role: roleFilter,
+          isActive: true,
+        },
+        include: { company: true },
+      });
+
+      // If user exists in this company
+      if (staffUser) {
+        const tokenPayload = {
+          id: staffUser.id,
+          name: staffUser.name,
+          email: staffUser.email,
+          role: cleanRequestedRole,
+          companyId: staffUser.companyId,
+        };
+
+        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            id: staffUser.id,
+            name: staffUser.name,
+            email: staffUser.email,
+            role: cleanRequestedRole,
+            designation: staffUser.designation || roleDesignations[cleanRequestedRole] || cleanRequestedRole,
+            phone: staffUser.phone,
+            company: staffUser.company,
+          },
+        });
+      }
+
+      // If no staff user exists with this role yet in this company (e.g. fresh trial account),
+      // allow the current company owner/admin to preview this role for their own company!
+      if (callerUser) {
+        const previewDesignation = `${roleDesignations[cleanRequestedRole] || cleanRequestedRole} (Preview)`;
+
+        const tokenPayload = {
+          id: callerUser.id,
+          name: callerUser.name,
+          email: callerUser.email,
+          role: cleanRequestedRole,
+          companyId: callerUser.companyId,
+          isPreviewRole: true,
+        };
+
+        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            id: callerUser.id,
+            name: callerUser.name,
+            email: callerUser.email,
+            role: cleanRequestedRole,
+            designation: cleanRequestedRole === 'OWNER'
+              ? (callerUser.designation || 'Managing Director / Business Owner')
+              : previewDesignation,
+            phone: callerUser.phone,
+            company: callerUser.company,
+          },
+        });
+      }
+    }
+
+    // 3. Scenario B: Fallback only if no company could be determined (e.g. unauthenticated demo evaluation)
+    const fallbackUser = await prisma.user.findFirst({
       where: { role: roleFilter, isActive: true },
       include: { company: true },
     });
 
-    if (!user) {
+    if (!fallbackUser) {
       return res.status(404).json({ success: false, message: `No active user found for role ${role}` });
     }
 
-    const cleanRole = (user.role === 'TENANT_ADMIN' || user.role === 'OWNER') ? 'OWNER' : user.role;
-
     const tokenPayload = {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: cleanRole,
-      companyId: user.companyId,
+      id: fallbackUser.id,
+      name: fallbackUser.name,
+      email: fallbackUser.email,
+      role: cleanRequestedRole,
+      companyId: fallbackUser.companyId,
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
@@ -231,13 +348,13 @@ export const switchRole = async (req: Request, res: Response) => {
       success: true,
       token,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: cleanRole,
-        designation: user.designation,
-        phone: user.phone,
-        company: user.company,
+        id: fallbackUser.id,
+        name: fallbackUser.name,
+        email: fallbackUser.email,
+        role: cleanRequestedRole,
+        designation: fallbackUser.designation,
+        phone: fallbackUser.phone,
+        company: fallbackUser.company,
       },
     });
   } catch (error: any) {
@@ -266,6 +383,19 @@ export const getMe = async (req: Request, res: Response) => {
     }
 
     const cleanRole = (user.role === 'TENANT_ADMIN' || user.role === 'OWNER') ? 'OWNER' : user.role;
+    const effectiveRole = (req.user?.role && req.user.role !== 'TENANT_ADMIN') ? req.user.role : cleanRole;
+
+    const roleDesignations: Record<string, string> = {
+      OWNER: 'Managing Director / Business Owner',
+      TENANT_ADMIN: 'Managing Director / Business Owner',
+      PROJECT_MANAGER: 'Project Manager (GM/PM)',
+      SITE_ENGINEER: 'Site Engineer / Supervisor',
+      ACCOUNTS_MANAGER: 'Accounts Manager / CA',
+      PURCHASE_MANAGER: 'Purchase / Procurement Lead',
+      STOREKEEPER: 'Storekeeper / Inventory Mgr',
+      HR_MANAGER: 'HR / Labour Welfare Mgr',
+      AUDITOR: 'Read-only Internal Auditor',
+    };
 
     return res.json({
       success: true,
@@ -273,8 +403,8 @@ export const getMe = async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: cleanRole,
-        designation: user.designation,
+        role: effectiveRole,
+        designation: effectiveRole === cleanRole ? (user.designation || roleDesignations[cleanRole] || cleanRole) : `${roleDesignations[effectiveRole] || effectiveRole} (Preview)`,
         phone: user.phone,
         company: user.company,
         assignedProjects: user.assignedProjects,

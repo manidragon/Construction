@@ -44,7 +44,7 @@ class ApiService {
   // Auth
   login = (credentials: any) => this.request<any>('/auth/login', { method: 'POST', body: JSON.stringify(credentials) });
   superAdminLogin = (credentials: any) => this.request<any>('/auth/superadmin-login', { method: 'POST', body: JSON.stringify(credentials) });
-  switchRole = (role: string) => this.request<any>('/auth/switch-role', { method: 'POST', body: JSON.stringify({ role }) });
+  switchRole = (role: string, companyId?: string) => this.request<any>('/auth/switch-role', { method: 'POST', body: JSON.stringify({ role, companyId }) });
   getMe = () => this.request<any>('/auth/me');
   getUsers = () => this.request<any>('/auth/users');
 

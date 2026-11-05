@@ -46,7 +46,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setProjects([]);
       setSelectedProjectId('');
     }
-  }, [isAuthenticated, user?.id, user?.company?.id]);
+  }, [isAuthenticated, user?.id, user?.company?.id, user?.role]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
 

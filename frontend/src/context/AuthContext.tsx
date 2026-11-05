@@ -67,7 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const switchRole = async (role: UserRole) => {
     setIsLoading(true);
     try {
-      const res = await api.switchRole(role);
+      const activeCompanyId = user?.company?.id || (user as any)?.companyId;
+      const res = await api.switchRole(role, activeCompanyId);
       if (res.success && res.token && res.user) {
         localStorage.setItem('erp_token', res.token);
         localStorage.setItem('erp_user', JSON.stringify(res.user));
