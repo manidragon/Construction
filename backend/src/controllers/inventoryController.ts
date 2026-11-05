@@ -842,12 +842,14 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
           poNumber: po.poNumber,
           poDate: po.poDate || po.createdAt,
           supplierName: po.supplier?.name || 'Vendor',
+          supplierId: po.supplierId,
           orderQty: item.orderQty,
           receivedQty: item.receivedQty,
           unitPrice: item.unitPrice,
           taxPercent: item.taxPercent,
           totalAmount: item.totalAmount,
           status: po.status,
+          lineItemId: item.id,
         });
       }
     }
@@ -1230,5 +1232,297 @@ export const adjustStock = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// UPDATE CONSOLIDATED PROJECT MATERIAL ROW
+// ==========================================
+export const updateProjectMaterial = async (req: Request, res: Response) => {
+  try {
+    const {
+      materialId,
+      projectId,
+      materialName,
+      category,
+      brand,
+      unit,
+      standardPrice,
+      poId,
+      poNumber,
+      poDate,
+      supplierName,
+      orderQty,
+      receivedQty,
+      unitPrice,
+      availableStock,
+      preferredWarehouseId,
+      remarks,
+    } = req.body;
+
+    if (!materialId) {
+      return res.status(400).json({ success: false, message: 'Material ID is required.' });
+    }
+
+    const tenantId = (req.user as any)?.companyId || null;
+
+    // 1. Verify material exists and belongs to tenant
+    const material = await prisma.material.findFirst({
+      where: {
+        id: materialId,
+        ...(tenantId ? { tenantId } : {}),
+      },
+    });
+
+    if (!material) {
+      return res.status(404).json({ success: false, message: 'Material not found.' });
+    }
+
+    // 2. Update Material master attributes if provided
+    const matUpdateData: any = {};
+    if (materialName && materialName.trim()) matUpdateData.name = materialName.trim();
+    if (category && category.trim()) matUpdateData.category = category.trim();
+    if (brand !== undefined) matUpdateData.brand = brand ? brand.trim() : null;
+    if (unit && unit.trim()) matUpdateData.unit = unit.trim().toUpperCase();
+    if (standardPrice !== undefined && standardPrice !== '' && !isNaN(Number(standardPrice))) {
+      matUpdateData.standardPrice = Number(standardPrice);
+    }
+
+    let updatedMaterial = material;
+    if (Object.keys(matUpdateData).length > 0) {
+      updatedMaterial = await prisma.material.update({
+        where: { id: material.id },
+        data: matUpdateData,
+      });
+    }
+
+    // 3. Update Purchase Order & Line Item
+    let targetPo: any = null;
+    if (poId) {
+      targetPo = await prisma.purchaseOrder.findFirst({
+        where: { id: poId, ...(tenantId ? { tenantId } : {}) },
+        include: { supplier: true, items: true },
+      });
+    } else if (projectId) {
+      // Find PO linking this project and material
+      targetPo = await prisma.purchaseOrder.findFirst({
+        where: {
+          projectId,
+          ...(tenantId ? { tenantId } : {}),
+          items: { some: { materialId: material.id } },
+        },
+        include: { supplier: true, items: true },
+      });
+    }
+
+    if (targetPo) {
+      // A. Update Supplier Name if provided
+      if (supplierName && supplierName.trim()) {
+        if (targetPo.supplierId) {
+          await prisma.supplier.update({
+            where: { id: targetPo.supplierId },
+            data: { name: supplierName.trim() },
+          });
+        }
+      }
+
+      // B. Update PO Line Item for this material
+      const lineItem = targetPo.items.find((it: any) => it.materialId === material.id);
+      if (lineItem) {
+        const newOrderQty = orderQty !== undefined && orderQty !== '' && !isNaN(Number(orderQty))
+          ? Number(orderQty)
+          : lineItem.orderQty;
+        const newRecQty = receivedQty !== undefined && receivedQty !== '' && !isNaN(Number(receivedQty))
+          ? Number(receivedQty)
+          : lineItem.receivedQty;
+        const newUnitPrice = unitPrice !== undefined && unitPrice !== '' && !isNaN(Number(unitPrice))
+          ? Number(unitPrice)
+          : (standardPrice !== undefined && standardPrice !== '' && !isNaN(Number(standardPrice))
+              ? Number(standardPrice)
+              : lineItem.unitPrice);
+        const taxPercent = lineItem.taxPercent || 18;
+        const taxAmount = (newOrderQty * newUnitPrice * taxPercent) / 100;
+        const totalAmount = newOrderQty * newUnitPrice + taxAmount;
+
+        await prisma.pOLineItem.update({
+          where: { id: lineItem.id },
+          data: {
+            orderQty: newOrderQty,
+            receivedQty: newRecQty,
+            unitPrice: newUnitPrice,
+            taxAmount,
+            totalAmount,
+          },
+        });
+      }
+
+      // C. Update PO Number, PO Date, and recalculated totals
+      const allItems = await prisma.pOLineItem.findMany({ where: { purchaseOrderId: targetPo.id } });
+      const subtotal = allItems.reduce((acc, it) => acc + (it.orderQty * it.unitPrice), 0);
+      const totalTax = allItems.reduce((acc, it) => acc + it.taxAmount, 0);
+
+      const poUpdateData: any = {
+        subtotal,
+        taxAmount: totalTax,
+        totalAmount: subtotal + totalTax + (targetPo.freightCharges || 0),
+      };
+      if (poNumber && poNumber.trim()) poUpdateData.poNumber = poNumber.trim();
+      if (poDate) {
+        const parsedDate = new Date(poDate);
+        if (!isNaN(parsedDate.getTime())) {
+          poUpdateData.poDate = parsedDate;
+        }
+      }
+
+      await prisma.purchaseOrder.update({
+        where: { id: targetPo.id },
+        data: poUpdateData,
+      });
+    } else if (poNumber && poNumber.trim() && projectId) {
+      // If PO does not exist yet for this row, create one
+      let supp = await prisma.supplier.findFirst({
+        where: { ...(supplierName ? { name: supplierName.trim() } : {}), ...(tenantId ? { tenantId } : {}) },
+      });
+      if (!supp) {
+        supp = await prisma.supplier.create({
+          data: {
+            code: `SUP-${Date.now().toString().slice(-4)}`,
+            name: supplierName?.trim() || 'Vendor',
+            tenantId,
+            phone: '9999999999',
+            address: 'Site Delivery Yard',
+          },
+        });
+      }
+      const oQty = Number(orderQty) || 0;
+      const rQty = Number(receivedQty) || 0;
+      const price = Number(unitPrice || standardPrice || material.standardPrice || 0);
+      const taxA = (oQty * price * 0.18);
+      const totalA = oQty * price + taxA;
+
+      await prisma.purchaseOrder.create({
+        data: {
+          tenantId,
+          poNumber: poNumber.trim(),
+          projectId,
+          supplierId: supp.id,
+          poDate: poDate ? new Date(poDate) : new Date(),
+          deliveryDueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: rQty >= oQty && oQty > 0 ? 'COMPLETED' : rQty > 0 ? 'PARTIAL_RECEIVED' : 'APPROVED',
+          subtotal: oQty * price,
+          taxAmount: taxA,
+          totalAmount: totalA,
+          createdById: req.user?.id || '',
+          items: {
+            create: {
+              materialId: material.id,
+              orderQty: oQty,
+              receivedQty: rQty,
+              unitPrice: price,
+              taxPercent: 18,
+              taxAmount: taxA,
+              totalAmount: totalA,
+            },
+          },
+        },
+      });
+    }
+
+    // 4. Update Available On-Site Stock if availableStock is provided
+    if (availableStock !== undefined && availableStock !== '' && !isNaN(Number(availableStock))) {
+      const targetQty = Math.max(0, Number(availableStock));
+      const cost = updatedMaterial.standardPrice || 0;
+
+      // Find target warehouse
+      let targetWarehouseId = preferredWarehouseId;
+      if (!targetWarehouseId && projectId) {
+        const siteWh = await prisma.warehouse.findFirst({
+          where: { projectId, ...(tenantId ? { tenantId } : {}) },
+        });
+        if (siteWh) targetWarehouseId = siteWh.id;
+      }
+      if (!targetWarehouseId) {
+        const anyWh = await prisma.warehouse.findFirst({
+          where: { ...(tenantId ? { tenantId } : {}) },
+          orderBy: { isSiteStore: 'desc' },
+        });
+        if (anyWh) targetWarehouseId = anyWh.id;
+      }
+
+      if (targetWarehouseId) {
+        const balance = await prisma.stockBalance.findUnique({
+          where: {
+            warehouseId_materialId: {
+              warehouseId: targetWarehouseId,
+              materialId: material.id,
+            },
+          },
+        });
+
+        if (balance) {
+          const oldQty = balance.currentQty;
+          const delta = targetQty - oldQty;
+
+          await prisma.stockBalance.update({
+            where: { id: balance.id },
+            data: {
+              currentQty: targetQty,
+              totalValuation: targetQty * (balance.avgUnitCost || cost),
+            },
+          });
+
+          if (Math.abs(delta) > 0.0001) {
+            const totalTxnCount = await prisma.stockLedger.count({ where: tenantId ? { tenantId } : {} });
+            const txnNumber = `STK-${new Date().getFullYear()}-${String(totalTxnCount + 1).padStart(5, '0')}`;
+            await prisma.stockLedger.create({
+              data: {
+                tenantId,
+                txnNumber,
+                txnType: 'PHYSICAL_ADJUSTMENT',
+                materialId: material.id,
+                qty: Math.abs(delta),
+                unit: updatedMaterial.unit,
+                unitRate: cost,
+                totalValue: Math.abs(delta) * cost,
+                sourceWarehouseId: delta < 0 ? targetWarehouseId : null,
+                destWarehouseId: delta > 0 ? targetWarehouseId : null,
+                projectId: projectId || null,
+                referenceNo: `EDIT-${Date.now().toString().slice(-4)}`,
+                remarks: remarks || `Row Edit: Stock count updated from ${oldQty} to ${targetQty} ${updatedMaterial.unit}.`,
+                responsibleBy: req.user?.name || 'Storekeeper',
+              },
+            });
+          }
+        } else {
+          await prisma.stockBalance.create({
+            data: {
+              warehouseId: targetWarehouseId,
+              materialId: material.id,
+              currentQty: targetQty,
+              avgUnitCost: cost,
+              totalValuation: targetQty * cost,
+            },
+          });
+        }
+      }
+    }
+
+    await logAudit(
+      req.user?.id,
+      'UPDATE_PROJECT_MATERIAL',
+      'MATERIAL',
+      material.id,
+      { material: updatedMaterial.name, poNumber, availableStock },
+      req.ip
+    );
+
+    return res.json({
+      success: true,
+      message: `Project material "${updatedMaterial.name}" updated successfully.`,
+      material: updatedMaterial,
+    });
+  } catch (error: any) {
+    console.error('updateProjectMaterial error:', error);
+    return res.status(400).json({ success: false, message: error.message || 'Failed to update project material.' });
   }
 };

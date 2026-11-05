@@ -258,14 +258,19 @@ export interface Material {
 }
 
 export interface ProjectMaterialOrder {
+  id?: string;
   poNumber: string;
   poDate: string;
-  poStatus: string;
+  poStatus?: string;
+  status?: string;
   supplierName: string;
+  supplierId?: string;
   orderQty: number;
   receivedQty: number;
   unitPrice: number;
+  taxPercent?: number;
   totalAmount: number;
+  lineItemId?: string;
 }
 
 export interface ProjectMaterial {

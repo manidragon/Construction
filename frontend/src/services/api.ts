@@ -93,6 +93,7 @@ class ApiService {
   recordStockMovement = (data: any) => this.request<any>('/inventory/transactions', { method: 'POST', body: JSON.stringify(data) });
   getStockLedger = (params: string = '') => this.request<any>(`/inventory/ledger${params ? `?${params}` : ''}`);
   getProjectMaterials = (params: string = '') => this.request<any>(`/inventory/project-materials${params ? `?${params}` : ''}`);
+  updateProjectMaterial = (data: any) => this.request<any>('/inventory/project-materials', { method: 'PUT', body: JSON.stringify(data) });
   addStock = (data: any) => this.request<any>('/inventory/add-stock', { method: 'POST', body: JSON.stringify(data) });
   adjustStock = (data: any) => this.request<any>('/inventory/adjust-stock', { method: 'POST', body: JSON.stringify(data) });
 

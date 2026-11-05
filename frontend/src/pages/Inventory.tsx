@@ -160,6 +160,26 @@ export const Inventory: React.FC = () => {
   const [deletingWarehouse, setDeletingWarehouse] = useState<Warehouse | null>(null);
   const [isDeletingWarehouse, setIsDeletingWarehouse] = useState(false);
 
+  // Edit Project Material Row State
+  const [editingProjectMaterial, setEditingProjectMaterial] = useState<ProjectMaterial | null>(null);
+  const [editProjectMaterialForm, setEditProjectMaterialForm] = useState({
+    materialName: '',
+    category: '',
+    brand: '',
+    unit: '',
+    standardPrice: '',
+    poId: '',
+    poNumber: '',
+    poDate: '',
+    supplierName: '',
+    orderQty: '',
+    receivedQty: '',
+    availableStock: '',
+    warehouseId: '',
+    remarks: '',
+  });
+  const [isSavingProjectMaterial, setIsSavingProjectMaterial] = useState(false);
+
   const [submittingAction, setSubmittingAction] = useState(false);
 
   // Load All Data
@@ -390,6 +410,82 @@ export const Inventory: React.FC = () => {
       alert(err.message || 'Failed to adjust stock count.');
     } finally {
       setSubmittingAction(false);
+    }
+  };
+
+  // Open Edit Project Material Row Modal
+  const openEditProjectMaterial = (pm: ProjectMaterial) => {
+    setEditingProjectMaterial(pm);
+    const firstPo = pm.purchaseOrders && pm.purchaseOrders.length > 0 ? pm.purchaseOrders[0] : null;
+
+    let formattedPoDate = '';
+    if (firstPo?.poDate) {
+      try {
+        const d = new Date(firstPo.poDate);
+        if (!isNaN(d.getTime())) {
+          formattedPoDate = d.toISOString().split('T')[0];
+        }
+      } catch {
+        formattedPoDate = '';
+      }
+    }
+
+    setEditProjectMaterialForm({
+      materialName: pm.materialName || '',
+      category: pm.category || 'CEMENT',
+      brand: pm.brand || '',
+      unit: pm.unit || 'BAG',
+      standardPrice: String(pm.standardPrice ?? pm.avgUnitCost ?? 0),
+      poId: firstPo?.id || '',
+      poNumber: firstPo?.poNumber || '',
+      poDate: formattedPoDate,
+      supplierName: firstPo?.supplierName || '',
+      orderQty: String(firstPo ? firstPo.orderQty : pm.totalOrderedQty || 0),
+      receivedQty: String(firstPo ? firstPo.receivedQty : pm.totalReceivedQty || 0),
+      availableStock: String(pm.availableStock || 0),
+      warehouseId: pm.preferredWarehouseId || warehouses[0]?.id || '',
+      remarks: '',
+    });
+  };
+
+  // Handle Edit Project Material Row Submit
+  const handleUpdateProjectMaterial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProjectMaterial) return;
+
+    try {
+      setIsSavingProjectMaterial(true);
+      const payload = {
+        materialId: editingProjectMaterial.materialId,
+        projectId: editingProjectMaterial.projectId,
+        materialName: editProjectMaterialForm.materialName,
+        category: editProjectMaterialForm.category,
+        brand: editProjectMaterialForm.brand,
+        unit: editProjectMaterialForm.unit,
+        standardPrice: Number(editProjectMaterialForm.standardPrice) || 0,
+        poId: editProjectMaterialForm.poId || undefined,
+        poNumber: editProjectMaterialForm.poNumber,
+        poDate: editProjectMaterialForm.poDate || undefined,
+        supplierName: editProjectMaterialForm.supplierName,
+        orderQty: Number(editProjectMaterialForm.orderQty) || 0,
+        receivedQty: Number(editProjectMaterialForm.receivedQty) || 0,
+        availableStock: Number(editProjectMaterialForm.availableStock) || 0,
+        preferredWarehouseId: editProjectMaterialForm.warehouseId || undefined,
+        remarks: editProjectMaterialForm.remarks,
+      };
+
+      const res = await api.updateProjectMaterial(payload);
+      if (res.success) {
+        setEditingProjectMaterial(null);
+        await fetchData();
+      } else {
+        alert(res.message || 'Failed to update project material.');
+      }
+    } catch (error: any) {
+      console.error('Update project material error:', error);
+      alert(error.message || 'Failed to update project material.');
+    } finally {
+      setIsSavingProjectMaterial(false);
     }
   };
 
@@ -1058,6 +1154,18 @@ export const Inventory: React.FC = () => {
                                 >
                                   <Sliders className="w-3 h-3 text-slate-500" />
                                   <span>Adjust</span>
+                                </button>
+                              )}
+
+                              {/* 4. EDIT PROJECT MATERIAL ORDER ROW BUTTON */}
+                              {hasRole('OWNER', 'STOREKEEPER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                                <button
+                                  onClick={() => openEditProjectMaterial(pm)}
+                                  className="flex items-center space-x-1 bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-300 px-2.5 py-1.5 rounded-lg text-[11px] shadow-sm transition cursor-pointer"
+                                  title="Edit Material, PO & Stock Details for this row"
+                                >
+                                  <Edit2 className="w-3 h-3 text-slate-600" />
+                                  <span>Edit</span>
                                 </button>
                               )}
                             </div>
@@ -2512,6 +2620,275 @@ export const Inventory: React.FC = () => {
                 {isDeletingWarehouse ? 'Deleting...' : 'Confirm Delete'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 11: EDIT PROJECT MATERIAL ORDER ROW                 */}
+      {/* ========================================================= */}
+      {editingProjectMaterial && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 my-8">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-base font-bold text-slate-900">Edit Project Material Order</h3>
+                  <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded font-bold">
+                    {editingProjectMaterial.materialCode}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1 flex items-center space-x-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="font-medium text-slate-700">{editingProjectMaterial.projectName}</span>
+                  {editingProjectMaterial.projectCode && (
+                    <span className="font-mono text-slate-400">({editingProjectMaterial.projectCode})</span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingProjectMaterial(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProjectMaterial} className="mt-5 space-y-4">
+              {/* SECTION 1: MATERIAL DETAILS */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                <div className="flex items-center space-x-2 text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  <Boxes className="w-4 h-4 text-amber-500" />
+                  <span>Material Specification</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Material Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editProjectMaterialForm.materialName}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, materialName: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-medium"
+                      placeholder="e.g. UltraTech OPC 53 Grade Cement"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Category *</label>
+                    <select
+                      value={editProjectMaterialForm.category}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, category: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-medium"
+                    >
+                      <option value="CEMENT">Cement</option>
+                      <option value="STEEL">Steel Rebar</option>
+                      <option value="AGGREGATE">Aggregates / Sand</option>
+                      <option value="BRICK_BLOCK">Bricks & Blocks</option>
+                      <option value="PAINT">Paint & Primers</option>
+                      <option value="PLUMBING">Plumbing Pipes & Fittings</option>
+                      <option value="ELECTRICAL">Electrical Cables</option>
+                      <option value="FINISHING">Tiles & Stones</option>
+                      <option value="HARDWARE">Hardware & Tools</option>
+                      <option value="TIMBER">Timber & Plywood</option>
+                      <option value="CHEMICALS">Chemicals & Waterproofing</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Brand / Make</label>
+                    <input
+                      type="text"
+                      value={editProjectMaterialForm.brand}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, brand: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg"
+                      placeholder="e.g. UltraTech"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Unit (UOM) *</label>
+                    <select
+                      value={editProjectMaterialForm.unit}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, unit: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold"
+                    >
+                      <option value="BAG">BAG</option>
+                      <option value="TONNE">TONNE</option>
+                      <option value="CFT">CFT</option>
+                      <option value="CUMT">CUMT</option>
+                      <option value="NOS">NOS</option>
+                      <option value="SQFT">SQFT</option>
+                      <option value="SQMT">SQMT</option>
+                      <option value="LITRE">LITRE</option>
+                      <option value="RFT">RFT</option>
+                      <option value="KGS">KGS</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Standard Rate (₹)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editProjectMaterialForm.standardPrice}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, standardPrice: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono"
+                      placeholder="e.g. 380"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: PURCHASE ORDER & SUPPLIER */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                <div className="flex items-center space-x-2 text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  <Calendar className="w-4 h-4 text-amber-500" />
+                  <span>Purchase Order & Supplier</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">PO Number</label>
+                    <input
+                      type="text"
+                      value={editProjectMaterialForm.poNumber}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, poNumber: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold"
+                      placeholder="e.g. PO-2024-089"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">PO Date</label>
+                    <input
+                      type="date"
+                      value={editProjectMaterialForm.poDate}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, poDate: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Supplier / Vendor Name</label>
+                    <input
+                      type="text"
+                      value={editProjectMaterialForm.supplierName}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, supplierName: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-medium"
+                      placeholder="e.g. Shree Balaji Cements"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Ordered Quantity</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        value={editProjectMaterialForm.orderQty}
+                        onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, orderQty: e.target.value })}
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-semibold pr-14"
+                        placeholder="0"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">
+                        {editProjectMaterialForm.unit}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Inward / Received Quantity</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        value={editProjectMaterialForm.receivedQty}
+                        onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, receivedQty: e.target.value })}
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold text-blue-900 pr-14"
+                        placeholder="0"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-blue-500 font-mono">
+                        {editProjectMaterialForm.unit}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: ON-SITE STOCK & LOCATION */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                <div className="flex items-center space-x-2 text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  <WarehouseIcon className="w-4 h-4 text-emerald-600" />
+                  <span>On-Site Available Stock & Location</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Available On-Site Stock *</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        required
+                        value={editProjectMaterialForm.availableStock}
+                        onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, availableStock: e.target.value })}
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold text-emerald-700 pr-14"
+                        placeholder="0"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-emerald-600 font-mono">
+                        {editProjectMaterialForm.unit}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Directly updates the on-site physical stock count.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Warehouse / Store Yard</label>
+                    <select
+                      value={editProjectMaterialForm.warehouseId}
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, warehouseId: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-medium"
+                    >
+                      <option value="">Auto-Assign to Project Store</option>
+                      {warehouses.map((wh) => (
+                        <option key={wh.id} value={wh.id}>
+                          {wh.name} {wh.isSiteStore ? '(Site Store)' : '(Yard)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Edit Remarks / Reason</label>
+                  <input
+                    type="text"
+                    value={editProjectMaterialForm.remarks}
+                    onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, remarks: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg"
+                    placeholder="e.g. Corrected supplier name and verified on-ground stock count"
+                  />
+                </div>
+              </div>
+
+              {/* MODAL ACTIONS */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingProjectMaterial(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProjectMaterial}
+                  className="px-5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{isSavingProjectMaterial ? 'Saving...' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -94,6 +94,7 @@ import {
   getProjectMaterials,
   addStock,
   adjustStock,
+  updateProjectMaterial,
 } from '../controllers/inventoryController';
 import {
   getSuppliers,
@@ -350,6 +351,7 @@ router.delete('/inventory/requisitions/:id', requireRole('OWNER', 'PROJECT_MANAG
 router.post('/inventory/transactions', requireRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER'), recordStockMovement);
 router.get('/inventory/ledger', getStockLedger);
 router.get('/inventory/project-materials', getProjectMaterials);
+router.put('/inventory/project-materials', requireRole('OWNER', 'STOREKEEPER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER', 'SITE_ENGINEER'), updateProjectMaterial);
 router.post('/inventory/add-stock', requireRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER'), addStock);
 router.post('/inventory/adjust-stock', requireRole('OWNER', 'STOREKEEPER', 'PURCHASE_MANAGER', 'PROJECT_MANAGER'), adjustStock);
 
