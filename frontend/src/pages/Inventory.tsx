@@ -1480,23 +1480,23 @@ export const Inventory: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider">
                 <tr>
-                  <th className="py-2.5 px-3">Txn #</th>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Type</th>
-                  <th className="py-2.5 px-3">Material</th>
-                  <th className="py-2.5 px-3 text-right">Quantity</th>
-                  <th className="py-2.5 px-3 text-right">Unit Rate</th>
-                  <th className="py-2.5 px-3 text-right">Total Value</th>
-                  <th className="py-2.5 px-3">Project / Store</th>
-                  <th className="py-2.5 px-3">Ref / Notes</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Txn #</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Date</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Type</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Material</th>
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Quantity</th>
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Unit Rate</th>
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Total Value</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Project / Store</th>
+                  <th className="py-2.5 px-3 min-w-[240px]">Ref / Notes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {ledger.map((l) => (
                   <tr key={l.id} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{l.txnNumber}</td>
-                    <td className="py-2.5 px-3 text-slate-500">{formatDate(l.txnDate)}</td>
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 font-mono font-bold text-slate-700 whitespace-nowrap">{l.txnNumber}</td>
+                    <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{formatDate(l.txnDate)}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                           l.txnType === 'PURCHASE_RECEIPT'
@@ -1512,20 +1512,24 @@ export const Inventory: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-slate-900 font-semibold">{l.material?.name}</td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
                       {l.qty} {l.unit}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-slate-600">{formatCurrency(l.unitRate)}</td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                    <td className="py-2.5 px-3 text-right font-mono text-slate-600 whitespace-nowrap">{formatCurrency(l.unitRate)}</td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                       {formatCurrency(l.totalValue)}
                     </td>
                     <td className="py-2.5 px-3 text-slate-600">
                       {l.project?.name ? `[${l.project.name}] ` : ''}
                       {l.sourceWarehouse?.name || l.destWarehouse?.name || 'Central Store'}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={l.remarks || ''}>
-                      {l.referenceNo && <span className="font-mono font-bold text-slate-700 mr-1">[{l.referenceNo}]</span>}
-                      {l.remarks}
+                    <td className="py-2.5 px-3 text-slate-700 whitespace-normal break-words leading-relaxed min-w-[240px]" title={l.remarks || ''}>
+                      {l.referenceNo && (
+                        <span className="font-mono font-bold text-slate-800 mr-1.5 inline-block bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[10px]">
+                          [{l.referenceNo}]
+                        </span>
+                      )}
+                      <span>{l.remarks || '—'}</span>
                     </td>
                   </tr>
                 ))}
