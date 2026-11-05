@@ -549,6 +549,7 @@ export const recordStockMovement = async (req: Request, res: Response) => {
       txnType,
       materialId,
       qty,
+      quantity: rawQuantity,
       sourceWarehouseId,
       destWarehouseId,
       projectId,
@@ -556,8 +557,9 @@ export const recordStockMovement = async (req: Request, res: Response) => {
       remarks,
     } = req.body;
 
-    const quantity = Number(qty);
-    if (!materialId || quantity <= 0 || !txnType) {
+    const rawInput = req.body.quantity !== undefined ? req.body.quantity : req.body.qty;
+    const quantity = Number(rawInput);
+    if (!materialId || isNaN(quantity) || quantity <= 0 || !txnType) {
       return res.status(400).json({ success: false, message: 'Material, valid quantity (> 0), and transaction type are required.' });
     }
 
@@ -567,7 +569,7 @@ export const recordStockMovement = async (req: Request, res: Response) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      let unitCost = material.standardPrice;
+      let unitCost = Number(material.standardPrice) || 0;
       let effectiveSourceWarehouseId = sourceWarehouseId;
 
       // 1. If outward transaction (ISSUE_TO_SITE, CONSUMED, SITE_TRANSFER, DAMAGE, WASTAGE), check and deduct from source warehouse
@@ -622,9 +624,9 @@ export const recordStockMovement = async (req: Request, res: Response) => {
             );
           }
 
-          unitCost = sourceBalance.avgUnitCost || material.standardPrice;
-          const newSourceQty = sourceBalance.currentQty - quantity;
-          const newSourceVal = newSourceQty * unitCost;
+          unitCost = Number(sourceBalance.avgUnitCost) || Number(material.standardPrice) || 0;
+          const newSourceQty = Math.max(0, sourceBalance.currentQty - quantity);
+          const newSourceVal = Math.max(0, Math.round(newSourceQty * unitCost * 100) / 100);
 
           await tx.stockBalance.update({
             where: { id: sourceBalance.id },
@@ -659,17 +661,18 @@ export const recordStockMovement = async (req: Request, res: Response) => {
           });
         }
 
-        const existingValuation = destBalance.currentQty * destBalance.avgUnitCost;
+        const existingValuation = Number(destBalance.currentQty || 0) * Number(destBalance.avgUnitCost || 0);
         const incomingValuation = quantity * unitCost;
-        const newTotalQty = destBalance.currentQty + quantity;
+        const newTotalQty = Number(destBalance.currentQty || 0) + quantity;
         const newAvgCost = newTotalQty > 0 ? (existingValuation + incomingValuation) / newTotalQty : unitCost;
+        const newDestVal = Math.max(0, Math.round(newTotalQty * newAvgCost * 100) / 100);
 
         await tx.stockBalance.update({
           where: { id: destBalance.id },
           data: {
             currentQty: newTotalQty,
-            avgUnitCost: newAvgCost,
-            totalValuation: newTotalQty * newAvgCost,
+            avgUnitCost: Math.round(newAvgCost * 100) / 100,
+            totalValuation: newDestVal,
           },
         });
       }
@@ -688,7 +691,7 @@ export const recordStockMovement = async (req: Request, res: Response) => {
           qty: quantity,
           unit: material.unit,
           unitRate: unitCost,
-          totalValue: quantity * unitCost,
+          totalValue: Math.round(quantity * unitCost * 100) / 100,
           sourceWarehouseId: effectiveSourceWarehouseId || null,
           destWarehouseId: destWarehouseId || null,
           projectId: projectId || null,
@@ -973,9 +976,10 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
  */
 export const addStock = async (req: Request, res: Response) => {
   try {
-    const { materialId, warehouseId, projectId, qty, unitPrice, supplierName, referenceNo, remarks, txnType } = req.body;
+    const { materialId, warehouseId, projectId, qty, quantity: rawQuantity, unitPrice, supplierName, referenceNo, remarks, txnType } = req.body;
 
-    const quantity = Number(qty);
+    const rawInput = req.body.quantity !== undefined ? req.body.quantity : req.body.qty;
+    const quantity = Number(rawInput);
     if (!materialId || isNaN(quantity) || quantity <= 0) {
       return res.status(400).json({ success: false, message: 'Valid material and quantity (> 0) are required.' });
     }

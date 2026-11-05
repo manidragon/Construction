@@ -262,6 +262,7 @@ export const Inventory: React.FC = () => {
         txnType: issueForm.txnType,
         materialId: issueForm.materialId,
         quantity: qtyNum,
+        qty: qtyNum,
         sourceWarehouseId: issueForm.sourceWarehouseId || undefined,
         destWarehouseId: issueForm.destWarehouseId || undefined,
         projectId: issueForm.projectId || undefined,
