@@ -160,6 +160,9 @@ export const Inventory: React.FC = () => {
   const [deletingWarehouse, setDeletingWarehouse] = useState<Warehouse | null>(null);
   const [isDeletingWarehouse, setIsDeletingWarehouse] = useState(false);
 
+  // Filter State
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+
   // Edit Project Material Row State
   const [editingProjectMaterial, setEditingProjectMaterial] = useState<ProjectMaterial | null>(null);
   const [editProjectMaterialForm, setEditProjectMaterialForm] = useState({
@@ -168,6 +171,8 @@ export const Inventory: React.FC = () => {
     brand: '',
     unit: '',
     standardPrice: '',
+    minStockLevel: '10',
+    reorderQty: '50',
     poId: '',
     poNumber: '',
     poDate: '',
@@ -436,6 +441,8 @@ export const Inventory: React.FC = () => {
       brand: pm.brand || '',
       unit: pm.unit || 'BAG',
       standardPrice: String(pm.standardPrice ?? pm.avgUnitCost ?? 0),
+      minStockLevel: String(pm.minStockLevel ?? 10),
+      reorderQty: String(pm.reorderQty ?? 50),
       poId: firstPo?.id || '',
       poNumber: firstPo?.poNumber || '',
       poDate: formattedPoDate,
@@ -446,6 +453,39 @@ export const Inventory: React.FC = () => {
       warehouseId: pm.preferredWarehouseId || warehouses[0]?.id || '',
       remarks: '',
     });
+  };
+
+  // Open Requisition Pre-filled for Low Stock Item
+  const openRequisitionForLowStock = (specificMaterialId?: string) => {
+    const targetMat = specificMaterialId
+      ? materials.find((m) => m.id === specificMaterialId)
+      : materials.find((m) => m.isLowStock) || materials[0];
+
+    if (!targetMat) {
+      setShowRequisitionModal(true);
+      return;
+    }
+
+    const shortfall = Math.max(0, (targetMat.minStockLevel || 10) - (targetMat.totalQty || 0));
+    const qtyToOrder = targetMat.reorderQty && targetMat.reorderQty > shortfall
+      ? targetMat.reorderQty
+      : shortfall || targetMat.minStockLevel || 50;
+
+    setReqForm({
+      projectId: selectedProjectId || projects[0]?.id || '',
+      requiredDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      priority: 'HIGH',
+      remarks: `Safety stock replenishment for low stock material: ${targetMat.name} (${targetMat.code})`,
+      items: [
+        {
+          materialId: targetMat.id,
+          requestedQty: String(qtyToOrder),
+          unit: targetMat.unit,
+          purpose: `Restock to satisfy minimum safety threshold (${targetMat.minStockLevel} ${targetMat.unit})`,
+        },
+      ],
+    });
+    setShowRequisitionModal(true);
   };
 
   // Handle Edit Project Material Row Submit
@@ -463,6 +503,8 @@ export const Inventory: React.FC = () => {
         brand: editProjectMaterialForm.brand,
         unit: editProjectMaterialForm.unit,
         standardPrice: Number(editProjectMaterialForm.standardPrice) || 0,
+        minStockLevel: Number(editProjectMaterialForm.minStockLevel) || 10,
+        reorderQty: Number(editProjectMaterialForm.reorderQty) || 50,
         poId: editProjectMaterialForm.poId || undefined,
         poNumber: editProjectMaterialForm.poNumber,
         poDate: editProjectMaterialForm.poDate || undefined,
@@ -666,10 +708,22 @@ export const Inventory: React.FC = () => {
   };
 
   // Computed KPIs
-  const lowStockCount = materials.filter((m) => m.isLowStock).length;
+  const lowStockCatalogMaterials = materials.filter((m) => m.isLowStock);
+  const lowStockProjectMaterials = projectMaterials.filter(
+    (pm) => pm.isLowStock || pm.availableStock <= (pm.minStockLevel ?? 10)
+  );
+  const lowStockCount = lowStockCatalogMaterials.length;
   const totalValuation = materials.reduce((acc, m) => acc + (m.totalValuation || 0), 0);
   const totalProjectStockItems = projectMaterials.reduce((acc, pm) => acc + (pm.availableStock > 0 ? 1 : 0), 0);
   const activeSelectedProject = projects.find((p) => p.id === selectedProjectId);
+
+  const displayedProjectMaterials = showLowStockOnly
+    ? projectMaterials.filter((pm) => pm.isLowStock || pm.availableStock <= (pm.minStockLevel ?? 10))
+    : projectMaterials;
+
+  const displayedMaterials = showLowStockOnly
+    ? materials.filter((m) => m.isLowStock)
+    : materials;
 
   return (
     <div className="space-y-6 max-w-full overflow-x-hidden">
@@ -803,8 +857,31 @@ export const Inventory: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Stock Alert Status</span>
+        <div
+          onClick={() => {
+            if (lowStockCount > 0) {
+              setShowLowStockOnly(!showLowStockOnly);
+              setActiveTab('materials');
+              setMaterialView('catalog');
+            }
+          }}
+          className={`bg-white p-3.5 sm:p-4 rounded-2xl border shadow-sm flex flex-col justify-between min-w-0 transition ${
+            lowStockCount > 0
+              ? 'border-red-200 hover:border-red-400 hover:bg-red-50/20 cursor-pointer'
+              : 'border-slate-200'
+          }`}
+          title={lowStockCount > 0 ? 'Click to filter low stock items in catalog' : 'All stock levels healthy'}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">Stock Alert Status</span>
+            {lowStockCount > 0 && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded transition ${
+                showLowStockOnly ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700'
+              }`}>
+                {showLowStockOnly ? 'Filtered' : 'Click to Filter'}
+              </span>
+            )}
+          </div>
           <div className="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
             <span className={`text-xl sm:text-2xl font-bold font-mono ${lowStockCount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
               {lowStockCount}
@@ -818,26 +895,83 @@ export const Inventory: React.FC = () => {
 
       {/* Low Stock Warning Banner */}
       {lowStockCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 min-w-0">
-          <div className="flex items-start sm:items-center space-x-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
-              <AlertTriangle className="w-4 h-4" />
+        <div className="bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 border border-red-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3 min-w-0">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-start space-x-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-red-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5 md:mt-0">
+                <AlertTriangle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center space-x-2 flex-wrap">
+                  <h4 className="text-sm font-bold text-red-950">
+                    Safety Threshold Alert: {lowStockCount} Material{lowStockCount > 1 ? 's' : ''} Below Safety Reorder Level
+                  </h4>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-red-600 text-white rounded-full">
+                    Action Required
+                  </span>
+                </div>
+                <p className="text-xs text-red-800 mt-0.5">
+                  Available stock is at or below minimum safety levels. Inward pending shipments or raise a purchase requisition to keep construction on schedule.
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-red-900 break-words">
-                Low Stock Threshold Warning: {lowStockCount} materials have fallen below safety reorder levels!
-              </p>
-              <p className="text-[11px] text-red-700 mt-0.5 break-words">
-                Inward pending deliveries or raise purchase requisitions to keep site construction on schedule.
-              </p>
+
+            {/* Quick Action Buttons */}
+            <div className="flex items-center flex-wrap gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setActiveTab('materials');
+                  setMaterialView('catalog');
+                  setShowLowStockOnly(true);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold bg-white text-red-800 border border-red-200 hover:bg-red-50 rounded-xl transition shadow-sm flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Boxes className="w-3.5 h-3.5 text-red-600" />
+                <span>View {lowStockCount} Low Stock Item{lowStockCount > 1 ? 's' : ''}</span>
+              </button>
+              {hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                <button
+                  onClick={() => openRequisitionForLowStock()}
+                  className="px-3.5 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-xl transition shadow-sm flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Reorder / Indent</span>
+                </button>
+              )}
             </div>
           </div>
-          <button
-            onClick={() => setActiveTab('requisitions')}
-            className="text-xs font-bold text-red-800 underline hover:text-red-950 shrink-0 self-end sm:self-auto cursor-pointer"
-          >
-            View Requisitions →
-          </button>
+
+          {/* Detailed Low Stock Material Chips */}
+          <div className="pt-2 border-t border-red-200/70 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-red-900 uppercase tracking-wider shrink-0">
+              Low Stock Items:
+            </span>
+            {lowStockCatalogMaterials.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  setActiveTab('materials');
+                  setMaterialView('catalog');
+                  setSearch(m.name);
+                }}
+                className="inline-flex items-center space-x-2 bg-white hover:bg-slate-50 text-xs px-2.5 py-1 rounded-lg border border-red-200 shadow-2xs cursor-pointer transition text-left group"
+                title={`Click to view ${m.name} in catalog`}
+              >
+                <span className="font-mono text-[10px] font-bold text-red-700 bg-red-100 px-1 py-0.2 rounded">
+                  {m.code}
+                </span>
+                <span className="font-bold text-slate-800 group-hover:text-red-700 truncate max-w-[170px]">
+                  {m.name}
+                </span>
+                <span className="text-[11px] text-red-700 font-mono font-semibold">
+                  Stock: {m.totalQty ?? 0} / Min: {m.minStockLevel} {m.unit}
+                </span>
+                <span className="text-[10px] bg-red-50 text-red-700 px-1.5 py-0.2 rounded font-bold">
+                  Shortfall: {Math.max(0, m.minStockLevel - (m.totalQty ?? 0))}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -895,16 +1029,43 @@ export const Inventory: React.FC = () => {
               </button>
             </div>
 
-            {/* Search Input */}
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search material, code, project or brand..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
+            {/* Search & Low Stock Quick Filter */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+                className={`flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border shrink-0 ${
+                  showLowStockOnly
+                    ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                    : lowStockCount > 0
+                    ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+                title="Filter to show only materials below minimum safety stock"
+              >
+                <AlertTriangle className={`w-3.5 h-3.5 ${showLowStockOnly ? 'text-white' : 'text-red-500'}`} />
+                <span>{showLowStockOnly ? 'Low Stock Filter Active' : `Low Stock Filter (${lowStockCount})`}</span>
+                {showLowStockOnly && (
+                  <X
+                    className="w-3.5 h-3.5 ml-1 p-0.5 rounded-full hover:bg-red-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowLowStockOnly(false);
+                    }}
+                  />
+                )}
+              </button>
+
+              <div className="relative w-full sm:w-64 md:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search material, code, project or brand..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
             </div>
           </div>
 
@@ -924,7 +1085,7 @@ export const Inventory: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2 shrink-0">
                   <span className="text-[11px] font-semibold text-slate-500">
-                    Showing {projectMaterials.length} material order lines
+                    Showing {displayedProjectMaterials.length} of {projectMaterials.length} material order lines {showLowStockOnly ? '(Low Stock Only)' : ''}
                   </span>
                 </div>
               </div>
@@ -934,30 +1095,58 @@ export const Inventory: React.FC = () => {
                   <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-amber-500 border-t-transparent mb-2"></div>
                   <p>Loading project material orders & stock balances...</p>
                 </div>
-              ) : projectMaterials.length === 0 ? (
-                <div className="p-12 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-                    <Boxes className="w-6 h-6" />
+              ) : displayedProjectMaterials.length === 0 ? (
+                showLowStockOnly ? (
+                  <div className="p-10 text-center space-y-2.5">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-800">No Low Stock Orders in This Project View</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      All currently ordered materials on site have healthy stock levels above minimum thresholds. The {lowStockCount} low stock materials are in your Central Catalog.
+                    </p>
+                    <div className="pt-2 flex justify-center space-x-2">
+                      <button
+                        onClick={() => {
+                          setMaterialView('catalog');
+                        }}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+                      >
+                        Switch to Central Catalog ({lowStockCount})
+                      </button>
+                      <button
+                        onClick={() => setShowLowStockOnly(false)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        Clear Low Stock Filter
+                      </button>
+                    </div>
                   </div>
-                  <h4 className="text-sm font-bold text-slate-800">No Material Orders Found for Selected Project</h4>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    No purchase orders have been created yet for this project. You can inward stock directly using the button below or create a Purchase Order in Procurement.
-                  </p>
-                  <div className="pt-2 flex justify-center space-x-2">
-                    <button
-                      onClick={() => openAddStockModal()}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                    >
-                      + Inward Direct Stock
-                    </button>
-                    <button
-                      onClick={() => setMaterialView('catalog')}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
-                    >
-                      Browse Material Catalog
-                    </button>
+                ) : (
+                  <div className="p-12 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+                      <Boxes className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-800">No Material Orders Found for Selected Project</h4>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      No purchase orders have been created yet for this project. You can inward stock directly using the button below or create a Purchase Order in Procurement.
+                    </p>
+                    <div className="pt-2 flex justify-center space-x-2">
+                      <button
+                        onClick={() => openAddStockModal()}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                      >
+                        + Inward Direct Stock
+                      </button>
+                      <button
+                        onClick={() => setMaterialView('catalog')}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
+                      >
+                        Browse Material Catalog
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )
               ) : (
                 <div className="overflow-x-auto w-full">
                   <table className="w-full text-left text-xs min-w-[950px]">
@@ -976,7 +1165,7 @@ export const Inventory: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
-                      {projectMaterials.map((pm) => (
+                      {displayedProjectMaterials.map((pm) => (
                         <tr key={pm.id} className="hover:bg-amber-50/30 transition">
                           {/* Material Name & Category */}
                           <td className="py-3 px-3">
@@ -1082,29 +1271,47 @@ export const Inventory: React.FC = () => {
 
                           {/* Available On-Site Stock */}
                           <td className="py-3 px-3 text-right">
-                            <span className="font-mono font-bold text-sm text-emerald-700 block">
+                            <span className={`font-mono font-bold text-sm block ${
+                              pm.availableStock <= (pm.minStockLevel ?? 10) && pm.availableStock > 0
+                                ? 'text-amber-600'
+                                : pm.availableStock === 0
+                                ? 'text-rose-600'
+                                : 'text-emerald-700'
+                            }`}>
                               {pm.availableStock} {pm.unit}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-500">
+                            <span className="text-[10px] font-mono text-slate-400 block">
+                              Min Safety: {pm.minStockLevel ?? 10} {pm.unit}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500 block">
                               {formatCurrency(pm.totalValuation || 0)}
                             </span>
                           </td>
 
                           {/* Status Badge */}
                           <td className="py-3 px-3 text-center">
-                            {pm.availableStock > 0 ? (
-                              <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>In Stock</span>
+                            {pm.availableStock <= (pm.minStockLevel ?? 10) && pm.availableStock > 0 ? (
+                              <span
+                                className="inline-flex items-center space-x-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full"
+                                title={`Available stock (${pm.availableStock}) is at or below safety threshold (${pm.minStockLevel ?? 10} ${pm.unit})`}
+                              >
+                                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                <span>Low Stock</span>
                               </span>
-                            ) : pm.pendingDeliveryQty > 0 ? (
+                            ) : pm.availableStock === 0 && pm.pendingDeliveryQty > 0 ? (
                               <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                                 <Clock className="w-3 h-3 text-amber-600" />
                                 <span>Pending Inward</span>
                               </span>
+                            ) : pm.availableStock === 0 ? (
+                              <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                                <AlertTriangle className="w-3 h-3 text-rose-500" />
+                                <span>Out of Stock</span>
+                              </span>
                             ) : (
-                              <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                                <span>Fully Issued</span>
+                              <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>In Stock</span>
                               </span>
                             )}
                           </td>
@@ -1112,6 +1319,18 @@ export const Inventory: React.FC = () => {
                           {/* Action Buttons */}
                           <td className="py-3 px-3 text-center">
                             <div className="flex items-center justify-center space-x-1.5">
+                              {/* Quick Reorder Button if Low Stock */}
+                              {pm.availableStock <= (pm.minStockLevel ?? 10) && hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                                <button
+                                  onClick={() => openRequisitionForLowStock(pm.materialId)}
+                                  className="flex items-center space-x-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 px-2 py-1.5 rounded-lg text-[11px] transition cursor-pointer"
+                                  title="Raise Requisition for this low stock material"
+                                >
+                                  <FileCheck className="w-3 h-3 text-red-600" />
+                                  <span className="whitespace-nowrap">Reorder</span>
+                                </button>
+                              )}
+
                               {/* 1. ISSUE STOCK BUTTON (Locked to this project & material) */}
                               {hasRole('OWNER', 'STOREKEEPER', 'SITE_ENGINEER') && (
                                 <button
@@ -1190,7 +1409,7 @@ export const Inventory: React.FC = () => {
                     Central Company Material Catalog & Multi-Store Inventory
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Master items, standard purchase rates, reorder thresholds, and warehouse balances.
+                    Master items, standard purchase rates, reorder thresholds, and warehouse balances. Showing {displayedMaterials.length} of {materials.length} items {showLowStockOnly ? '(Low Stock Filter)' : ''}.
                   </p>
                 </div>
                 {hasRole('OWNER', 'PURCHASE_MANAGER', 'STOREKEEPER') && (
@@ -1221,7 +1440,23 @@ export const Inventory: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {materials.map((m) => (
+                    {displayedMaterials.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="py-8 text-center text-xs text-slate-500">
+                          <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                          <p className="font-bold text-slate-700">No materials match the current filter.</p>
+                          {showLowStockOnly && (
+                            <button
+                              onClick={() => setShowLowStockOnly(false)}
+                              className="mt-2 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                            >
+                              Clear Low Stock Filter
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ) : (
+                      displayedMaterials.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-3 font-mono font-bold text-slate-700">{m.code}</td>
                         <td className="py-3 px-3">
@@ -1259,6 +1494,17 @@ export const Inventory: React.FC = () => {
                         </td>
                         <td className="py-3 px-3 text-center">
                           <div className="flex items-center justify-center space-x-1.5">
+                            {/* Reorder / Indent button for low stock item */}
+                            {m.isLowStock && hasRole('OWNER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                              <button
+                                onClick={() => openRequisitionForLowStock(m.id)}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
+                                title={`Raise Requisition / Reorder ${m.name}`}
+                              >
+                                <FileCheck className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
                             {/* Inward / Add Stock */}
                             <button
                               onClick={() => openAddStockModal(undefined, m)}
@@ -1309,7 +1555,8 @@ export const Inventory: React.FC = () => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    ))
+                  )}
                   </tbody>
                 </table>
               </div>
@@ -2742,6 +2989,48 @@ export const Inventory: React.FC = () => {
                       className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono"
                       placeholder="e.g. 380"
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200/70">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Safety Reorder Level (Min Stock) *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        required
+                        value={editProjectMaterialForm.minStockLevel}
+                        onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, minStockLevel: e.target.value })}
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold text-red-700 pr-14"
+                        placeholder="10"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">
+                        {editProjectMaterialForm.unit}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Triggers Low Stock Warning when on-site stock drops to or below this level.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Suggested Reorder Quantity
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        value={editProjectMaterialForm.reorderQty}
+                        onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, reorderQty: e.target.value })}
+                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-medium pr-14"
+                        placeholder="50"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">
+                        {editProjectMaterialForm.unit}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Recommended order quantity when restocking.</p>
                   </div>
                 </div>
               </div>

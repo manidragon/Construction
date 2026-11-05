@@ -819,6 +819,8 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
             brand: item.material.brand,
             unit: item.material.unit,
             standardPrice: item.material.standardPrice,
+            minStockLevel: item.material.minStockLevel ?? 10,
+            reorderQty: item.material.reorderQty ?? 50,
             projectId: po.projectId,
             projectCode: po.project.code,
             projectName: po.project.name,
@@ -869,6 +871,8 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
           brand: sl.material.brand,
           unit: sl.material.unit,
           standardPrice: sl.material.standardPrice,
+          minStockLevel: sl.material.minStockLevel ?? 10,
+          reorderQty: sl.material.reorderQty ?? 50,
           projectId: sl.projectId,
           projectCode: proj?.code || '',
           projectName: proj?.name || '',
@@ -945,6 +949,7 @@ export const getProjectMaterials = async (req: Request, res: Response) => {
 
       entry.totalValuation = entry.availableStock * (entry.avgUnitCost || entry.standardPrice);
       entry.pendingDeliveryQty = Math.max(0, entry.totalOrderedQty - entry.totalReceivedQty);
+      entry.isLowStock = entry.availableStock <= (entry.minStockLevel !== undefined ? entry.minStockLevel : 10);
     }
 
     let result = Object.values(projectMaterialMap);
@@ -1248,6 +1253,8 @@ export const updateProjectMaterial = async (req: Request, res: Response) => {
       brand,
       unit,
       standardPrice,
+      minStockLevel,
+      reorderQty,
       poId,
       poNumber,
       poDate,
@@ -1286,6 +1293,12 @@ export const updateProjectMaterial = async (req: Request, res: Response) => {
     if (unit && unit.trim()) matUpdateData.unit = unit.trim().toUpperCase();
     if (standardPrice !== undefined && standardPrice !== '' && !isNaN(Number(standardPrice))) {
       matUpdateData.standardPrice = Number(standardPrice);
+    }
+    if (minStockLevel !== undefined && minStockLevel !== '' && !isNaN(Number(minStockLevel))) {
+      matUpdateData.minStockLevel = Number(minStockLevel);
+    }
+    if (reorderQty !== undefined && reorderQty !== '' && !isNaN(Number(reorderQty))) {
+      matUpdateData.reorderQty = Number(reorderQty);
     }
 
     let updatedMaterial = material;

@@ -294,6 +294,9 @@ export interface ProjectMaterial {
   avgUnitCost: number;
   preferredWarehouseId?: string;
   preferredWarehouseName?: string;
+  minStockLevel?: number;
+  reorderQty?: number;
+  isLowStock?: boolean;
   purchaseOrders: ProjectMaterialOrder[];
 }
 
