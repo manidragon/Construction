@@ -159,6 +159,7 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
 
     // Low stock items
     const materials = await prisma.material.findMany({
+      where: { ...tenantFilter },
       include: { stockBalances: true },
     });
     const lowStockAlerts = materials.filter((m) => {
@@ -167,24 +168,37 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     });
 
     // Role-specific operational counts
-    const totalWorkersCount = await prisma.worker.count();
-    const totalTasksCount = await prisma.task.count(projectId ? { where: { projectId: String(projectId) } } : undefined);
+    const totalWorkersCount = await prisma.worker.count({
+      where: {
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
+      },
+    });
+    const totalTasksCount = await prisma.task.count({
+      where: {
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
+      },
+    });
     const activeTasksCount = await prisma.task.count({
       where: {
         status: 'IN_PROGRESS',
-        ...(projectId ? { projectId: String(projectId) } : {}),
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
       },
     });
     const completedTasksCount = await prisma.task.count({
       where: {
         status: 'COMPLETED',
-        ...(projectId ? { projectId: String(projectId) } : {}),
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
       },
     });
-    const totalDPRCount = await prisma.dailySiteReport.count(projectId ? { where: { projectId: String(projectId) } } : undefined);
+    const totalDPRCount = await prisma.dailySiteReport.count({
+      where: {
+        ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
+      },
+    });
     const pendingPOCount = await prisma.purchaseOrder.count({
       where: {
         status: 'DRAFT',
+        ...tenantFilter,
         ...(projectId ? { projectId: String(projectId) } : {}),
       },
     });
@@ -238,21 +252,68 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
       };
     });
 
-    // 5. Monthly Cash Flow (Last 6 Months Trend)
-    const cashFlowTrend = [
-      { month: 'May 2024', inflow: 18000000, outflow: 14500000, net: 3500000 },
-      { month: 'Jun 2024', inflow: 22000000, outflow: 17200000, net: 4800000 },
-      { month: 'Jul 2024', inflow: 25000000, outflow: 21000000, net: 4000000 },
-      { month: 'Aug 2024', inflow: 29000000, outflow: 24500000, net: 4500000 },
-      { month: 'Sep 2024', inflow: 34000000, outflow: 28000000, net: 6000000 },
-      { month: 'Oct 2024', inflow: totalMoneyReceived > 0 ? totalMoneyReceived : 30000000, outflow: 25500000, net: 4500000 },
-    ];
+    // 5. Monthly Cash Flow (Trailing 6 Months Trend) calculated dynamically from actual tenant records
+    const salaryPayments = await prisma.staffSalaryPayment.findMany({
+      where: {
+        staff: { ...tenantFilter },
+        status: 'PAID',
+      },
+    });
 
-    // 6. Upcoming Deadlines
+    const cashFlowTrend = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentDate = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+      const targetYear = targetDate.getFullYear();
+      const targetMonth = targetDate.getMonth();
+      const monthLabel = `${monthNames[targetMonth]} ${targetYear}`;
+
+      const startOfMonth = new Date(targetYear, targetMonth, 1);
+      const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
+      // Inflow: Sum of client receipts in this month for this tenant
+      const monthInflow = clientReceipts
+        .filter((r) => {
+          const rDate = new Date(r.receiptDate || r.createdAt);
+          return rDate >= startOfMonth && rDate <= endOfMonth;
+        })
+        .reduce((sum, r) => sum + r.amount, 0);
+
+      // Outflow: Direct site expenses + salary disbursements in this month for this tenant
+      const monthDirectExpenses = directExpenses
+        .filter((e) => {
+          const eDate = new Date(e.expenseDate || e.createdAt);
+          return eDate >= startOfMonth && eDate <= endOfMonth;
+        })
+        .reduce((sum, e) => sum + e.totalAmount, 0);
+
+      const monthSalaryPayments = salaryPayments
+        .filter((s) => {
+          const sDate = new Date(s.disbursementDate || s.createdAt);
+          return sDate >= startOfMonth && sDate <= endOfMonth;
+        })
+        .reduce((sum, s) => sum + s.netPaid, 0);
+
+      const monthOutflow = monthDirectExpenses + monthSalaryPayments;
+      const net = monthInflow - monthOutflow;
+
+      cashFlowTrend.push({
+        month: monthLabel,
+        inflow: Math.round(monthInflow),
+        outflow: Math.round(monthOutflow),
+        net: Math.round(net),
+      });
+    }
+
+    // 6. Upcoming Deadlines (scoped to tenant projects)
     const upcomingDeadlines = await prisma.task.findMany({
       where: {
         status: { in: ['NOT_STARTED', 'IN_PROGRESS'] },
         dueDate: { gte: now },
+        project: { ...tenantFilter },
+        ...(projectId ? { projectId: String(projectId) } : {}),
       },
       include: { project: { select: { code: true, name: true } } },
       orderBy: { dueDate: 'asc' },

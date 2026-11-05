@@ -962,7 +962,12 @@ export const Dashboard: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Monthly Cash Inflow vs Outflow</h2>
-                <p className="text-xs text-slate-500">Client collections versus vendor & payroll disbursements</p>
+                <p className="text-xs text-slate-500">
+                  Client collections versus vendor & payroll disbursements
+                  {data?.cashFlowTrend?.every((c: any) => c.inflow === 0 && c.outflow === 0) && (
+                    <span className="text-slate-400 font-medium ml-1.5">(No transactions recorded yet)</span>
+                  )}
+                </p>
               </div>
               <Link to="/accounts" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center shrink-0">
                 <span>Ledgers</span>
@@ -989,7 +994,12 @@ export const Dashboard: React.FC = () => {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis
-                    tickFormatter={(val) => `₹${(val / 10000000).toFixed(0)}Cr`}
+                    tickFormatter={(val) => {
+                      if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`;
+                      if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
+                      if (val >= 1000) return `₹${(val / 1000).toFixed(0)}k`;
+                      return `₹${val}`;
+                    }}
                     tick={{ fontSize: 10 }}
                   />
                   <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
@@ -1560,7 +1570,12 @@ export const Dashboard: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div>
               <h2 className="text-sm font-bold text-slate-900">Monthly Cash Inflow vs Outflow</h2>
-              <p className="text-xs text-slate-500">Client collections versus vendor & payroll disbursements</p>
+              <p className="text-xs text-slate-500">
+                Client collections versus vendor & payroll disbursements
+                {data?.cashFlowTrend?.every((c: any) => c.inflow === 0 && c.outflow === 0) && (
+                  <span className="text-slate-400 font-medium ml-1.5">(No transactions recorded yet)</span>
+                )}
+              </p>
             </div>
             <Link to="/accounts" className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center shrink-0">
               <span>Ledgers</span>
@@ -1587,7 +1602,12 @@ export const Dashboard: React.FC = () => {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis
-                  tickFormatter={(val) => `₹${(val / 10000000).toFixed(0)}Cr`}
+                  tickFormatter={(val) => {
+                    if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`;
+                    if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
+                    if (val >= 1000) return `₹${(val / 1000).toFixed(0)}k`;
+                    return `₹${val}`;
+                  }}
                   tick={{ fontSize: 10 }}
                 />
                 <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
