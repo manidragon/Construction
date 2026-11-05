@@ -12,6 +12,7 @@ import {
   Package,
   Users,
   Eye,
+  EyeOff,
   CheckCircle2,
   Sparkles,
   Building2,
@@ -168,6 +169,7 @@ export const Login: React.FC = () => {
 
   const [email, setEmail] = useState('owner@apexbuild.com');
   const [password, setPassword] = useState('Password@123');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -302,16 +304,29 @@ export const Login: React.FC = () => {
                   <label className="block text-slate-300 font-semibold">Password</label>
                   <span className="text-[10px] text-slate-500">Default: Password@123</span>
                 </div>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3.5 top-2.5 text-slate-500" />
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 absolute left-3.5 text-slate-500 pointer-events-none" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-4 py-2 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition font-mono text-xs"
+                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-10 py-2 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition font-mono text-xs"
                     placeholder="••••••••"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 p-1 text-slate-400 hover:text-slate-200 transition cursor-pointer focus:outline-none"
+                    title={showPassword ? 'Hide password' : 'View password'}
+                    aria-label={showPassword ? 'Hide password' : 'View password'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Eye className="w-4 h-4 text-slate-400 hover:text-slate-200" />
+                    )}
+                  </button>
                 </div>
               </div>
 
