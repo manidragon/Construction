@@ -105,7 +105,7 @@ export const Dashboard: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
             <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center space-x-1.5">
               <Boxes className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <span>{s.totalMaterialsCount || 28} Catalog Items</span>
+              <span>{s.totalMaterialsCount ?? 0} Catalog Items</span>
             </span>
             {s.lowStockAlertsCount > 0 && (
               <Link
@@ -391,7 +391,7 @@ export const Dashboard: React.FC = () => {
                 <CheckCircle2 className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.activeTasksCount || 8}</p>
+            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.activeTasksCount ?? 0}</p>
             <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
               <span>Work currently in progress on site</span>
             </div>
@@ -417,7 +417,7 @@ export const Dashboard: React.FC = () => {
                 <FileText className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-emerald-700 mt-2 truncate">{s.totalDPRCount || 14}</p>
+            <p className="text-xl sm:text-2xl font-extrabold text-emerald-700 mt-2 truncate">{s.totalDPRCount ?? 0}</p>
             <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
               <span>Shift logs submitted across sites</span>
             </div>
@@ -547,10 +547,10 @@ export const Dashboard: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
             <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200">
-              🛒 {s.totalPOCount || 12} Purchase Orders
+              🛒 {s.totalPOCount ?? 0} Purchase Orders
             </span>
             <span className="bg-cyan-50 text-cyan-700 px-3 py-1.5 rounded-lg border border-cyan-200">
-              🏭 {s.totalSuppliersCount || 12} Registered Vendors
+              🏭 {s.totalSuppliersCount ?? 0} Registered Vendors
             </span>
           </div>
         </div>
@@ -681,7 +681,7 @@ export const Dashboard: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
             <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200">
-              👷 {s.totalWorkersCount || 45} Registered Workers
+              👷 {s.totalWorkersCount ?? 0} Registered Workers
             </span>
             <span className="bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg border border-rose-200">
               🏗️ {s.activeProjects} Active Sites
@@ -711,7 +711,7 @@ export const Dashboard: React.FC = () => {
                 <Users className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.totalWorkersCount || 45}</p>
+            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.totalWorkersCount ?? 0}</p>
             <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
               <span>Masons, helpers, carpenters & trades</span>
             </div>
