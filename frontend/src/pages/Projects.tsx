@@ -27,6 +27,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Projects: React.FC = () => {
   const { hasRole } = useAuth();
@@ -50,6 +51,7 @@ export const Projects: React.FC = () => {
   // Customer acquisition source: DIRECT customer or CONVERT from Quotation
   const [customerSource, setCustomerSource] = useState<'DIRECT' | 'QUOTATION'>('DIRECT');
   const [selectedQuotationId, setSelectedQuotationId] = useState<string>('');
+  const selectedQuotation = quotations.find((q) => q.id === selectedQuotationId);
 
   const [clientForm, setClientForm] = useState({
     code: '',
@@ -254,7 +256,7 @@ export const Projects: React.FC = () => {
       projectType: mappedType,
       contractType: 'ITEM_RATE',
       contractValue: String(quot.totalAmount || ''),
-      approvedBudget: String(quot.subtotal || Math.round((quot.totalAmount || 0) * 0.75)),
+      approvedBudget: String(quot.subtotal || quot.totalAmount || ''),
       plannedStartDate: prev.plannedStartDate || defaultStartDate,
       plannedEndDate: prev.plannedEndDate || defaultEndDate,
       paymentTerms: quot.penaltyTerms ? `${quot.penaltyTerms}. Milestone payment schedule per quotation.` : '50% Advance, 40% Material Delivery, 10% Handover',
@@ -265,9 +267,12 @@ export const Projects: React.FC = () => {
   const handleClearQuotationSelection = () => {
     setSelectedQuotationId('');
     setCustomerSource('DIRECT');
-    setFormData((prev) => ({
-      ...prev,
-      quotationId: '',
+    resetProjectForm();
+  };
+
+  const resetProjectForm = () => {
+    setFormData({
+      code: '',
       name: '',
       description: '',
       clientName: '',
@@ -276,11 +281,20 @@ export const Projects: React.FC = () => {
       clientBillingAddr: '',
       clientGstin: '',
       siteAddress: '',
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      projectType: 'RESIDENTIAL',
+      contractType: 'ITEM_RATE',
       contractValue: '',
       approvedBudget: '',
+      plannedStartDate: '',
+      plannedEndDate: '',
       paymentTerms: 'Monthly Running Account (RA) Bills. Retention 5%, TDS 2%, GST 18%.',
       taxRatePercent: '18',
-    }));
+      quotationId: '',
+    });
+    setSelectedQuotationId('');
+    setCustomerSource('DIRECT');
   };
 
   // If URL has convertQuotationId, trigger modal and quotation preselection
@@ -300,7 +314,7 @@ export const Projects: React.FC = () => {
       if (res.success && res.nextProjectCode) {
         setFormData((prev) => ({
           ...prev,
-          code: prev.code || res.nextProjectCode,
+          code: res.nextProjectCode,
         }));
       }
     } catch (err) {
@@ -474,169 +488,168 @@ export const Projects: React.FC = () => {
           {projects
             .filter((p) => !selectedProjectId || p.id === selectedProjectId)
             .map((p) => (
-            <div
-              key={p.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden group"
-            >
-              <div className="p-5">
-                {/* Header: Code & Status */}
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                    {p.code}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      p.status === 'ACTIVE'
+              <div
+                key={p.id}
+                className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden group"
+              >
+                <div className="p-5">
+                  {/* Header: Code & Status */}
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      {p.code}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === 'ACTIVE'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : p.status === 'COMPLETED'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                        : 'bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    {p.status}
-                  </span>
-                </div>
-
-                {/* Title & Client */}
-                <h3 className="text-base font-bold text-slate-900 mt-3 group-hover:text-amber-600 transition">
-                  {p.name}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">Client: <span className="font-semibold text-slate-700">{p.clientName}</span></p>
-
-                {/* Location */}
-                <div className="flex items-center text-xs text-slate-500 mt-2">
-                  <MapPin className="w-3.5 h-3.5 mr-1 text-slate-400 shrink-0" />
-                  <span className="truncate">{p.siteAddress}</span>
-                </div>
-
-                {/* Financial Summary */}
-                <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-medium">Contract Value</span>
-                    <p className="text-xs font-extrabold text-slate-900">{formatCurrency(p.contractValue)}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-medium">Approved Budget</span>
-                    <p className="text-xs font-extrabold text-slate-700">{formatCurrency(p.approvedBudget)}</p>
-                  </div>
-                </div>
-
-                {/* Cash vs Bank Collections Breakdown */}
-                <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    <span>Collections</span>
-                    <span className="text-slate-900 font-extrabold">Total: {formatCurrency(p.financials?.totalReceived || 0)}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-emerald-50 border border-emerald-200/70 rounded-lg p-1.5 flex items-center justify-between">
-                      <div className="flex items-center space-x-1">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                        <span className="text-[10px] font-bold text-emerald-800">In Cash:</span>
-                      </div>
-                      <span className="text-[11px] font-extrabold text-emerald-950 font-mono">
-                        {formatCurrency(p.financials?.cashReceived || 0)}
-                      </span>
-                    </div>
-                    <div className="bg-blue-50 border border-blue-200/70 rounded-lg p-1.5 flex items-center justify-between">
-                      <div className="flex items-center space-x-1">
-                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                        <span className="text-[10px] font-bold text-blue-800">In Bank:</span>
-                      </div>
-                      <span className="text-[11px] font-extrabold text-blue-950 font-mono">
-                        {formatCurrency(p.financials?.bankReceived || 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Completion Progress Bar */}
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-[11px] text-slate-500">Progress</span>
-                    <span className="font-bold text-slate-900">{p.completionPercent}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-amber-500 h-2 rounded-full transition-all"
-                      style={{ width: `${p.completionPercent}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Timeline */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-3">
-                  <div className="flex items-center">
-                    <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                    <span>{formatDate(p.plannedStartDate)}</span>
-                  </div>
-                  <span>to</span>
-                  <span>{formatDate(p.plannedEndDate)}</span>
-                </div>
-              </div>
-
-              {/* Bottom Action Footer */}
-              <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
-                <div className="flex items-center space-x-1.5">
-                  <button
-                    onClick={() => {
-                      setShareProjectId(p.id);
-                      setShareTab('owner');
-                      setShowShareModal(true);
-                    }}
-                    className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 font-bold text-[11px] transition flex items-center space-x-1 border border-amber-500/20"
-                    title="Share Owner Daily Financial Report (WhatsApp / PDF)"
-                  >
-                    <Share2 className="w-3 h-3 text-amber-600" />
-                    <span>Owner</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShareProjectId(p.id);
-                      setShareTab('client');
-                      setShowShareModal(true);
-                    }}
-                    className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 font-bold text-[11px] transition flex items-center space-x-1 border border-emerald-500/20"
-                    title="Share Client Progress & Billing Update (WhatsApp)"
-                  >
-                    <Users className="w-3 h-3 text-emerald-600" />
-                    <span>Client</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center space-x-1.5">
-                  {hasRole('OWNER', 'PROJECT_MANAGER') && (
-                    <button
-                      onClick={() => openEditProjectModal(p)}
-                      className="p-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 transition"
-                      title="Edit Project"
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'bg-slate-100 text-slate-700'
+                        }`}
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {hasRole('OWNER') && (
+                      {p.status}
+                    </span>
+                  </div>
+
+                  {/* Title & Client */}
+                  <h3 className="text-base font-bold text-slate-900 mt-3 group-hover:text-amber-600 transition">
+                    {p.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Client: <span className="font-semibold text-slate-700">{p.clientName}</span></p>
+
+                  {/* Location */}
+                  <div className="flex items-center text-xs text-slate-500 mt-2">
+                    <MapPin className="w-3.5 h-3.5 mr-1 text-slate-400 shrink-0" />
+                    <span className="truncate">{p.siteAddress}</span>
+                  </div>
+
+                  {/* Financial Summary */}
+                  <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-medium">Contract Value</span>
+                      <p className="text-xs font-extrabold text-slate-900">{formatCurrency(p.contractValue)}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-medium">Approved Budget</span>
+                      <p className="text-xs font-extrabold text-slate-700">{formatCurrency(p.approvedBudget)}</p>
+                    </div>
+                  </div>
+
+                  {/* Cash vs Bank Collections Breakdown */}
+                  <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <span>Collections</span>
+                      <span className="text-slate-900 font-extrabold">Total: {formatCurrency(p.financials?.totalReceived || 0)}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-emerald-50 border border-emerald-200/70 rounded-lg p-1.5 flex items-center justify-between">
+                        <div className="flex items-center space-x-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                          <span className="text-[10px] font-bold text-emerald-800">In Cash:</span>
+                        </div>
+                        <span className="text-[11px] font-extrabold text-emerald-950 font-mono">
+                          {formatCurrency(p.financials?.cashReceived || 0)}
+                        </span>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200/70 rounded-lg p-1.5 flex items-center justify-between">
+                        <div className="flex items-center space-x-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                          <span className="text-[10px] font-bold text-blue-800">In Bank:</span>
+                        </div>
+                        <span className="text-[11px] font-extrabold text-blue-950 font-mono">
+                          {formatCurrency(p.financials?.bankReceived || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Completion Progress Bar */}
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-[11px] text-slate-500">Progress</span>
+                      <span className="font-bold text-slate-900">{p.completionPercent}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-amber-500 h-2 rounded-full transition-all"
+                        style={{ width: `${p.completionPercent}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Timeline */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 mt-3">
+                    <div className="flex items-center">
+                      <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                      <span>{formatDate(p.plannedStartDate)}</span>
+                    </div>
+                    <span>to</span>
+                    <span>{formatDate(p.plannedEndDate)}</span>
+                  </div>
+                </div>
+
+                {/* Bottom Action Footer */}
+                <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-1.5">
                     <button
                       onClick={() => {
-                        setDeletingProject(p);
-                        setDeleteError(null);
+                        setShareProjectId(p.id);
+                        setShareTab('owner');
+                        setShowShareModal(true);
                       }}
-                      className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/50 transition"
-                      title="Delete Project"
+                      className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 font-bold text-[11px] transition flex items-center space-x-1 border border-amber-500/20"
+                      title="Share Owner Daily Financial Report (WhatsApp / PDF)"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Share2 className="w-3 h-3 text-amber-600" />
+                      <span>Owner</span>
                     </button>
-                  )}
-                  <Link
-                    to={`/projects/${p.id}`}
-                    className="font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1 ml-1"
-                  >
-                    <span>Open</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
+
+                    <button
+                      onClick={() => {
+                        setShareProjectId(p.id);
+                        setShareTab('client');
+                        setShowShareModal(true);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 font-bold text-[11px] transition flex items-center space-x-1 border border-emerald-500/20"
+                      title="Share Client Progress & Billing Update (WhatsApp)"
+                    >
+                      <Users className="w-3 h-3 text-emerald-600" />
+                      <span>Client</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center space-x-1.5">
+                    {hasRole('OWNER', 'PROJECT_MANAGER') && (
+                      <button
+                        onClick={() => openEditProjectModal(p)}
+                        className="p-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 transition"
+                        title="Edit Project"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {hasRole('OWNER') && (
+                      <button
+                        onClick={() => {
+                          setDeletingProject(p);
+                          setDeleteError(null);
+                        }}
+                        className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/50 transition"
+                        title="Delete Project"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <Link
+                      to={`/projects/${p.id}`}
+                      className="font-bold text-amber-600 hover:text-amber-700 flex items-center space-x-1 ml-1"
+                    >
+                      <span>Open</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       )}
 
@@ -647,7 +660,10 @@ export const Projects: React.FC = () => {
             <div className="flex items-center justify-between p-5 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-900">Create New Construction Project</h2>
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(false);
+                  resetProjectForm();
+                }}
                 className="p-1 rounded-md hover:bg-slate-100 text-slate-400"
               >
                 <X className="w-5 h-5" />
@@ -663,8 +679,8 @@ export const Projects: React.FC = () => {
                     required
                     placeholder="e.g. PRJ-2024-004"
                     value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
                 <div>
@@ -695,7 +711,6 @@ export const Projects: React.FC = () => {
               {(() => {
                 const unconvertedQuotations = quotations.filter((q) => q.status !== 'CONVERTED');
                 const convertedQuotations = quotations.filter((q) => q.status === 'CONVERTED');
-                const selectedQuotation = quotations.find((q) => q.id === selectedQuotationId);
 
                 return (
                   <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
@@ -708,11 +723,10 @@ export const Projects: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleClearQuotationSelection}
-                          className={`px-3 py-1 rounded-md transition ${
-                            customerSource === 'DIRECT'
-                              ? 'bg-white text-slate-900 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
+                          className={`px-3 py-1 rounded-md transition ${customerSource === 'DIRECT'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
                           🚶 Direct Customer
                         </button>
@@ -724,11 +738,10 @@ export const Projects: React.FC = () => {
                               handleSelectQuotation(unconvertedQuotations[0]);
                             }
                           }}
-                          className={`px-3 py-1 rounded-md transition flex items-center gap-1.5 ${
-                            customerSource === 'QUOTATION'
-                              ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
+                          className={`px-3 py-1 rounded-md transition flex items-center gap-1.5 ${customerSource === 'QUOTATION'
+                            ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold'
+                            : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
                           <span>📋 Convert from Quotation</span>
                           {unconvertedQuotations.length > 0 && (
@@ -746,39 +759,25 @@ export const Projects: React.FC = () => {
                         <label className="block text-[11px] font-semibold text-slate-700">
                           Suggest Quotation Given to Client ({unconvertedQuotations.length} proposals pending conversion):
                         </label>
-                        <select
+                        <SearchableSelect
+                          options={unconvertedQuotations.map((q) => ({
+                            value: q.id,
+                            label: `${q.clientName} • ₹{formatCurrency(q.totalAmount)}`,
+                            code: q.quotationNumber,
+                            sublabel: `Status: ${q.status} | Items: ${q.items?.length || 0}`,
+                          }))}
                           value={selectedQuotationId}
-                          onChange={(e) => {
-                            const qId = e.target.value;
-                            if (!qId) {
+                          onChange={(val) => {
+                            if (!val) {
                               handleClearQuotationSelection();
                               return;
                             }
-                            const found = quotations.find((q) => q.id === qId);
+                            const found = quotations.find((q) => q.id === val);
                             if (found) handleSelectQuotation(found);
                           }}
-                          className="w-full text-xs p-2.5 bg-white border-2 border-amber-400 rounded-xl text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
-                        >
-                          <option value="">-- Choose Quotation to Auto-Fill & Convert --</option>
-                          {unconvertedQuotations.length > 0 && (
-                            <optgroup label="⚡ Available / Active Quotations (Pending Conversion)">
-                              {unconvertedQuotations.map((q) => (
-                                <option key={q.id} value={q.id}>
-                                  [{q.quotationNumber}] {q.clientName} • ₹{formatCurrency(q.totalAmount)} • Status: {q.status}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {convertedQuotations.length > 0 && (
-                            <optgroup label="✓ Previously Converted Quotations">
-                              {convertedQuotations.map((q) => (
-                                <option key={q.id} value={q.id} disabled>
-                                  [{q.quotationNumber}] {q.clientName} (ALREADY CONVERTED TO PROJECT)
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                          placeholder="-- Choose Quotation to Auto-Fill & Convert --"
+                          searchPlaceholder="Search quotation number or client..."
+                        />
 
                         {/* Selected Quotation Highlight Card */}
                         {selectedQuotation && (
@@ -792,6 +791,22 @@ export const Projects: React.FC = () => {
                                 <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
                                   Current Status: {selectedQuotation.status}
                                 </span>
+                              </div>
+                              <div className="bg-emerald-100/70 border border-emerald-300 rounded-lg p-2.5 my-1.5 grid grid-cols-3 gap-2 text-center text-xs">
+                                <div>
+                                  <div className="text-[10px] text-emerald-700 font-medium">Net Scope Subtotal</div>
+                                  <div className="font-bold text-emerald-950 font-mono">₹{(selectedQuotation.subtotal || 0).toLocaleString('en-IN')}</div>
+                                </div>
+                                <div className="border-x border-emerald-300 px-1">
+                                  <div className="text-[10px] text-emerald-700 font-medium">
+                                    GST Tax ({selectedQuotation.gstMode === 'NO_GST' ? '0% / No GST' : `${selectedQuotation.gstPercent || 18}% ${selectedQuotation.gstMode === 'INCLUSIVE' ? 'Incl' : 'Addl'}`})
+                                  </div>
+                                  <div className="font-bold text-amber-900 font-mono">+ ₹{(selectedQuotation.gstAmount || 0).toLocaleString('en-IN')}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-emerald-700 font-medium">Total Contract Value</div>
+                                  <div className="font-bold text-emerald-900 font-mono">₹{selectedQuotation.totalAmount.toLocaleString('en-IN')}</div>
+                                </div>
                               </div>
                               <p className="text-[11px] text-emerald-800 font-medium">
                                 Agreed Total Value: <strong>₹{selectedQuotation.totalAmount.toLocaleString('en-IN')}</strong> • {selectedQuotation.items?.length || 0} work items itemized
@@ -830,9 +845,15 @@ export const Projects: React.FC = () => {
                             <span>+ Add New Client</span>
                           </button>
                         </div>
-                        <select
-                          onChange={(e) => {
-                            const cId = e.target.value;
+                        <SearchableSelect
+                          options={clients.map((c) => ({
+                            value: c.id,
+                            label: c.companyName ? `${c.name} (${c.companyName})` : c.name,
+                            code: c.code,
+                            sublabel: c.phone ? `Ph: ${c.phone}` : undefined,
+                          }))}
+                          value={clients.find((c) => c.name === formData.clientName || c.companyName === formData.clientName)?.id || ''}
+                          onChange={(cId) => {
                             if (!cId) return;
                             const c = clients.find((item) => item.id === cId);
                             if (c) {
@@ -846,16 +867,11 @@ export const Projects: React.FC = () => {
                               });
                             }
                           }}
-                          defaultValue=""
-                          className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-amber-500"
-                        >
-                          <option value="">-- Direct Customer / Walk-in (Fill details below or select client) --</option>
-                          {clients.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              [{c.code}] {c.name} {c.companyName ? `(${c.companyName})` : ''} - {c.phone}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder="-- Direct Customer / Walk-in (Fill details below or select client) --"
+                          searchPlaceholder="Search client name, company, or code..."
+                          onAddNew={() => setShowClientModal(true)}
+                          addNewLabel="+ Add New Client"
+                        />
                       </div>
                     )}
                   </div>
@@ -937,7 +953,18 @@ export const Projects: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Contract Value (₹) *</label>
+                  <div className="flex items-center justify-between gap-1 mb-1 flex-wrap">
+                    <label className="text-xs font-bold text-slate-700">Contract Value (₹) *</label>
+                    {selectedQuotation ? (
+                      <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded">
+                        Total ₹{(selectedQuotation.subtotal || 0).toLocaleString('en-IN')} + GST ₹{(selectedQuotation.gstAmount || 0).toLocaleString('en-IN')}
+                      </span>
+                    ) : (Number(formData.contractValue) > 0 && Number(formData.approvedBudget) > 0 && Number(formData.contractValue) !== Number(formData.approvedBudget)) ? (
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                        Base ₹{Number(formData.approvedBudget).toLocaleString('en-IN')} + GST ₹{Math.max(0, Number(formData.contractValue) - Number(formData.approvedBudget)).toLocaleString('en-IN')}
+                      </span>
+                    ) : null}
+                  </div>
                   <input
                     type="number"
                     required
@@ -946,9 +973,21 @@ export const Projects: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, contractValue: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                  {selectedQuotation && (
+                    <p className="text-[10px] text-slate-600 mt-1 flex items-center justify-between px-0.5">
+                      <span>Scope: <strong className="text-slate-800 font-mono">₹{(selectedQuotation.subtotal || 0).toLocaleString('en-IN')}</strong></span>
+                      <span>+ Tax ({selectedQuotation.gstMode === 'NO_GST' ? '0%' : `${selectedQuotation.gstPercent || 18}%`}): <strong className="text-amber-700 font-mono">₹{(selectedQuotation.gstAmount || 0).toLocaleString('en-IN')}</strong></span>
+                      <span>= <strong className="text-emerald-700 font-mono">₹{selectedQuotation.totalAmount.toLocaleString('en-IN')}</strong></span>
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Approved Budget (₹) *</label>
+                  <div className="flex items-center justify-between gap-1 mb-1 flex-wrap">
+                    <label className="text-xs font-bold text-slate-700">Approved Budget (₹) *</label>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      {selectedQuotation ? `(Net Scope excl. GST)` : `(Execution Budget)`}
+                    </span>
+                  </div>
                   <input
                     type="number"
                     required
@@ -957,6 +996,11 @@ export const Projects: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, approvedBudget: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                  {selectedQuotation && (
+                    <p className="text-[10px] text-emerald-700 mt-1 px-0.5 font-medium">
+                      ✓ Profit is calculated strictly from this Net Budget (excluding GST).
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -997,7 +1041,10 @@ export const Projects: React.FC = () => {
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetProjectForm();
+                  }}
                   className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition"
                 >
                   Cancel
@@ -1044,8 +1091,8 @@ export const Projects: React.FC = () => {
                     type="text"
                     placeholder="e.g. CLI-004 (Auto)"
                     value={clientForm.code}
-                    onChange={(e) => setClientForm({ ...clientForm, code: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    onChange={(e) => setClientForm({ ...clientForm, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                   <span className="text-[10px] text-slate-400">Leave blank to auto-generate</span>
                 </div>

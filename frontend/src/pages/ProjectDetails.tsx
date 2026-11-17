@@ -140,6 +140,16 @@ export const ProjectDetails: React.FC = () => {
   }
 
   const f = project.financials || {};
+  const effectiveGst = (project.gstAmount !== undefined && project.gstAmount > 0)
+    ? project.gstAmount
+    : (project.contractValue > project.approvedBudget ? (project.contractValue - project.approvedBudget) : 0);
+  const effectiveGstMode = project.gstMode || (effectiveGst > 0 ? 'EXCLUSIVE' : 'NO_GST');
+  const actualCost = f.actualCost || 0;
+  // Realized Net Profit = Approved Budget (net scope) - Overall Actual Expenses
+  const computedNetProfit = f.netProfit !== undefined ? f.netProfit : (project.approvedBudget - actualCost);
+  const computedNetProfitMargin = f.netProfitMargin !== undefined
+    ? f.netProfitMargin
+    : (project.approvedBudget > 0 ? Math.round(((project.approvedBudget - actualCost) / project.approvedBudget) * 1000) / 10 : 0);
 
   return (
     <div className="space-y-6">
@@ -224,30 +234,45 @@ export const ProjectDetails: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Metrics Badge Group */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* Quick Metrics Badge Group: Contract, GST, Budget, Expenses, Net Profit, Progress */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-right">
-              <span className="text-[10px] text-slate-400 block">Contract Value</span>
-              <strong className="text-xs sm:text-sm text-slate-900">{formatCurrency(project.contractValue, true)}</strong>
+              <span className="text-[10px] text-slate-400 block font-medium">Contract Value</span>
+              <strong className="text-xs sm:text-sm text-slate-900 block">{formatCurrency(project.contractValue, true)}</strong>
+              <span className="text-[9px] text-slate-400 block">Agreed Total</span>
+            </div>
+            <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-right">
+              <span className="text-[10px] text-amber-700 block font-bold">GST (Govt Tax)</span>
+              <strong className="text-xs sm:text-sm text-amber-900 block">
+                {effectiveGst > 0 ? formatCurrency(effectiveGst, true) : '₹0'}
+              </strong>
+              <span className="text-[9px] text-amber-600 block font-semibold">
+                {effectiveGstMode === 'NO_GST' || effectiveGst === 0 ? 'No GST (0%)' : effectiveGstMode === 'INCLUSIVE' ? '18% Inclusive' : '+18% GST'}
+              </span>
             </div>
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-right">
-              <span className="text-[10px] text-slate-400 block">Approved Budget</span>
-              <strong className="text-xs sm:text-sm text-slate-700">{formatCurrency(project.approvedBudget, true)}</strong>
+              <span className="text-[10px] text-slate-400 block font-medium">Approved Budget</span>
+              <strong className="text-xs sm:text-sm text-slate-700 block">{formatCurrency(project.approvedBudget, true)}</strong>
+              <span className="text-[9px] text-slate-400 block">Net Scope (Excl. Tax)</span>
             </div>
-            <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-100 text-right">
-              <span className="text-[10px] text-amber-700 block">Actual Cost</span>
-              <strong className="text-xs sm:text-sm text-amber-900">{formatCurrency(f.actualCost || 0, true)}</strong>
+            <div className="bg-rose-50/60 p-3 rounded-xl border border-rose-100 text-right">
+              <span className="text-[10px] text-rose-700 block font-medium">Overall Expenses</span>
+              <strong className="text-xs sm:text-sm text-rose-900 block">{formatCurrency(actualCost, true)}</strong>
+              <span className="text-[9px] text-rose-500 block">Actual Site Cost</span>
             </div>
             <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 text-right">
               <span className="text-[10px] text-emerald-700 block font-bold">Realized Net Profit</span>
-              <strong className="text-xs sm:text-sm text-emerald-800">
-                {formatCurrency(f.netProfit !== undefined ? f.netProfit : ((f.totalBilled || 0) - (f.actualCost || 0)), true)}
+              <strong className="text-xs sm:text-sm text-emerald-800 block">
+                {formatCurrency(computedNetProfit, true)}
               </strong>
-              <span className="text-[9px] text-emerald-600 block font-bold">({f.netProfitMargin || 0}%)</span>
+              <span className="text-[9px] text-emerald-600 block font-bold">
+                ({computedNetProfitMargin >= 0 ? `+${computedNetProfitMargin}%` : `${computedNetProfitMargin}%`})
+              </span>
             </div>
             <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-right">
-              <span className="text-[10px] text-blue-700 block">Work Progress</span>
-              <strong className="text-xs sm:text-sm text-blue-900">{project.completionPercent}%</strong>
+              <span className="text-[10px] text-blue-700 block font-medium">Work Progress</span>
+              <strong className="text-xs sm:text-sm text-blue-900 block">{project.completionPercent}%</strong>
+              <span className="text-[9px] text-blue-500 block">Completion</span>
             </div>
           </div>
 
@@ -332,14 +357,42 @@ export const ProjectDetails: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white">Project Financial Health & Realized Profit</h3>
-                    <p className="text-[11px] text-slate-400">Client billing vs. actual site costs incurred</p>
+                    <p className="text-[11px] text-slate-400">Approved budget (excl. GST) vs. overall site expenses incurred</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block">Net Profit Margin</span>
                   <span className="text-base font-extrabold text-emerald-400 font-mono">
-                    +{f.netProfitMargin || 0}%
+                    {computedNetProfitMargin >= 0 ? `+${computedNetProfitMargin}%` : `${computedNetProfitMargin}%`}
                   </span>
+                </div>
+              </div>
+
+              {/* Statutory Tax & Budget Transparency Strip */}
+              <div className="mt-3.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-medium uppercase tracking-wider">Contract Total</span>
+                  <strong className="text-sm font-mono text-white block mt-0.5">{formatCurrency(project.contractValue)}</strong>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Agreed Value</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-400 block font-medium uppercase tracking-wider">
+                    GST ({effectiveGstMode === 'NO_GST' || effectiveGst === 0 ? '0%' : '18%'})
+                  </span>
+                  <strong className="text-sm font-mono text-amber-300 block mt-0.5">
+                    {effectiveGst > 0 ? formatCurrency(effectiveGst) : '₹0'}
+                  </strong>
+                  <span className="text-[10px] text-amber-400/80 block mt-0.5">Govt Liability (Excl. from Profit)</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-cyan-400 block font-medium uppercase tracking-wider">Approved Budget</span>
+                  <strong className="text-sm font-mono text-cyan-300 block mt-0.5">{formatCurrency(project.approvedBudget)}</strong>
+                  <span className="text-[10px] text-cyan-400/80 block mt-0.5">Net Scope Subtotal</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-emerald-400 block font-medium uppercase tracking-wider">Net Profit</span>
+                  <strong className="text-sm font-mono text-emerald-300 block mt-0.5">{formatCurrency(computedNetProfit)}</strong>
+                  <span className="text-[10px] text-emerald-400/80 block mt-0.5">Budget - Expenses</span>
                 </div>
               </div>
 
@@ -356,22 +409,22 @@ export const ProjectDetails: React.FC = () => {
                 </div>
 
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                  <span className="text-[11px] text-slate-400 block font-medium">Total Incurred Cost</span>
+                  <span className="text-[11px] text-slate-400 block font-medium">Overall Expenses</span>
                   <strong className="text-sm font-mono text-amber-300 block mt-0.5">
-                    {formatCurrency(f.actualCost || 0)}
+                    {formatCurrency(actualCost)}
                   </strong>
                   <span className="text-[10px] text-slate-400 mt-1 block">
-                    Budget: {formatCurrency(project.approvedBudget)} ({f.budgetBurnPercent || 0}% used)
+                    Budget: {formatCurrency(project.approvedBudget)} ({project.approvedBudget > 0 ? Math.round((actualCost / project.approvedBudget) * 1000) / 10 : 0}% used)
                   </span>
                 </div>
 
                 <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
                   <span className="text-[11px] text-emerald-300 block font-medium">Realized Net Profit</span>
                   <strong className="text-base font-mono text-emerald-400 block mt-0.5">
-                    {formatCurrency(f.netProfit !== undefined ? f.netProfit : ((f.totalBilled || 0) - (f.actualCost || 0)))}
+                    {formatCurrency(computedNetProfit)}
                   </strong>
                   <span className="text-[10px] text-emerald-300/80 mt-1 block font-semibold">
-                    Healthy Profit Realized
+                    {computedNetProfit >= 0 ? `${computedNetProfitMargin >= 0 ? `+${computedNetProfitMargin}%` : `${computedNetProfitMargin}%`} Net Margin` : 'Budget Overrun Alert'}
                   </span>
                 </div>
               </div>

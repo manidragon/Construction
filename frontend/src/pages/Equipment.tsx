@@ -18,6 +18,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { formatCurrency, formatMetricNumber } from '../utils/formatters';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 interface EquipmentLog {
   id: string;
@@ -834,8 +835,8 @@ export const Equipment: React.FC = () => {
                     required
                     placeholder="e.g. EQ-EXC-002"
                     value={addForm.code}
-                    onChange={(e) => setAddForm({ ...addForm, code: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono"
+                    onChange={(e) => setAddForm({ ...addForm, code: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase"
                   />
                 </div>
                 <div>
@@ -930,18 +931,20 @@ export const Equipment: React.FC = () => {
 
               <div>
                 <label className="text-slate-300 font-medium block mb-1">Deploy to Project</label>
-                <select
+                <SearchableSelect
                   value={addForm.currentProjectId}
-                  onChange={(e) => setAddForm({ ...addForm, currentProjectId: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                >
-                  <option value="">Base Equipment Yard / Central Depot</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} - {p.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setAddForm({ ...addForm, currentProjectId: val })}
+                  options={[
+                    { value: '', label: 'Base Equipment Yard / Central Depot' },
+                    ...projects.map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      code: p.code,
+                    })),
+                  ]}
+                  placeholder="Base Equipment Yard / Central Depot"
+                  searchPlaceholder="Search project..."
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-700">
@@ -982,28 +985,27 @@ export const Equipment: React.FC = () => {
             <form onSubmit={handleLogUsage} className="p-5 space-y-4 text-xs">
               <div>
                 <label className="text-slate-300 font-medium block mb-1">Equipment Unit *</label>
-                <select
-                  required
+                <SearchableSelect
                   value={usageForm.equipmentId}
-                  onChange={(e) => {
-                    const eq = equipmentList.find((x) => x.id === e.target.value);
+                  onChange={(val) => {
+                    const eq = equipmentList.find((x) => x.id === val);
                     setUsageForm({
                       ...usageForm,
-                      equipmentId: e.target.value,
+                      equipmentId: val,
                       startHours: String(eq?.hoursRunTotal || 0),
                       endHours: String((eq?.hoursRunTotal || 0) + 8),
                       operatorName: eq?.currentOperator || '',
                     });
                   }}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                >
-                  <option value="">Select Equipment</option>
-                  {equipmentList.map((eq) => (
-                    <option key={eq.id} value={eq.id}>
-                      {eq.code} - {eq.name} (Current: {eq.hoursRunTotal || 0} hrs)
-                    </option>
-                  ))}
-                </select>
+                  options={equipmentList.map((eq) => ({
+                    value: eq.id,
+                    label: eq.name,
+                    code: eq.code,
+                    sublabel: `Current: ${eq.hoursRunTotal || 0} hrs`,
+                  }))}
+                  placeholder="Select Equipment"
+                  searchPlaceholder="Search machine by name or code..."
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1019,17 +1021,17 @@ export const Equipment: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-slate-300 font-medium block mb-1">Project Site</label>
-                  <select
+                  <SearchableSelect
                     value={usageForm.projectId}
-                    onChange={(e) => setUsageForm({ ...usageForm, projectId: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.code} - {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setUsageForm({ ...usageForm, projectId: val })}
+                    options={projects.map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      code: p.code,
+                    }))}
+                    placeholder="Select Project Site"
+                    searchPlaceholder="Search project..."
+                  />
                 </div>
               </div>
 
@@ -1129,19 +1131,17 @@ export const Equipment: React.FC = () => {
             <form onSubmit={handleRecordMaintenance} className="p-5 space-y-4 text-xs">
               <div>
                 <label className="text-slate-300 font-medium block mb-1">Equipment Unit *</label>
-                <select
-                  required
+                <SearchableSelect
                   value={maintForm.equipmentId}
-                  onChange={(e) => setMaintForm({ ...maintForm, equipmentId: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                >
-                  <option value="">Select Equipment</option>
-                  {equipmentList.map((eq) => (
-                    <option key={eq.id} value={eq.id}>
-                      {eq.code} - {eq.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setMaintForm({ ...maintForm, equipmentId: val })}
+                  options={equipmentList.map((eq) => ({
+                    value: eq.id,
+                    label: eq.name,
+                    code: eq.code,
+                  }))}
+                  placeholder="Select Equipment"
+                  searchPlaceholder="Search machine by name or code..."
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">

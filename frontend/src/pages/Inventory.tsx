@@ -25,6 +25,23 @@ import {
   Layers,
   Calendar,
 } from 'lucide-react';
+import SearchableSelect from '../components/common/SearchableSelect';
+
+const DEFAULT_MATERIAL_CATEGORIES = [
+  { value: 'CEMENT', label: 'Cement' },
+  { value: 'STEEL', label: 'Steel Rebar' },
+  { value: 'AGGREGATE', label: 'Aggregates / Sand' },
+  { value: 'BRICK_BLOCK', label: 'Bricks & Blocks' },
+  { value: 'PAINT', label: 'Paint & Primers' },
+  { value: 'PLUMBING', label: 'Plumbing Pipes & Fittings' },
+  { value: 'ELECTRICAL', label: 'Electrical Cables' },
+  { value: 'FINISHING', label: 'Tiles & Stones' },
+  { value: 'WOOD_TIMBER', label: 'Wood & Timber' },
+  { value: 'HARDWARE', label: 'Hardware & Fasteners' },
+  { value: 'CHEMICALS', label: 'Waterproofing & Admixtures' },
+  { value: 'SAFETY_PPE', label: 'Safety PPE & Tools' },
+  { value: 'EQUIPMENT_SPARES', label: 'Machinery & Spares' },
+];
 
 export const Inventory: React.FC = () => {
   const { hasRole } = useAuth();
@@ -49,6 +66,40 @@ export const Inventory: React.FC = () => {
   const [showAdjustStockModal, setShowAdjustStockModal] = useState(false);
   const [showRequisitionModal, setShowRequisitionModal] = useState(false);
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
+  const [materialCategories, setMaterialCategories] = useState<{ value: string; label: string }[]>(() => {
+    try {
+      const saved = localStorage.getItem('erp_custom_material_categories');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const combined = [...DEFAULT_MATERIAL_CATEGORIES];
+        parsed.forEach((p: any) => {
+          if (!combined.some(c => c.value === p.value)) combined.push(p);
+        });
+        return combined;
+      }
+    } catch {}
+    return DEFAULT_MATERIAL_CATEGORIES;
+  });
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  const handleAddCategory = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    const catCode = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    const newCat = { value: catCode, label: trimmed };
+    const updated = materialCategories.some(c => c.value === catCode)
+      ? materialCategories
+      : [...materialCategories, newCat];
+    setMaterialCategories(updated);
+    try {
+      localStorage.setItem('erp_custom_material_categories', JSON.stringify(updated.filter(u => !DEFAULT_MATERIAL_CATEGORIES.some(d => d.value === u.value))));
+    } catch {}
+    setMatForm((prev) => ({ ...prev, category: catCode }));
+    setNewCategoryName('');
+    setShowAddCategoryModal(false);
+  };
 
   // Locked context for Issue Modal
   const [issueTarget, setIssueTarget] = useState<{
@@ -1934,8 +1985,8 @@ export const Inventory: React.FC = () => {
                     type="text"
                     placeholder="e.g. SLIP-1042"
                     value={issueForm.referenceNo}
-                    onChange={(e) => setIssueForm({ ...issueForm, referenceNo: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    onChange={(e) => setIssueForm({ ...issueForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                   />
                 </div>
                 <div>
@@ -2102,8 +2153,8 @@ export const Inventory: React.FC = () => {
                     type="text"
                     placeholder="e.g. DC-98412"
                     value={addStockForm.referenceNo}
-                    onChange={(e) => setAddStockForm({ ...addStockForm, referenceNo: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    onChange={(e) => setAddStockForm({ ...addStockForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                   />
                 </div>
               </div>
@@ -2440,26 +2491,32 @@ export const Inventory: React.FC = () => {
                     required
                     placeholder="e.g. MAT-CEM-03"
                     value={matForm.code}
-                    onChange={(e) => setMatForm({ ...matForm, code: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    onChange={(e) => setMatForm({ ...matForm, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Category *</label>
-                  <select
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">Category *</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCategoryModal(true)}
+                      className="text-[10px] font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-0.5 transition"
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>Add Category</span>
+                    </button>
+                  </div>
+                  <SearchableSelect
+                    options={materialCategories}
                     value={matForm.category}
-                    onChange={(e) => setMatForm({ ...matForm, category: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                  >
-                    <option value="CEMENT">Cement</option>
-                    <option value="STEEL">Steel Rebar</option>
-                    <option value="AGGREGATE">Aggregates / Sand</option>
-                    <option value="BRICK_BLOCK">Bricks & Blocks</option>
-                    <option value="PAINT">Paint & Primers</option>
-                    <option value="PLUMBING">Plumbing Pipes & Fittings</option>
-                    <option value="ELECTRICAL">Electrical Cables</option>
-                    <option value="FINISHING">Tiles & Stones</option>
-                  </select>
+                    onChange={(val) => setMatForm({ ...matForm, category: val })}
+                    placeholder="Select Category"
+                    searchPlaceholder="Search or filter category..."
+                    onAddNew={() => setShowAddCategoryModal(true)}
+                    addNewLabel="+ Add New Category"
+                    required
+                  />
                 </div>
               </div>
 
@@ -2575,21 +2632,17 @@ export const Inventory: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Category *</label>
-                  <select
+                  <SearchableSelect
+                    label="Category *"
+                    options={materialCategories}
                     value={editMaterialForm.category}
-                    onChange={(e) => setEditMaterialForm({ ...editMaterialForm, category: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="CEMENT">Cement</option>
-                    <option value="STEEL">Steel Rebar</option>
-                    <option value="AGGREGATE">Aggregates / Sand</option>
-                    <option value="BRICK_BLOCK">Bricks & Blocks</option>
-                    <option value="PAINT">Paint & Primers</option>
-                    <option value="PLUMBING">Plumbing Pipes & Fittings</option>
-                    <option value="ELECTRICAL">Electrical Cables</option>
-                    <option value="FINISHING">Tiles & Stones</option>
-                  </select>
+                    onChange={(val) => setEditMaterialForm({ ...editMaterialForm, category: val })}
+                    placeholder="Select Category"
+                    searchPlaceholder="Search category..."
+                    onAddNew={() => setShowAddCategoryModal(true)}
+                    addNewLabel="+ Add New Category"
+                    required
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Brand</label>
@@ -2705,8 +2758,8 @@ export const Inventory: React.FC = () => {
                     required
                     placeholder="e.g. WH-MAIN-01"
                     value={warehouseForm.code}
-                    onChange={(e) => setWarehouseForm({ ...warehouseForm, code: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
                   />
                 </div>
                 <div>
@@ -2928,24 +2981,17 @@ export const Inventory: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Category *</label>
-                    <select
+                    <SearchableSelect
+                      label="Category *"
+                      options={materialCategories}
                       value={editProjectMaterialForm.category}
-                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, category: e.target.value })}
-                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-medium"
-                    >
-                      <option value="CEMENT">Cement</option>
-                      <option value="STEEL">Steel Rebar</option>
-                      <option value="AGGREGATE">Aggregates / Sand</option>
-                      <option value="BRICK_BLOCK">Bricks & Blocks</option>
-                      <option value="PAINT">Paint & Primers</option>
-                      <option value="PLUMBING">Plumbing Pipes & Fittings</option>
-                      <option value="ELECTRICAL">Electrical Cables</option>
-                      <option value="FINISHING">Tiles & Stones</option>
-                      <option value="HARDWARE">Hardware & Tools</option>
-                      <option value="TIMBER">Timber & Plywood</option>
-                      <option value="CHEMICALS">Chemicals & Waterproofing</option>
-                    </select>
+                      onChange={(val) => setEditProjectMaterialForm({ ...editProjectMaterialForm, category: val })}
+                      placeholder="Select Category"
+                      searchPlaceholder="Search category..."
+                      onAddNew={() => setShowAddCategoryModal(true)}
+                      addNewLabel="+ Add New Category"
+                      required
+                    />
                   </div>
                 </div>
 
@@ -3048,8 +3094,8 @@ export const Inventory: React.FC = () => {
                     <input
                       type="text"
                       value={editProjectMaterialForm.poNumber}
-                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, poNumber: e.target.value })}
-                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold"
+                      onChange={(e) => setEditProjectMaterialForm({ ...editProjectMaterialForm, poNumber: e.target.value.toUpperCase() })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg font-mono font-bold uppercase"
                       placeholder="e.g. PO-2024-089"
                     />
                   </div>
@@ -3181,6 +3227,58 @@ export const Inventory: React.FC = () => {
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>{isSavingProjectMaterial ? 'Saving...' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Quick Add Category Modal */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <Boxes className="w-4 h-4 text-amber-600" />
+                <span>Add Material Category</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddCategoryModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddCategory} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Category Name *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Scaffolding, Glass & Glazing, Hardware"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-medium focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Code: <span className="font-mono font-bold text-amber-800 uppercase">{newCategoryName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_') || 'CATEGORY_CODE'}</span>
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save Category
                 </button>
               </div>
             </form>

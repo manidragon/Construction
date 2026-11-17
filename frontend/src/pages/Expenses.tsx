@@ -20,6 +20,7 @@ import {
   Link2,
   TrendingUp,
 } from 'lucide-react';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Expenses: React.FC = () => {
   const { hasRole } = useAuth();
@@ -340,21 +341,26 @@ export const Expenses: React.FC = () => {
       {/* Project Selector Bar */}
       <div className="flex items-center space-x-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
         <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
-        <select
-          value={projectId}
-          onChange={(e) => {
-            setProjectId(e.target.value);
-            setSelectedProjectId(e.target.value);
-          }}
-          className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
-        >
-          <option value="">🌐 All Projects</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              [{p.code}] {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="min-w-[280px] sm:min-w-[340px] md:min-w-[400px]">
+          <SearchableSelect
+            value={projectId}
+            onChange={(val) => {
+              setProjectId(val);
+              setSelectedProjectId(val);
+            }}
+            options={[
+              { value: '', label: '🌐 All Projects' },
+              ...projects.map((p) => ({
+                value: p.id,
+                label: p.name,
+                code: p.code,
+                sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+              })),
+            ]}
+            placeholder="🌐 All Projects"
+            searchPlaceholder="Type to search projects by name or code..."
+          />
+        </div>
       </div>
 
       {/* Tabs */}
@@ -594,23 +600,21 @@ export const Expenses: React.FC = () => {
             <form onSubmit={handleCreateExpense} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
-                <select
-                  required
+                <SearchableSelect
                   value={expForm.projectId || projectId || selectedProjectId || ''}
-                  onChange={(e) => {
-                    const pId = e.target.value;
-                    setExpForm({ ...expForm, projectId: pId, taskId: '', boqItemId: '' });
-                    fetchProjectLinks(pId);
+                  onChange={(val) => {
+                    setExpForm({ ...expForm, projectId: val, taskId: '', boqItemId: '' });
+                    fetchProjectLinks(val);
                   }}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">Select Project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.code}] {p.name}
-                    </option>
-                  ))}
-                </select>
+                  options={projects.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    code: p.code,
+                    sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+                  }))}
+                  placeholder="Select Project"
+                  searchPlaceholder="Search project by name or code..."
+                />
               </div>
 
               {/* Task & BOQ Linkage Section */}
@@ -803,8 +807,8 @@ export const Expenses: React.FC = () => {
                   type="text"
                   placeholder="e.g. CM-8812"
                   value={expForm.invoiceReceiptNo}
-                  onChange={(e) => setExpForm({ ...expForm, invoiceReceiptNo: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  onChange={(e) => setExpForm({ ...expForm, invoiceReceiptNo: e.target.value.toUpperCase() })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                 />
               </div>
 
@@ -1060,22 +1064,24 @@ export const Expenses: React.FC = () => {
             <form onSubmit={handleUpdateExpense} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project</label>
-                <select
+                <SearchableSelect
                   value={editExpForm.projectId}
-                  onChange={(e) => {
-                    const pId = e.target.value;
-                    setEditExpForm({ ...editExpForm, projectId: pId, taskId: '', boqItemId: '' });
-                    fetchProjectLinks(pId);
+                  onChange={(val) => {
+                    setEditExpForm({ ...editExpForm, projectId: val, taskId: '', boqItemId: '' });
+                    fetchProjectLinks(val);
                   }}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">General Office</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.code}] {p.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: 'General Office' },
+                    ...projects.map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      code: p.code,
+                      sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+                    })),
+                  ]}
+                  placeholder="General Office"
+                  searchPlaceholder="Search project by name or code..."
+                />
               </div>
 
               {/* Task & BOQ Linkage */}
@@ -1266,8 +1272,8 @@ export const Expenses: React.FC = () => {
                   <input
                     type="text"
                     value={editExpForm.invoiceReceiptNo}
-                    onChange={(e) => setEditExpForm({ ...editExpForm, invoiceReceiptNo: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    onChange={(e) => setEditExpForm({ ...editExpForm, invoiceReceiptNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                   />
                 </div>
                 <div>
@@ -1412,8 +1418,8 @@ export const Expenses: React.FC = () => {
                 <input
                   type="text"
                   value={editVoucherForm.voucherNo}
-                  onChange={(e) => setEditVoucherForm({ ...editVoucherForm, voucherNo: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                  onChange={(e) => setEditVoucherForm({ ...editVoucherForm, voucherNo: e.target.value.toUpperCase() })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                 />
               </div>
 

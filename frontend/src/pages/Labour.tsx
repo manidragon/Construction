@@ -33,6 +33,7 @@ import {
   Lock,
   Check,
 } from 'lucide-react';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Labour: React.FC = () => {
   const { hasRole } = useAuth();
@@ -687,29 +688,30 @@ export const Labour: React.FC = () => {
       {/* Project & Date Selector Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 min-w-[280px] sm:min-w-[340px] md:min-w-[400px]">
             <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Project:</label>
-            <select
-              value={projectId}
-              onChange={(e) => {
-                const newId = e.target.value;
-                setProjectId(newId);
-                setSelectedProjectId(newId);
-                setSearchParams((prev) => {
-                  const p = new URLSearchParams(prev);
-                  p.set('projectId', newId);
-                  return p;
-                });
-              }}
-              className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
-            >
-              {projects.length === 0 && <option value="">Loading projects...</option>}
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  [{p.code}] {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex-1">
+              <SearchableSelect
+                value={projectId}
+                onChange={(newId) => {
+                  setProjectId(newId);
+                  setSelectedProjectId(newId);
+                  setSearchParams((prev) => {
+                    const p = new URLSearchParams(prev);
+                    p.set('projectId', newId);
+                    return p;
+                  });
+                }}
+                options={projects.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  code: p.code,
+                  sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+                }))}
+                placeholder={projects.length === 0 ? "Loading projects..." : "Select Project"}
+                searchPlaceholder="Type to search projects by name or code..."
+              />
+            </div>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -1921,10 +1923,10 @@ export const Labour: React.FC = () => {
                       placeholder="WRK-01"
                       value={workerForm.workerCode}
                       onChange={(e) => {
-                        setWorkerForm({ ...workerForm, workerCode: e.target.value });
+                        setWorkerForm({ ...workerForm, workerCode: e.target.value.toUpperCase() });
                         if (modalError) setModalError(null);
                       }}
-                      className={`w-full text-xs p-2 bg-slate-50 border rounded-lg font-mono font-bold ${
+                      className={`w-full text-xs p-2 bg-slate-50 border rounded-lg font-mono font-bold uppercase ${
                         duplicateWorker ? 'border-rose-400 bg-rose-50/40 text-rose-900' : 'border-slate-200'
                       }`}
                     />
@@ -2326,10 +2328,9 @@ export const Labour: React.FC = () => {
               {payoutForm.payoutType === 'INDIVIDUAL' && (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Select Worker *</label>
-                  <select
+                  <SearchableSelect
                     value={payoutForm.workerId}
-                    onChange={(e) => {
-                      const wId = e.target.value;
+                    onChange={(wId) => {
                       const rec = musterRoll.find((m) => m.worker?.id === wId);
                       setPayoutForm({
                         ...payoutForm,
@@ -2337,19 +2338,18 @@ export const Labour: React.FC = () => {
                         amount: rec ? rec.grossWageEarned.toString() : payoutForm.amount,
                       });
                     }}
-                    required
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="">-- Choose Worker --</option>
-                    {workers.map((w) => {
+                    options={workers.map((w) => {
                       const rec = musterRoll.find((m) => m.worker?.id === w.id);
-                      return (
-                        <option key={w.id} value={w.id}>
-                          [{w.workerCode}] {w.name} ({w.trade}) — ₹{rec ? rec.grossWageEarned : 0} earned
-                        </option>
-                      );
+                      return {
+                        value: w.id,
+                        label: w.name,
+                        code: w.workerCode,
+                        sublabel: `${w.trade} • ₹${rec ? rec.grossWageEarned : 0} earned`,
+                      };
                     })}
-                  </select>
+                    placeholder="-- Choose Worker --"
+                    searchPlaceholder="Search worker by name, code, or trade..."
+                  />
                 </div>
               )}
 
@@ -3020,16 +3020,20 @@ export const Labour: React.FC = () => {
 
               <div className="text-xs">
                 <label className="block text-slate-600 font-bold mb-1">Assigned Project</label>
-                <select
+                <SearchableSelect
                   value={editForm.projectId}
-                  onChange={(e) => setEditForm({ ...editForm, projectId: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800"
-                >
-                  <option value="">-- Central Pool (No Project) --</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setEditForm({ ...editForm, projectId: val })}
+                  options={[
+                    { value: '', label: '-- Central Pool (No Project) --' },
+                    ...projects.map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      code: p.code,
+                    })),
+                  ]}
+                  placeholder="-- Central Pool (No Project) --"
+                  searchPlaceholder="Search project..."
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-xs">

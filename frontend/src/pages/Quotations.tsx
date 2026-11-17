@@ -45,6 +45,7 @@ import {
   Edit,
   Printer,
 } from 'lucide-react';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 const COMMON_AREAS = [
   'Living Room',
@@ -85,6 +86,10 @@ export const Quotations: React.FC = () => {
 
   const initialLeadId = searchParams.get('leadId') || '';
   const initialClientName = searchParams.get('clientName') || '';
+  const initialClientPhone = searchParams.get('clientPhone') || searchParams.get('contactNumber') || searchParams.get('phone') || '';
+  const initialClientEmail = searchParams.get('clientEmail') || searchParams.get('email') || '';
+  const initialSiteAddress = searchParams.get('siteAddress') || '';
+  const initialProjectType = searchParams.get('projectType') as LeadProjectType | null;
 
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -99,11 +104,12 @@ export const Quotations: React.FC = () => {
   const [quotationNumber, setQuotationNumber] = useState('');
   const [leadId, setLeadId] = useState(initialLeadId);
   const [clientName, setClientName] = useState(initialClientName);
-  const [clientPhone, setClientPhone] = useState('');
-  const [clientEmail, setClientEmail] = useState('');
-  const [siteAddress, setSiteAddress] = useState('');
-  const [projectType, setProjectType] = useState<LeadProjectType>('RESIDENTIAL_INTERIOR');
-  const [gstMode, setGstMode] = useState<'EXCLUSIVE' | 'INCLUSIVE'>('EXCLUSIVE');
+  const [clientPhone, setClientPhone] = useState(initialClientPhone);
+  const [clientEmail, setClientEmail] = useState(initialClientEmail);
+  const [siteAddress, setSiteAddress] = useState(initialSiteAddress);
+  const [projectType, setProjectType] = useState<LeadProjectType>(initialProjectType || 'RESIDENTIAL_INTERIOR');
+  const [gstMode, setGstMode] = useState<'EXCLUSIVE' | 'INCLUSIVE' | 'NO_GST'>('EXCLUSIVE');
+  const [includeLateFeeClause, setIncludeLateFeeClause] = useState(true);
   const [penaltyTerms, setPenaltyTerms] = useState('Delayed milestone payments will attract a 2% weekly interest charge');
   const [notes, setNotes] = useState('Includes 10-year warranty on modular BWR plywood carpentry, Hettich hardware, and 2-year complimentary service.');
   const [validUntil, setValidUntil] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
@@ -225,7 +231,7 @@ export const Quotations: React.FC = () => {
 
     // If query parameter opened with leadId, check if quotation already exists to edit it
     if (initialLeadId) {
-      api.getQuotations(`leadId=${initialLeadId}`).then((res) => {
+      api.getQuotations(`leadId=${initialLeadId}`).then(async (res) => {
         if (res.success && Array.isArray(res.quotations) && res.quotations.length > 0) {
           // Existing quotation found for this lead - load in edit mode directly!
           handleStartEdit(res.quotations[0]);
@@ -233,16 +239,64 @@ export const Quotations: React.FC = () => {
           setEditingId(null);
           setLeadId(initialLeadId);
           if (initialClientName) setClientName(initialClientName);
+          if (initialClientPhone) setClientPhone(initialClientPhone);
+          if (initialClientEmail) setClientEmail(initialClientEmail);
+          if (initialSiteAddress) setSiteAddress(initialSiteAddress);
+          if (initialProjectType) setProjectType(initialProjectType);
+
+          // Fetch fresh lead details by id to guarantee contact phone, email, and address are populated
+          try {
+            const leadRes = await api.getLeadById(initialLeadId);
+            if (leadRes.success && leadRes.lead) {
+              const ld = leadRes.lead;
+              if (ld.clientName) setClientName(ld.clientName);
+              if (ld.contactNumber) setClientPhone(ld.contactNumber);
+              if (ld.email) setClientEmail(ld.email);
+              if (ld.siteAddress) setSiteAddress(ld.siteAddress);
+              if (ld.projectType) setProjectType(ld.projectType);
+            }
+          } catch (e) {
+            console.warn('Could not fetch lead details by id:', e);
+          }
           setView('editor');
         }
-      }).catch(() => {
+      }).catch(async () => {
         setEditingId(null);
         setLeadId(initialLeadId);
         if (initialClientName) setClientName(initialClientName);
+        if (initialClientPhone) setClientPhone(initialClientPhone);
+        if (initialClientEmail) setClientEmail(initialClientEmail);
+        if (initialSiteAddress) setSiteAddress(initialSiteAddress);
+        if (initialProjectType) setProjectType(initialProjectType);
+        try {
+          const leadRes = await api.getLeadById(initialLeadId);
+          if (leadRes.success && leadRes.lead) {
+            const ld = leadRes.lead;
+            if (ld.clientName) setClientName(ld.clientName);
+            if (ld.contactNumber) setClientPhone(ld.contactNumber);
+            if (ld.email) setClientEmail(ld.email);
+            if (ld.siteAddress) setSiteAddress(ld.siteAddress);
+            if (ld.projectType) setProjectType(ld.projectType);
+          }
+        } catch (e) {}
         setView('editor');
       });
     }
-  }, [initialLeadId, initialClientName]);
+  }, [initialLeadId, initialClientName, initialClientPhone, initialClientEmail, initialSiteAddress, initialProjectType]);
+
+  // If leads master list loads and leadId is selected but clientPhone is still empty, populate from matched lead
+  useEffect(() => {
+    if (leadId && !clientPhone && leads.length > 0) {
+      const matched = leads.find((l) => l.id === leadId);
+      if (matched) {
+        if (!clientName) setClientName(matched.clientName);
+        if (matched.contactNumber) setClientPhone(matched.contactNumber);
+        if (!clientEmail && matched.email) setClientEmail(matched.email);
+        if (!siteAddress && matched.siteAddress) setSiteAddress(matched.siteAddress);
+        if (matched.projectType) setProjectType(matched.projectType);
+      }
+    }
+  }, [leads, leadId, clientPhone, clientName, clientEmail, siteAddress]);
 
   const handleStartEdit = (quot: Quotation) => {
     setEditingId(quot.id);
@@ -254,7 +308,9 @@ export const Quotations: React.FC = () => {
     setSiteAddress(quot.siteAddress);
     setProjectType(quot.projectType);
     setGstMode(quot.gstMode);
-    setPenaltyTerms(quot.penaltyTerms || '');
+    const hasPenalty = Boolean(quot.penaltyTerms && quot.penaltyTerms.trim().length > 0);
+    setIncludeLateFeeClause(hasPenalty);
+    setPenaltyTerms(hasPenalty ? quot.penaltyTerms! : '');
     setNotes(quot.notes || '');
     setValidUntil(quot.validUntil ? new Date(quot.validUntil).toISOString().split('T')[0] : '');
     setItems(
@@ -312,6 +368,7 @@ export const Quotations: React.FC = () => {
     setSiteAddress('');
     setProjectType('RESIDENTIAL_INTERIOR');
     setGstMode('EXCLUSIVE');
+    setIncludeLateFeeClause(true);
     setPenaltyTerms('Delayed milestone payments will attract a 2% weekly interest charge');
     setNotes('Includes 10-year warranty on modular BWR plywood carpentry, Hettich hardware, and 2-year complimentary service.');
     setValidUntil(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
@@ -425,7 +482,12 @@ export const Quotations: React.FC = () => {
   let gstAmount = 0;
   let totalAmount = 0;
 
-  if (gstMode === 'INCLUSIVE') {
+  if (gstMode === 'NO_GST') {
+    // Zero-tax / exempt quotation: total agreed value equals subtotal
+    subtotal = rawSum;
+    gstAmount = 0;
+    totalAmount = rawSum;
+  } else if (gstMode === 'INCLUSIVE') {
     // Agreed contract value is flat sum of items
     totalAmount = rawSum;
     subtotal = Math.round((totalAmount / (1 + gstPercent / 100)) * 100) / 100;
@@ -510,7 +572,7 @@ export const Quotations: React.FC = () => {
         siteAddress,
         projectType,
         gstMode,
-        penaltyTerms,
+        penaltyTerms: includeLateFeeClause ? (penaltyTerms ? penaltyTerms.trim() : 'Delayed milestone payments will attract a 2% weekly interest charge') : '',
         milestoneTerms: updatedMilestones,
         notes,
         validUntil,
@@ -743,9 +805,13 @@ export const Quotations: React.FC = () => {
                         <span className="flex items-center space-x-1">
                           <span>GST Mode:</span>
                           <span className={`text-[9px] font-bold px-1.5 rounded ${
-                            quot.gstMode === 'EXCLUSIVE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                            quot.gstMode === 'NO_GST'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : quot.gstMode === 'EXCLUSIVE'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-purple-100 text-purple-800'
                           }`}>
-                            {quot.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}
+                            {quot.gstMode === 'NO_GST' ? 'No GST (0%)' : quot.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}
                           </span>
                         </span>
                         <span className="font-semibold text-slate-700">{formatCurrency(quot.gstAmount)}</span>
@@ -759,7 +825,13 @@ export const Quotations: React.FC = () => {
                     {/* Item Count & Penalty Info */}
                     <div className="text-[10px] text-slate-500 flex items-center justify-between">
                       <span>{quot.items?.length || 0} Room/Work Items</span>
-                      <span className="text-amber-700 font-medium">2% weekly late fee clause</span>
+                      {quot.penaltyTerms ? (
+                        <span className="text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                          2% weekly late fee
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-medium">No late fee clause</span>
+                      )}
                     </div>
                   </div>
 
@@ -900,8 +972,8 @@ export const Quotations: React.FC = () => {
                   required
                   readOnly={!!editingId}
                   value={quotationNumber}
-                  onChange={(e) => setQuotationNumber(e.target.value)}
-                  className={`font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg text-xs w-36 ${
+                  onChange={(e) => setQuotationNumber(e.target.value.toUpperCase())}
+                  className={`font-mono font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg text-xs w-36 ${
                     editingId ? 'cursor-not-allowed opacity-85' : ''
                   }`}
                   title={editingId ? 'Quotation number locked during editing' : 'Quotation number'}
@@ -913,21 +985,24 @@ export const Quotations: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Link to Lead Inquiry (Optional)</label>
-                <select
+                <SearchableSelect
                   value={leadId}
-                  onChange={(e) => handleLeadSelect(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                >
-                  <option value="">-- Standalone Quotation (No Lead Link) --</option>
-                  {leads.map((l) => {
-                    const stageLabel = l.stage === 'LEAD_WON' ? '✓ Won / Converted' : l.stage.replace(/_/g, ' ');
-                    return (
-                      <option key={l.id} value={l.id}>
-                        {l.leadNumber} - {l.clientName} [{stageLabel}] ({l.siteAddress || l.city})
-                      </option>
-                    );
-                  })}
-                </select>
+                  onChange={(val) => handleLeadSelect(val)}
+                  options={[
+                    { value: '', label: '-- Standalone Quotation (No Lead Link) --' },
+                    ...leads.map((l) => {
+                      const stageLabel = l.stage === 'LEAD_WON' ? '✓ Won' : l.stage.replace(/_/g, ' ');
+                      return {
+                        value: l.id,
+                        label: l.clientName,
+                        code: l.leadNumber,
+                        sublabel: `${stageLabel} • ${l.contactNumber || ''} ${l.siteAddress || l.city ? `(${l.siteAddress || l.city})` : ''}`,
+                      };
+                    }),
+                  ]}
+                  placeholder="-- Standalone Quotation (No Lead Link) --"
+                  searchPlaceholder="Search leads by name, code, phone, or location..."
+                />
               </div>
 
               <div>
@@ -1228,7 +1303,7 @@ export const Quotations: React.FC = () => {
               {/* Left Column: GST Mode Selector Toggle */}
               <div className="space-y-3">
                 <p className="font-semibold text-slate-700">Select Client Contract Tax Mode:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Exclusive GST Option */}
                   <div
                     onClick={() => setGstMode('EXCLUSIVE')}
@@ -1286,12 +1361,47 @@ export const Quotations: React.FC = () => {
                       Tax = Total - (Total / 1.18)
                     </span>
                   </div>
+
+                  {/* No GST Option */}
+                  <div
+                    onClick={() => setGstMode('NO_GST')}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                      gstMode === 'NO_GST'
+                        ? 'bg-emerald-50 border-emerald-500 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-emerald-900">No GST (0%)</span>
+                        <input
+                          type="radio"
+                          name="gstMode"
+                          checked={gstMode === 'NO_GST'}
+                          onChange={() => setGstMode('NO_GST')}
+                          className="text-emerald-600"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Zero GST / exempt contract. Total agreed contract value is identical to net scope subtotal.
+                      </p>
+                    </div>
+                    <span className="mt-3 text-[10px] font-bold text-emerald-700 font-mono">
+                      Grand Total = Subtotal (₹0 Tax)
+                    </span>
+                  </div>
                 </div>
 
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900">
+                <div className={`p-3 rounded-xl border text-[11px] ${
+                  gstMode === 'NO_GST'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                }`}>
                   <p className="font-bold">🏢 Internal Tax Liability Tracking:</p>
-                  <p className="text-amber-800 mt-0.5">
-                    Regardless of whether client sees Inclusive or Exclusive pricing, our company accounts will automatically book ₹<strong>{formatCurrency(gstAmount)}</strong> in GST Tax Liability Payable on the Executive Dashboard.
+                  <p className="mt-0.5">
+                    {gstMode === 'NO_GST'
+                      ? 'This quotation is marked as No GST (Exempt). Total agreed contract value equals net scope subtotal, and company GST liability booked is ₹0.'
+                      : `Regardless of whether client sees Inclusive or Exclusive pricing, our company accounts will automatically book ₹${formatCurrency(gstAmount)} in GST Tax Liability Payable on the Executive Dashboard.`}
                   </p>
                 </div>
               </div>
@@ -1303,8 +1413,10 @@ export const Quotations: React.FC = () => {
                   <span className="font-bold text-slate-900">{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 text-xs">
-                  <span>Output GST Tax (18%):</span>
-                  <span className="font-bold text-amber-700">{formatCurrency(gstAmount)}</span>
+                  <span>{gstMode === 'NO_GST' ? 'Output GST Tax (0%):' : 'Output GST Tax (18%):'}</span>
+                  <span className={`font-bold ${gstMode === 'NO_GST' ? 'text-slate-500' : 'text-amber-700'}`}>
+                    {gstMode === 'NO_GST' ? '₹0 (Exempt)' : formatCurrency(gstAmount)}
+                  </span>
                 </div>
                 <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-sm font-extrabold text-slate-900">
                   <span>Total Agreed Contract Value:</span>
@@ -1359,17 +1471,58 @@ export const Quotations: React.FC = () => {
               ))}
             </div>
 
-            {/* Late Payment Penalty Clause (Requirement 4) */}
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">
-                Construction Late Payment Penalty Clause (Default 2% Weekly)
-              </label>
-              <input
-                type="text"
-                value={penaltyTerms}
-                onChange={(e) => setPenaltyTerms(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium text-slate-800"
-              />
+            {/* Late Payment Penalty Clause (Option to Add or Remove via Tick Box) */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex items-start sm:items-center justify-between gap-3">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeLateFeeClause}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIncludeLateFeeClause(checked);
+                      if (checked) {
+                        setPenaltyTerms('Delayed milestone payments will attract a 2% weekly interest charge');
+                      } else {
+                        setPenaltyTerms('');
+                      }
+                    }}
+                    className="w-5 h-5 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer accent-amber-500"
+                  />
+                  <div>
+                    <span className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <span>Include 2% Weekly Late Payment Fee Clause</span>
+                      {includeLateFeeClause ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                          Clause Added
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 border border-slate-300">
+                          Clause Removed / Waived
+                        </span>
+                      )}
+                    </span>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Check this box to apply the 2% weekly late fee on milestone payment delays for this specific client, or uncheck to remove it.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {includeLateFeeClause && (
+                <div className="pt-2 border-t border-slate-200/80">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Late Payment Penalty Clause Text (Customizable)
+                  </label>
+                  <input
+                    type="text"
+                    value={penaltyTerms}
+                    onChange={(e) => setPenaltyTerms(e.target.value)}
+                    placeholder="Delayed milestone payments will attract a 2% weekly interest charge"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium text-xs text-slate-800 bg-white"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Scope & Warranty Notes */}
@@ -1459,7 +1612,11 @@ export const Quotations: React.FC = () => {
                   )}
                   <p className="text-slate-600 font-semibold pt-1">
                     Total Value: {formatCurrency(dispatchQuotationData.totalAmount)} (
-                    {dispatchQuotationData.gstMode === 'EXCLUSIVE' ? '+18% GST Exclusive' : '18% GST Inclusive'})
+                    {dispatchQuotationData.gstMode === 'NO_GST'
+                      ? 'No GST / Exempt'
+                      : dispatchQuotationData.gstMode === 'EXCLUSIVE'
+                      ? '+18% GST Exclusive'
+                      : '18% GST Inclusive'})
                   </p>
                 </div>
 
@@ -1513,9 +1670,9 @@ export const Quotations: React.FC = () => {
                     {`*Apex Buildtech Quotation: ${dispatchQuotationData.quotationNumber}*\n` +
                       `Dear ${dispatchQuotationData.clientName},\n` +
                       `Please find attached our itemized commercial proposal for your ${dispatchQuotationData.projectType.replace(/_/g, ' ')} project at ${dispatchQuotationData.siteAddress}.\n\n` +
-                      `*Total Agreed Value:* ${formatCurrency(dispatchQuotationData.totalAmount)} (${dispatchQuotationData.gstMode === 'EXCLUSIVE' ? '+18% GST Exclusive' : '18% GST Inclusive'})\n` +
+                      `*Total Agreed Value:* ${formatCurrency(dispatchQuotationData.totalAmount)} (${dispatchQuotationData.gstMode === 'NO_GST' ? 'No GST (0%)' : dispatchQuotationData.gstMode === 'EXCLUSIVE' ? '+18% GST Exclusive' : '18% GST Inclusive'})\n` +
                       `*Payment Milestones:* 50% Advance, 40% Material Delivery, 10% Handover.\n` +
-                      `*Late Payment Terms:* ${dispatchQuotationData.penaltyTerms || '2% weekly interest'}\n\n` +
+                      `*Late Payment Terms:* ${dispatchQuotationData.penaltyTerms || 'None (Waived)'}\n\n` +
                       `View detailed quotation here: https://apexbuildtech.com/q/${dispatchQuotationData.quotationNumber}`}
                   </div>
                 </div>
@@ -1862,9 +2019,11 @@ export const Quotations: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>
-                      GST ({viewingQuotation.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}):
+                      GST ({viewingQuotation.gstMode === 'NO_GST' ? 'No GST (0%)' : viewingQuotation.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}):
                     </span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(viewingQuotation.gstAmount)}</span>
+                    <span className="font-semibold text-slate-900">
+                      {viewingQuotation.gstMode === 'NO_GST' ? '₹0 (Exempt)' : formatCurrency(viewingQuotation.gstAmount)}
+                    </span>
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-between items-baseline font-black text-slate-900 text-sm">
                     <span>Agreed Grand Total:</span>
@@ -1903,10 +2062,15 @@ export const Quotations: React.FC = () => {
 
               {/* Notes & Penalty Clauses */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[11px] text-slate-600">
-                {viewingQuotation.penaltyTerms && (
+                {viewingQuotation.penaltyTerms ? (
                   <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 space-y-1">
                     <span className="font-bold text-amber-900 block">Delay Penalty Clause:</span>
                     <p className="text-amber-800">{viewingQuotation.penaltyTerms}</p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                    <span className="font-bold text-slate-700 block">Delay Penalty Clause:</span>
+                    <p className="text-slate-500 italic">No late fee clause (Waived for this client)</p>
                   </div>
                 )}
                 {viewingQuotation.notes && (

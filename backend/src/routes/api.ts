@@ -162,6 +162,7 @@ import {
   updateClientInvoice,
   deleteClientInvoice,
   getClientReceipts,
+  getNextReceiptNumberHandler,
   recordClientReceipt,
   updateClientReceipt,
   deleteClientReceipt,
@@ -451,6 +452,7 @@ router.post('/billing/invoices', requireRole('OWNER', 'ACCOUNTS_MANAGER'), creat
 router.put('/billing/invoices/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER'), updateClientInvoice);
 router.delete('/billing/invoices/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteClientInvoice);
 router.get('/billing/receipts', getClientReceipts);
+router.get('/billing/receipts/next-number', getNextReceiptNumberHandler);
 router.post('/billing/receipts', requireRole('OWNER', 'ACCOUNTS_MANAGER'), recordClientReceipt);
 router.put('/billing/receipts/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), updateClientReceipt);
 router.delete('/billing/receipts/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteClientReceipt);

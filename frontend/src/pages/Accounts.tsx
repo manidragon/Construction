@@ -25,6 +25,7 @@ import {
   FileCode,
   Trash2,
 } from 'lucide-react';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Accounts: React.FC = () => {
   const { hasRole } = useAuth();
@@ -543,18 +544,22 @@ export const Accounts: React.FC = () => {
               {/* Project Filter & Search Bar */}
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 {/* Project Filter */}
-                <select
-                  value={projectFilter}
-                  onChange={(e) => setProjectFilter(e.target.value)}
-                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none font-medium text-slate-700"
-                >
-                  <option value="ALL">All Cost Centres / Projects</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.code}>
-                      [{p.code}] {p.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-56 sm:w-64">
+                  <SearchableSelect
+                    value={projectFilter}
+                    onChange={(val) => setProjectFilter(val)}
+                    options={[
+                      { value: 'ALL', label: 'All Cost Centres / Projects' },
+                      ...projects.map((p) => ({
+                        value: p.code,
+                        label: p.name,
+                        code: p.code,
+                      })),
+                    ]}
+                    placeholder="All Cost Centres / Projects"
+                    searchPlaceholder="Search project..."
+                  />
+                </div>
 
                 {/* Search */}
                 <div className="relative flex-1 sm:w-56">
@@ -1294,21 +1299,22 @@ export const Accounts: React.FC = () => {
                   {journalForm.lines.map((line, idx) => (
                     <div key={idx} className="p-3 bg-slate-50/50 flex flex-col sm:flex-row gap-2 items-center">
                       <div className="w-full sm:w-1/2">
-                        <select
+                        <SearchableSelect
                           value={line.accountCode}
-                          onChange={(e) => {
+                          onChange={(val) => {
                             const updated = [...journalForm.lines];
-                            updated[idx].accountCode = e.target.value;
+                            updated[idx].accountCode = val;
                             setJournalForm({ ...journalForm, lines: updated });
                           }}
-                          className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium"
-                        >
-                          {coa.map((a) => (
-                            <option key={a.code} value={a.code}>
-                              [{a.code}] {a.name} ({a.tallyGroup || a.type})
-                            </option>
-                          ))}
-                        </select>
+                          options={coa.map((a) => ({
+                            value: a.code,
+                            label: a.name,
+                            code: a.code,
+                            sublabel: a.tallyGroup || a.type,
+                          }))}
+                          placeholder="Select Account"
+                          searchPlaceholder="Search ledger by code, name, or group..."
+                        />
                       </div>
 
                       <div className="w-full sm:w-1/4">

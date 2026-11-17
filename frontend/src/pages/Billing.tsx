@@ -19,6 +19,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { ReceiptShareModal } from '../components/ReceiptShareModal';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Billing: React.FC = () => {
   const { hasRole } = useAuth();
@@ -36,6 +37,7 @@ export const Billing: React.FC = () => {
   // Modals
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [nextReceiptNumber, setNextReceiptNumber] = useState('');
   const [showClientModal, setShowClientModal] = useState(false);
 
   // View / Edit / Delete States
@@ -501,6 +503,9 @@ export const Billing: React.FC = () => {
                     referenceNo: '',
                     notes: '',
                   });
+                  api.getNextReceiptNumber().then((res) => {
+                    if (res.success && res.nextReceiptNumber) setNextReceiptNumber(res.nextReceiptNumber);
+                  }).catch(() => { });
                   setShowReceiptModal(true);
                 }}
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
@@ -521,23 +526,28 @@ export const Billing: React.FC = () => {
 
       {/* Project Selector Bar & Financial Tracker */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 min-w-[280px] sm:min-w-[340px] md:min-w-[400px]">
           <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
-          <select
-            value={projectId}
-            onChange={(e) => {
-              setProjectId(e.target.value);
-              setSelectedProjectId(e.target.value);
-            }}
-            className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[380px] cursor-pointer transition"
-          >
-            <option value="">🌐 All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                [{p.code}] {p.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex-1">
+            <SearchableSelect
+              value={projectId}
+              onChange={(val) => {
+                setProjectId(val);
+                setSelectedProjectId(val);
+              }}
+              options={[
+                { value: '', label: '🌐 All Projects' },
+                ...projects.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  code: p.code,
+                  sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+                })),
+              ]}
+              placeholder="🌐 All Projects"
+              searchPlaceholder="Type to search projects by name or code..."
+            />
+          </div>
         </div>
 
         {/* Financial Tracker: Overall Project Value | Expense Done | Balance Cash */}
@@ -597,27 +607,24 @@ export const Billing: React.FC = () => {
       <div className="flex items-center space-x-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('invoices')}
-          className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${
-            activeTab === 'invoices' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-          }`}
+          className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${activeTab === 'invoices' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+            }`}
         >
           <FileText className="w-4 h-4" />
           <span>Running Account (RA) Bills ({invoices.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('receipts')}
-          className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${
-            activeTab === 'receipts' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-          }`}
+          className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${activeTab === 'receipts' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+            }`}
         >
           <CreditCard className="w-4 h-4" />
           <span>Client Receipts ({receipts.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('clients')}
-          className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${
-            activeTab === 'clients' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-          }`}
+          className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${activeTab === 'clients' ? 'bg-slate-900 text-amber-400 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+            }`}
         >
           <Building className="w-4 h-4" />
           <span>Client Directory ({clients.length})</span>
@@ -664,10 +671,9 @@ export const Billing: React.FC = () => {
                     <td className="py-3 px-3 text-right font-mono text-emerald-600 font-bold">{formatCurrency(inv.paidAmount)}</td>
                     <td className="py-3 px-3 text-right font-mono text-rose-600 font-bold">{formatCurrency(inv.balanceDue)}</td>
                     <td className="py-3 px-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' :
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' :
                         inv.status === 'PARTIALLY_PAID' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
-                      }`}>
+                        }`}>
                         {inv.status}
                       </span>
                     </td>
@@ -854,16 +860,20 @@ export const Billing: React.FC = () => {
             <form onSubmit={handleCreateInvoice} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
-                <select
-                  required
+                <SearchableSelect
+                  options={projects.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    code: p.code,
+                  }))}
                   value={invForm.projectId || projectId || selectedProjectId || ''}
-                  onChange={async (e) => {
-                    const newProjId = e.target.value;
+                  onChange={async (newProjId) => {
                     const selProj = projects.find((p) => p.id === newProjId);
                     const matchingClient = clients.find(
                       (c) => c.name === selProj?.clientName || c.companyName === selProj?.clientName
                     );
                     const updatedBillNumber = computeNextInvoiceNumber(newProjId, invoices, projects);
+
                     setInvForm({
                       ...invForm,
                       projectId: newProjId,
@@ -882,17 +892,12 @@ export const Billing: React.FC = () => {
                           invoiceNumber: res.nextInvoiceNumber,
                         }));
                       }
-                    } catch (err) {}
+                    } catch (err) { }
                   }}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">Select Project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.code}] {p.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Project"
+                  searchPlaceholder="Search project name or code..."
+                  required
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -917,26 +922,30 @@ export const Billing: React.FC = () => {
                     required
                     placeholder="e.g. RA-01-SKYLINE"
                     value={invForm.invoiceNumber}
-                    onChange={(e) => setInvForm({ ...invForm, invoiceNumber: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    onChange={(e) => setInvForm({ ...invForm, invoiceNumber: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
                   <p className="text-[10px] text-slate-500 mt-1">
                     Auto-generated next sequential number with project name.
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Client *</label>
-                  <select
+                  <SearchableSelect
+                    label="Client *"
                     required
+                    options={clients.map((c) => ({
+                      value: c.id,
+                      label: c.name,
+                      code: c.code,
+                      sublabel: c.companyName || c.phone,
+                    }))}
                     value={invForm.clientId}
-                    onChange={(e) => setInvForm({ ...invForm, clientId: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="">Select Client</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setInvForm({ ...invForm, clientId: val })}
+                    placeholder="Select Client"
+                    searchPlaceholder="Search client name or code..."
+                    onAddNew={() => setShowClientModal(true)}
+                    addNewLabel="+ Add New Client"
+                  />
                 </div>
               </div>
 
@@ -1095,35 +1104,44 @@ export const Billing: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Record Client Payment Received</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Record Client Payment Received</h3>
+                {nextReceiptNumber && (
+                  <span className="text-[11px] text-emerald-700 font-mono font-bold block mt-0.5">
+                    Next Receipt Ref: {nextReceiptNumber}
+                  </span>
+                )}
+              </div>
               <button onClick={() => setShowReceiptModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleRecordReceipt} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Select RA Bill to Settle</label>
-                <select
+                <SearchableSelect
+                  label="Select RA Bill to Settle"
+                  options={invoices
+                    .filter((i) => i.balanceDue > 0)
+                    .map((inv) => ({
+                      value: inv.id,
+                      label: `${inv.project?.name || 'Project'} — Bal: ${formatCurrency(inv.balanceDue)}`,
+                      code: inv.invoiceNumber,
+                      sublabel: `Client: ${inv.client?.name || 'Client'} | Total: ${formatCurrency(inv.netInvoiceAmount)}`,
+                    }))}
                   value={receiptForm.invoiceId}
-                  onChange={(e) => {
-                    const selInv = invoices.find((inv) => inv.id === e.target.value);
+                  onChange={(val) => {
+                    const selInv = invoices.find((inv) => inv.id === val);
                     setReceiptForm({
                       ...receiptForm,
-                      invoiceId: e.target.value,
+                      invoiceId: val,
                       projectId: selInv?.projectId || receiptForm.projectId,
                       clientId: selInv?.clientId || receiptForm.clientId,
                       amount: selInv ? String(selInv.balanceDue) : receiptForm.amount,
                     });
                   }}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                >
-                  <option value="">Select Invoice</option>
-                  {invoices.filter((i) => i.balanceDue > 0).map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      [{inv.invoiceNumber}] {inv.project?.name} (Bal: {formatCurrency(inv.balanceDue)})
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select RA Bill to Settle"
+                  searchPlaceholder="Search bill #, project, client..."
+                />
               </div>
 
               {receiptForm.invoiceId && (() => {
@@ -1175,8 +1193,8 @@ export const Billing: React.FC = () => {
                   type="text"
                   placeholder="e.g. RTGS/HDFCN24289004512"
                   value={receiptForm.referenceNo}
-                  onChange={(e) => setReceiptForm({ ...receiptForm, referenceNo: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  onChange={(e) => setReceiptForm({ ...receiptForm, referenceNo: e.target.value.toUpperCase() })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
                 />
               </div>
 
@@ -1219,8 +1237,8 @@ export const Billing: React.FC = () => {
                     required
                     placeholder="CLI-PRESTIGE"
                     value={clientForm.code}
-                    onChange={(e) => setClientForm({ ...clientForm, code: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    onChange={(e) => setClientForm({ ...clientForm, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                   />
                 </div>
                 <div>
@@ -1539,8 +1557,8 @@ export const Billing: React.FC = () => {
                     type="text"
                     required
                     value={editInvForm.invoiceNumber}
-                    onChange={(e) => setEditInvForm({ ...editInvForm, invoiceNumber: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    onChange={(e) => setEditInvForm({ ...editInvForm, invoiceNumber: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
                   />
                 </div>
                 <div>
@@ -1878,8 +1896,8 @@ export const Billing: React.FC = () => {
                 <input
                   type="text"
                   value={editReceiptForm.referenceNo}
-                  onChange={(e) => setEditReceiptForm({ ...editReceiptForm, referenceNo: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                  onChange={(e) => setEditReceiptForm({ ...editReceiptForm, referenceNo: e.target.value.toUpperCase() })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                 />
               </div>
 
@@ -2035,8 +2053,8 @@ export const Billing: React.FC = () => {
                     type="text"
                     required
                     value={editClientForm.code}
-                    onChange={(e) => setEditClientForm({ ...editClientForm, code: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    onChange={(e) => setEditClientForm({ ...editClientForm, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
                   />
                 </div>
                 <div>

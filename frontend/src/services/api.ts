@@ -21,7 +21,13 @@ class ApiService {
         headers,
       });
 
-      const data = await response.json();
+      let data: any;
+      const text = await response.text();
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { message: text || `Server returned non-JSON response (status ${response.status})` };
+      }
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -37,6 +43,9 @@ class ApiService {
       return data;
     } catch (error: any) {
       console.error(`API Error on [${options.method || 'GET'} ${endpoint}]:`, error);
+      if (error?.message?.includes('Failed to fetch') || error?.message?.includes('Unexpected end of JSON input')) {
+        throw new Error('Connection to server interrupted. Please check if server is running and try again.');
+      }
       throw error;
     }
   }
@@ -181,6 +190,7 @@ class ApiService {
   updateClientInvoice = (id: string, data: any) => this.request<any>(`/billing/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteClientInvoice = (id: string) => this.request<any>(`/billing/invoices/${id}`, { method: 'DELETE' });
   getClientReceipts = (params: string = '') => this.request<any>(`/billing/receipts${params ? `?${params}` : ''}`);
+  getNextReceiptNumber = () => this.request<any>('/billing/receipts/next-number');
   recordClientReceipt = (data: any) => this.request<any>('/billing/receipts', { method: 'POST', body: JSON.stringify(data) });
   updateClientReceipt = (id: string, data: any) => this.request<any>(`/billing/receipts/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteClientReceipt = (id: string) => this.request<any>(`/billing/receipts/${id}`, { method: 'DELETE' });

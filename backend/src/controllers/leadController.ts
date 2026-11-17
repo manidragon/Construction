@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { logAudit, getTenantFilter } from '../middleware/auth';
 import { moveToRecycleBin } from './recycleBinController';
+import { getNextProjectCode } from './projectController';
+import { getNextReceiptNumber } from './billingController';
 
 /**
  * Generate sequential lead number: LEAD-YYYY-NNN
@@ -10,7 +12,8 @@ export const getNextLeadNumber = async (req?: Request, res?: Response) => {
   try {
     const currentYear = new Date().getFullYear();
     const prefix = `LEAD-${currentYear}-`;
-    const tenantFilter = req ? getTenantFilter(req) : {};
+    const tenantId = (req as any)?.user?.companyId || (req?.query?.tenantId as string) || null;
+    const tenantFilter = tenantId ? { tenantId } : (req ? getTenantFilter(req) : {});
 
     const latestLead = await prisma.lead.findFirst({
       where: { leadNumber: { startsWith: prefix }, ...tenantFilter },
@@ -271,14 +274,14 @@ export const createLead = async (req: Request, res: Response) => {
     // Auto-generate lead number if missing or ensure uniqueness
     let finalLeadNumber = leadNumber ? String(leadNumber).trim() : '';
     if (!finalLeadNumber) {
-      const generated = await getNextLeadNumber();
+      const generated = await getNextLeadNumber(req);
       finalLeadNumber = (generated as any).nextLeadNumber;
     } else {
       const existing = await prisma.lead.findFirst({
         where: { leadNumber: finalLeadNumber, ...(tenantId ? { tenantId } : {}) },
       });
       if (existing) {
-        const generated = await getNextLeadNumber();
+        const generated = await getNextLeadNumber(req);
         finalLeadNumber = (generated as any).nextLeadNumber;
       }
     }
@@ -526,14 +529,18 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
     }
 
     // Generate unique project code: PRJ-YEAR-XXX
+    const generatedPrj = await getNextProjectCode(req);
+    const projectCode = (generatedPrj as any).nextProjectCode;
     const currentYear = new Date().getFullYear();
-    const count = await prisma.project.count({ where: getTenantFilter(req) });
-    const projectCode = `PRJ-${currentYear}-${String(count + 1).padStart(3, '0')}`;
     const tenantId = lead.tenantId || (req as any).user?.companyId || null;
 
     const finalProjectName = projectName || `${lead.clientName} - ${lead.projectType.replace(/_/g, ' ')}`;
     const finalContractValue = Number(contractValue) || (selectedQuotation ? selectedQuotation.totalAmount : advAmt * 2);
-    const finalBudget = Number(approvedBudget) || finalContractValue * 0.75;
+    // Approved Budget is the net scope subtotal (excluding GST). For No-GST, contract value equals budget.
+    const finalBudget = Number(approvedBudget) || (selectedQuotation ? selectedQuotation.subtotal : finalContractValue);
+    const finalGstAmount = selectedQuotation ? (selectedQuotation.gstAmount || 0) : Math.max(0, finalContractValue - finalBudget);
+    const finalGstMode = selectedQuotation ? (selectedQuotation.gstMode || 'EXCLUSIVE') : (finalGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
+    const finalTaxRate = selectedQuotation ? (selectedQuotation.gstPercent || 0) : (finalGstAmount > 0 ? 18.0 : 0);
 
     // Check if client exists or create client
     let client = await prisma.client.findFirst({
@@ -585,6 +592,9 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
         contractType: 'ITEM_RATE',
         contractValue: finalContractValue,
         approvedBudget: finalBudget,
+        gstAmount: finalGstAmount,
+        gstMode: finalGstMode,
+        taxRatePercent: finalTaxRate,
         plannedStartDate: start,
         plannedEndDate: end,
         status: 'ACTIVE',
@@ -676,20 +686,20 @@ export const convertLeadToProject = async (req: Request, res: Response) => {
     });
 
     if (advancePaymentConfirmed) {
-      // Create ClientReceipt
-      const rcpCount = await prisma.clientReceipt.count({ where: getTenantFilter(req) });
-      const receiptNumber = `RCP-${currentYear}-${String(rcpCount + 1).padStart(3, '0')}`;
+      // Create ClientReceipt with continuous sequential receipt number
+      const { nextReceiptNumber } = await getNextReceiptNumber(req, tenantId);
+      const finalReferenceNo = referenceNo ? String(referenceNo).trim().toUpperCase() : `REF-${Date.now().toString().slice(-6)}`;
       await prisma.clientReceipt.create({
         data: {
           tenantId,
-          receiptNumber,
+          receiptNumber: nextReceiptNumber,
           clientId: client.id,
           projectId: project.id,
           invoiceId: invoice.id,
           receiptDate: new Date(),
           amount: advAmt,
           paymentMethod: paymentMethod || 'NEFT_RTGS',
-          referenceNo: referenceNo || `REF-${Date.now().toString().slice(-6)}`,
+          referenceNo: finalReferenceNo,
           notes: `Booking advance payment confirmed for ${lead.clientName}. ${advanceNotes || ''}`,
         },
       });

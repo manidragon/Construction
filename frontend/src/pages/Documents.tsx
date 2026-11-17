@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import api from '../services/api';
+import SearchableSelect from '../components/common/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { formatDate } from '../utils/formatters';
@@ -671,18 +672,20 @@ export const Documents: React.FC = () => {
 
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Project Assignment</label>
-                  <select
+                  <SearchableSelect
                     value={uploadProjectId || selectedProjectId || ''}
-                    onChange={(e) => setUploadProjectId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="">Enterprise Master (All Projects)</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        [{p.code}] {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setUploadProjectId(val)}
+                    options={[
+                      { value: '', label: 'Enterprise Master (All Projects)' },
+                      ...projects.map((p) => ({
+                        value: p.id,
+                        label: p.name,
+                        code: p.code,
+                      })),
+                    ]}
+                    placeholder="Enterprise Master (All Projects)"
+                    searchPlaceholder="Search project by name or code..."
+                  />
                 </div>
               </div>
 

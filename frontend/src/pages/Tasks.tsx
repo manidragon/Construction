@@ -25,6 +25,7 @@ import {
   Zap,
 } from 'lucide-react';
 import DynamicSelect from '../components/common/DynamicSelect';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Tasks: React.FC = () => {
   const { user, hasRole } = useAuth();
@@ -490,19 +491,21 @@ export const Tasks: React.FC = () => {
             />
           </div>
 
-          <div className="w-full md:w-44 shrink-0">
-            <select
+          <div className="w-full md:w-52 shrink-0">
+            <SearchableSelect
               value={quickAssignedTo}
-              onChange={(e) => setQuickAssignedTo(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
-            >
-              <option value="">Assigned Staff...</option>
-              {usersList.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role?.slice(0, 10)})
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setQuickAssignedTo(val)}
+              options={[
+                { value: '', label: 'Assigned Staff...' },
+                ...usersList.map((u) => ({
+                  value: u.id,
+                  label: u.name,
+                  sublabel: u.role,
+                })),
+              ]}
+              placeholder="Assigned Staff..."
+              searchPlaceholder="Search staff member..."
+            />
           </div>
 
           <div className="w-full md:w-36 shrink-0">
@@ -548,21 +551,26 @@ export const Tasks: React.FC = () => {
       {/* Project Selector Bar */}
       <div className="flex items-center space-x-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
         <label className="text-xs sm:text-sm font-bold text-slate-600 whitespace-nowrap">Filter Project:</label>
-        <select
-          value={projectId}
-          onChange={(e) => {
-            setProjectId(e.target.value);
-            setSelectedProjectId(e.target.value);
-          }}
-          className="text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-sm min-w-[280px] sm:min-w-[340px] md:min-w-[400px] cursor-pointer transition"
-        >
-          <option value="">🌐 All Projects</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              [{p.code}] {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="min-w-[280px] sm:min-w-[340px] md:min-w-[400px]">
+          <SearchableSelect
+            value={projectId}
+            onChange={(val) => {
+              setProjectId(val);
+              setSelectedProjectId(val);
+            }}
+            options={[
+              { value: '', label: '🌐 All Projects' },
+              ...projects.map((p) => ({
+                value: p.id,
+                label: p.name,
+                code: p.code,
+                sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+              })),
+            ]}
+            placeholder="🌐 All Projects"
+            searchPlaceholder="Type to search projects by name or code..."
+          />
+        </div>
       </div>
 
       {/* Kanban Board View */}
@@ -947,36 +955,38 @@ export const Tasks: React.FC = () => {
             <form onSubmit={handleCreateTask} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
-                <select
-                  required
+                <SearchableSelect
                   value={taskForm.projectId || projectId || selectedProjectId || ''}
-                  onChange={(e) => setTaskForm({ ...taskForm, projectId: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">Select Project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.code}] {p.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setTaskForm({ ...taskForm, projectId: val })}
+                  options={projects.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    code: p.code,
+                    sublabel: p.clientName ? `Client: ${p.clientName}` : undefined,
+                  }))}
+                  placeholder="Select Project"
+                  searchPlaceholder="Search project by name or code..."
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Link to Approved BOQ Item (Optional)</label>
-                <select
+                <SearchableSelect
                   value={taskForm.boqItemId}
-                  onChange={(e) => handleSelectBOQItem(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">-- No BOQ Item Linked --</option>
-                  {projectBOQItems.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      [{b.itemCode}] {b.category.replace(/_/g, ' ')} - {b.description.slice(0, 45)} ({b.estimatedQty} {b.unit})
-                    </option>
-                  ))}
-                </select>
-                <span className="text-[10px] text-slate-400">Selecting a BOQ item auto-populates title, quantity, budget, and design renders</span>
+                  onChange={(val) => handleSelectBOQItem(val)}
+                  options={[
+                    { value: '', label: '-- No BOQ Item Linked --' },
+                    ...projectBOQItems.map((b) => ({
+                      value: b.id,
+                      label: `${b.category.replace(/_/g, ' ')} - ${b.description.slice(0, 45)}`,
+                      code: b.itemCode,
+                      sublabel: `${b.estimatedQty} ${b.unit}`,
+                    })),
+                  ]}
+                  placeholder="-- No BOQ Item Linked --"
+                  searchPlaceholder="Search BOQ item by code, category, or description..."
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Selecting a BOQ item auto-populates title, quantity, budget, and design renders</span>
               </div>
 
               <div>

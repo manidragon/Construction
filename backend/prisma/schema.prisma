@@ -169,6 +169,8 @@ model Project {
   status             String    @default("ACTIVE") // PLANNING, ACTIVE, ON_HOLD, COMPLETED, CANCELLED
   paymentTerms       String?
   taxRatePercent     Float     @default(18.0)
+  gstAmount          Float     @default(0)
+  gstMode            String    @default("EXCLUSIVE") // EXCLUSIVE, INCLUSIVE, NO_GST
   completionPercent  Float     @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt

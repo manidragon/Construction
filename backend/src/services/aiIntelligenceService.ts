@@ -232,7 +232,7 @@ export function getConstructionConceptAnswer(lower: string): AIActionResponse | 
   // 9. LOP (Loss of Pay) / Office Staff Leave Deduction
   if (
     lower.includes('loss of pay') ||
-    lower.includes('lop') ||
+    /\blop\b/.test(lower) ||
     (lower.includes('leave') && lower.includes('deduction') && (lower.includes('formula') || lower.includes('how')))
   ) {
     return {

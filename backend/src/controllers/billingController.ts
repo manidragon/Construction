@@ -383,6 +383,61 @@ export const createClientInvoice = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Sequential Client Receipt Number Generator: RCP-YYYY-NNN
+ * Guarantees continuation across all clients and projects within the organization/tenant.
+ */
+export const getNextReceiptNumber = async (req?: Request, tenantIdParam?: string | null) => {
+  try {
+    const currentYear = new Date().getFullYear();
+    const prefix = `RCP-${currentYear}-`;
+    const tenantId = tenantIdParam !== undefined 
+      ? tenantIdParam 
+      : ((req as any)?.user?.companyId || (req?.query?.tenantId as string) || null);
+    const tenantFilter = tenantId ? { tenantId } : (req ? getTenantFilter(req) : {});
+
+    const receipts = await prisma.clientReceipt.findMany({
+      where: {
+        receiptNumber: { startsWith: prefix },
+        ...tenantFilter,
+      },
+      select: { receiptNumber: true },
+    });
+
+    let maxSeq = 0;
+    let padLen = 3;
+    for (const r of receipts) {
+      if (r.receiptNumber) {
+        const parts = r.receiptNumber.split('-');
+        const lastPart = parts[parts.length - 1];
+        const num = parseInt(lastPart, 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+          if (lastPart.length > padLen) {
+            padLen = lastPart.length;
+          }
+        }
+      }
+    }
+
+    const nextSeq = maxSeq + 1;
+    const nextReceiptNumber = `${prefix}${String(nextSeq).padStart(padLen, '0')}`;
+    return { nextReceiptNumber, nextSeq };
+  } catch (error: any) {
+    const fallbackSeq = Date.now().toString().slice(-4);
+    return { nextReceiptNumber: `RCP-${new Date().getFullYear()}-${fallbackSeq}`, nextSeq: 1 };
+  }
+};
+
+export const getNextReceiptNumberHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await getNextReceiptNumber(req);
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const getClientReceipts = async (req: Request, res: Response) => {
   try {
     const { projectId, clientId } = req.query;
@@ -459,21 +514,22 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
       }
     }
 
-    const count = await prisma.clientReceipt.count({ where: tenantFilter });
-    const receiptNumber = `RCP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const { nextReceiptNumber } = await getNextReceiptNumber(req, tenantId);
+    const finalReceiptNumber = (req.body.receiptNumber && String(req.body.receiptNumber).trim().toUpperCase()) || nextReceiptNumber;
+    const finalReferenceNo = referenceNo ? String(referenceNo).trim().toUpperCase() : null;
 
     const receipt = await prisma.$transaction(async (tx) => {
       const rcp = await tx.clientReceipt.create({
         data: {
           tenantId,
-          receiptNumber,
+          receiptNumber: finalReceiptNumber,
           clientId: finalClientId || null,
           projectId: finalProjectId,
           invoiceId: invoiceId || null,
           receiptDate: receiptDate ? new Date(receiptDate) : new Date(),
           amount: rcpAmount,
           paymentMethod,
-          referenceNo,
+          referenceNo: finalReferenceNo,
           notes,
         },
       });
@@ -510,7 +566,7 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
         entryDate: receiptDate ? new Date(receiptDate) : new Date(),
         referenceType: 'CLIENT_RECEIPT',
         referenceId: receipt.id,
-        narration: `Payment received from client ${receiptNumber} via ${paymentMethod}. Ref: ${referenceNo || 'Direct'}`,
+        narration: `Payment received from client ${finalReceiptNumber} via ${paymentMethod}. Ref: ${finalReferenceNo || 'Direct'}`,
         lines: [
           { accountCode: debitAccount, debit: rcpAmount, credit: 0, projectId },
           { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: 0, credit: rcpAmount, projectId },
@@ -521,7 +577,7 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
       console.error('Auto journal error for client receipt:', jeErr);
     }
 
-    await logAudit(req.user?.id, 'CLIENT_RECEIPT', 'CLIENT_RECEIPT', receipt.id, { receiptNumber, amount: rcpAmount }, req.ip);
+    await logAudit(req.user?.id, 'CLIENT_RECEIPT', 'CLIENT_RECEIPT', receipt.id, { receiptNumber: finalReceiptNumber, amount: rcpAmount }, req.ip);
 
     // Fetch full receipt details with relations for instant client sharing
     const fullReceipt = await prisma.clientReceipt.findFirst({

@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit } from '../middleware/auth';
-import { generateNextInvoiceNumber } from './billingController';
+import { logAudit, getTenantFilter } from '../middleware/auth';
+import { generateNextInvoiceNumber, getNextReceiptNumber } from './billingController';
+import { postBalancedJournalEntry, COA } from '../utils/accounting';
 import { extractDateFromPrompt } from '../utils/dateParser';
 import {
   queryUniversalERPEngine,
@@ -2467,45 +2468,76 @@ export const processAIPrompt = async (req: Request, res: Response) => {
       const isCash = lower.includes('cash');
       const method = isCash ? 'CASH' : lower.includes('cheque') ? 'CHEQUE' : lower.includes('upi') ? 'UPI' : 'NEFT_RTGS';
 
-      const matchedProj = await findMatchedProject(cleanPrompt);
-      const allProjects = await prisma.project.findMany();
+      const tenantFilter = getTenantFilter(req);
+      const tenantId = (req.user as any)?.companyId || null;
+
+      let matchedProj = await findMatchedProject(cleanPrompt);
+      const allProjects = await prisma.project.findMany({ where: tenantFilter });
+
+      // If not matched by project name, try matching by client name
+      if (!matchedProj) {
+        const matchedCli = await findMatchedClient(cleanPrompt);
+        if (matchedCli) {
+          matchedProj = await prisma.project.findFirst({
+            where: {
+              OR: [
+                { clientName: matchedCli.name },
+                { clientName: matchedCli.companyName || undefined },
+              ],
+              ...tenantFilter,
+            },
+            include: { clientInvoices: true, clientReceipts: true, workers: true, tasks: true },
+          });
+        }
+      }
+
+      // If still not matched and only 1 project exists for this company, default to that project
+      if (!matchedProj && allProjects.length === 1) {
+        matchedProj = allProjects[0] as any;
+      }
+
       const targetProj = matchedProj;
 
       if (!targetProj) {
         return res.json({
-          reply: `I could not clearly identify which project this payment of ${formatINR(amount)} belongs to. Please specify the project name (e.g., "${allProjects.slice(0, 3).map((p) => p.name).join('", "')}").`,
+          reply: `I could not clearly identify which project this payment of ${formatINR(amount)} belongs to. Please specify the project or client name (e.g., "${allProjects.slice(0, 3).map((p) => p.name).join('", "')}").`,
           actionType: 'CLARIFY_PROJECT',
         });
       }
 
       if (targetProj && amount > 0) {
+        const finalTenantId = targetProj.tenantId || tenantId;
         const openInv = await prisma.clientInvoice.findFirst({
-          where: { projectId: targetProj.id, balanceDue: { gt: 0 } },
+          where: { projectId: targetProj.id, balanceDue: { gt: 0 }, ...(finalTenantId ? { tenantId: finalTenantId } : {}) },
           orderBy: { invoiceDate: 'asc' },
         });
 
         let clientId = openInv?.clientId || null;
         if (!clientId && targetProj.clientName) {
           const matchedCli = await prisma.client.findFirst({
-            where: { OR: [{ name: targetProj.clientName }, { companyName: targetProj.clientName }] },
+            where: {
+              OR: [{ name: targetProj.clientName }, { companyName: targetProj.clientName }],
+              ...(finalTenantId ? { tenantId: finalTenantId } : {}),
+            },
           });
           if (matchedCli) clientId = matchedCli.id;
         }
 
-        const count = await prisma.clientReceipt.count();
-        const receiptNumber = `RCP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+        const { nextReceiptNumber } = await getNextReceiptNumber(req, finalTenantId);
+        const refNo = `AI-${Date.now().toString().slice(-6)}`.toUpperCase();
 
         const createdReceipt = await prisma.$transaction(async (tx) => {
           const rcp = await tx.clientReceipt.create({
             data: {
-              receiptNumber,
+              tenantId: finalTenantId,
+              receiptNumber: nextReceiptNumber,
               clientId,
               projectId: targetProj.id,
               invoiceId: openInv ? openInv.id : null,
               receiptDate: new Date(),
               amount,
               paymentMethod: method,
-              referenceNo: `AI-${Date.now().toString().slice(-6)}`,
+              referenceNo: refNo,
               notes: `Auto-recorded via AI prompt: "${cleanPrompt}"`,
             },
             include: { project: true, invoice: true, client: true },
@@ -2526,6 +2558,27 @@ export const processAIPrompt = async (req: Request, res: Response) => {
 
           return rcp;
         });
+
+        // Auto post balanced double entry for AI-recorded client payment
+        try {
+          const debitAccount = method === 'CASH' ? COA.CASH : COA.HDFC_BANK;
+          await postBalancedJournalEntry({
+            tenantId: finalTenantId,
+            entryDate: new Date(),
+            referenceType: 'CLIENT_RECEIPT',
+            referenceId: createdReceipt.id,
+            narration: `Payment received from client ${nextReceiptNumber} via ${method}. AI prompt: "${cleanPrompt}"`,
+            lines: [
+              { accountCode: debitAccount, debit: amount, credit: 0, projectId: targetProj.id },
+              { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: 0, credit: amount, projectId: targetProj.id },
+            ],
+            createdById: req.user?.id,
+          });
+        } catch (jeErr) {
+          console.error('Auto journal error for AI client receipt:', jeErr);
+        }
+
+        await logAudit(req.user?.id, 'RECORD_CLIENT_RECEIPT', 'CLIENT_RECEIPT', createdReceipt.id, { receiptNumber: nextReceiptNumber, amount }, req.ip);
 
         const waText = encodeURIComponent(
           `🧾 *Payment Acknowledgment*\n\n` +

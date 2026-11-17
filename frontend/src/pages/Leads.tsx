@@ -46,6 +46,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import DynamicSelect from '../components/common/DynamicSelect';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 const STAGES: { key: LeadStage; label: string; color: string; border: string; bg: string }[] = [
   { key: 'NEW_LEAD', label: 'New Lead', color: 'text-blue-700', border: 'border-blue-300', bg: 'bg-blue-50' },
@@ -352,6 +353,18 @@ export const Leads: React.FC = () => {
     } finally {
       setDeletingLeadId(null);
     }
+  };
+
+  const handleOpenQuotationForLead = (targetLead: Lead) => {
+    const params = new URLSearchParams({
+      leadId: targetLead.id,
+      clientName: targetLead.clientName || '',
+      clientPhone: targetLead.contactNumber || '',
+      clientEmail: targetLead.email || '',
+      siteAddress: targetLead.siteAddress || '',
+      projectType: targetLead.projectType || 'RESIDENTIAL_INTERIOR',
+    });
+    navigate(`/quotations?${params.toString()}`);
   };
 
   const handleStageChange = async (lead: Lead, newStage: LeadStage) => {
@@ -790,7 +803,7 @@ export const Leads: React.FC = () => {
                               {/* Client Quotation Action */}
                               <button
                                 type="button"
-                                onClick={() => navigate(`/quotations?leadId=${lead.id}&clientName=${encodeURIComponent(lead.clientName)}`)}
+                                onClick={() => handleOpenQuotationForLead(lead)}
                                 className="h-7 px-2 text-[11px] font-bold text-blue-700 bg-blue-50/90 hover:bg-blue-100 border border-blue-200/80 rounded-lg transition flex items-center space-x-1"
                                 title="Create or Edit Client Quotation"
                               >
@@ -926,7 +939,7 @@ export const Leads: React.FC = () => {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => navigate(`/quotations?leadId=${lead.id}&clientName=${encodeURIComponent(lead.clientName)}`)}
+                          onClick={() => handleOpenQuotationForLead(lead)}
                           className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition"
                           title="Create / Edit Client Quotation"
                         >
@@ -1090,18 +1103,20 @@ export const Leads: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">Assigned Project Manager / Lead</label>
-                    <select
+                    <SearchableSelect
                       value={formData.assignedProjectManagerId}
-                      onChange={(e) => setFormData({ ...formData, assignedProjectManagerId: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    >
-                      <option value="">-- Select Project Manager --</option>
-                      {pmUsers.map((pm) => (
-                        <option key={pm.id} value={pm.id}>
-                          {pm.name} ({pm.designation || pm.role})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setFormData({ ...formData, assignedProjectManagerId: val })}
+                      options={[
+                        { value: '', label: '-- Select Project Manager --' },
+                        ...pmUsers.map((pm) => ({
+                          value: pm.id,
+                          label: pm.name,
+                          sublabel: pm.designation || pm.role,
+                        })),
+                      ]}
+                      placeholder="-- Select Project Manager --"
+                      searchPlaceholder="Search PM or Sales Lead..."
+                    />
                   </div>
                 </div>
               </div>
@@ -1359,18 +1374,20 @@ export const Leads: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">Assigned PM</label>
-                    <select
+                    <SearchableSelect
                       value={editFormData.assignedProjectManagerId}
-                      onChange={(e) => setEditFormData({ ...editFormData, assignedProjectManagerId: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    >
-                      <option value="">-- Select Project Manager --</option>
-                      {pmUsers.map((pm) => (
-                        <option key={pm.id} value={pm.id}>
-                          {pm.name} ({pm.designation || pm.role})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setEditFormData({ ...editFormData, assignedProjectManagerId: val })}
+                      options={[
+                        { value: '', label: '-- Select Project Manager --' },
+                        ...pmUsers.map((pm) => ({
+                          value: pm.id,
+                          label: pm.name,
+                          sublabel: pm.designation || pm.role,
+                        })),
+                      ]}
+                      placeholder="-- Select Project Manager --"
+                      searchPlaceholder="Search PM or Sales Lead..."
+                    />
                   </div>
                 </div>
               </div>
@@ -1641,7 +1658,7 @@ export const Leads: React.FC = () => {
                     onClick={() => {
                       const l = selectedLeadForDetail;
                       setSelectedLeadForDetail(null);
-                      navigate(`/quotations?leadId=${l.id}&clientName=${encodeURIComponent(l.clientName)}`);
+                      if (l) handleOpenQuotationForLead(l);
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm"
                   >
@@ -1707,6 +1724,34 @@ export const Leads: React.FC = () => {
               </p>
             </div>
 
+            {leadToConvert?.quotations && leadToConvert.quotations.length > 0 && (() => {
+              const q = leadToConvert.quotations[leadToConvert.quotations.length - 1];
+              return (
+                <div className="mb-3.5 p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-blue-950">Linked Proposal: {q.quotationNumber}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-200 text-blue-900">
+                      {q.gstMode === 'NO_GST' ? 'No GST (0%)' : q.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-blue-900">
+                    <div>
+                      <span className="text-blue-600 block text-[10px]">Approved Scope Budget</span>
+                      <strong className="text-slate-800">₹{q.subtotal.toLocaleString('en-IN')}</strong>
+                    </div>
+                    <div>
+                      <span className="text-blue-600 block text-[10px]">Statutory GST Tax</span>
+                      <strong className="text-amber-700">{q.gstAmount > 0 ? `₹${q.gstAmount.toLocaleString('en-IN')}` : '₹0'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-blue-600 block text-[10px]">Agreed Contract Total</span>
+                      <strong className="text-emerald-700">₹{q.totalAmount.toLocaleString('en-IN')}</strong>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <form onSubmit={handleConvertLead} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Project Name</label>
@@ -1757,8 +1802,8 @@ export const Leads: React.FC = () => {
                   required
                   placeholder="e.g. HDFC-RTGS-9823412 or Cheque #004521"
                   value={convertForm.referenceNo}
-                  onChange={(e) => setConvertForm({ ...convertForm, referenceNo: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono"
+                  onChange={(e) => setConvertForm({ ...convertForm, referenceNo: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono uppercase"
                 />
               </div>
 

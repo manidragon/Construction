@@ -421,7 +421,7 @@ export const getMe = async (req: Request, res: Response) => {
 export const signupTrial = async (req: Request, res: Response) => {
   try {
     const ownerName = req.body.ownerName || req.body.fullName;
-    const { companyName, email, password, phone, city = 'Bengaluru', state = 'Karnataka' } = req.body;
+    const { companyName, email, password, phone, city = '', state = '' } = req.body;
 
     if (!companyName || !ownerName || !email || !password) {
       return res.status(400).json({
@@ -474,9 +474,9 @@ export const signupTrial = async (req: Request, res: Response) => {
         trialStartDate,
         trialEndDate,
         planType: 'FREE_TRIAL',
-        address: `${city}, ${state}`,
-        city,
-        state,
+        address: [city, state].filter(Boolean).join(', ') || 'Corporate Office',
+        city: city ? String(city).trim() : '',
+        state: state ? String(state).trim() : '',
         pincode: '560001',
         phone: phone || '+91 90000 00000',
         email: normalizedEmail,

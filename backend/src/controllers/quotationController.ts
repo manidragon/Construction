@@ -11,7 +11,8 @@ export const getNextQuotationNumber = async (req?: Request, res?: Response) => {
   try {
     const currentYear = new Date().getFullYear();
     const prefix = `QUOT-${currentYear}-`;
-    const tenantFilter = req ? getTenantFilter(req) : {};
+    const tenantId = (req as any)?.user?.companyId || (req?.query?.tenantId as string) || null;
+    const tenantFilter = tenantId ? { tenantId } : (req ? getTenantFilter(req) : {});
 
     const latest = await prisma.quotation.findFirst({
       where: { quotationNumber: { startsWith: prefix }, ...tenantFilter },
@@ -215,18 +216,24 @@ export const getQuotationById = async (req: Request, res: Response) => {
 
 /**
  * Helper to calculate BOQ Totals & GST Modes
+ * - NO_GST (0%): Grand Total = Subtotal (sum of items), GST = 0
  * - Additional (Exclusive) GST (+18%): Subtotal is sum of items, tax is +18% on top, Grand Total = Subtotal + GST
  * - Inclusive GST (18%): Grand Total is sum of items (agreed flat value), Subtotal = Grand Total / 1.18, Tax Liability = Grand Total - Subtotal
  */
 export const calculateQuotationFinancials = (items: any[], gstMode: string, customGrandTotal?: number) => {
   const rawSum = items.reduce((acc, it) => acc + (Number(it.quantity || 0) * Number(it.rate || 0)), 0);
-  const gstPercent = 18.0;
 
   let subtotal = 0;
+  let gstPercent = 18.0;
   let gstAmount = 0;
   let totalAmount = 0;
 
-  if (gstMode === 'INCLUSIVE') {
+  if (gstMode === 'NO_GST') {
+    subtotal = rawSum;
+    gstPercent = 0;
+    gstAmount = 0;
+    totalAmount = rawSum;
+  } else if (gstMode === 'INCLUSIVE') {
     // Contract value is flat agreed amount
     totalAmount = customGrandTotal !== undefined && customGrandTotal > 0 ? customGrandTotal : rawSum;
     subtotal = Math.round((totalAmount / (1 + gstPercent / 100)) * 100) / 100;
@@ -296,7 +303,7 @@ export const createQuotation = async (req: Request, res: Response) => {
     }
 
     const itemsList = Array.isArray(items) && items.length > 0 ? items : [];
-    const mode = gstMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE';
+    const mode = gstMode === 'NO_GST' ? 'NO_GST' : (gstMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE');
 
     const { subtotal, gstPercent, gstAmount, totalAmount } = calculateQuotationFinancials(itemsList, mode);
 
@@ -332,7 +339,7 @@ export const createQuotation = async (req: Request, res: Response) => {
         gstPercent,
         gstAmount,
         totalAmount,
-        penaltyTerms: penaltyTerms || defaultPenalty,
+        penaltyTerms: penaltyTerms !== undefined ? (penaltyTerms ? String(penaltyTerms).trim() : null) : defaultPenalty,
         milestoneTerms: finalMilestoneTerms,
         notes: notes || null,
         validUntil: validUntil ? new Date(validUntil) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
@@ -398,7 +405,7 @@ export const updateQuotation = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Quotation not found.' });
     }
 
-    const mode = gstMode ? (gstMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE') : existing.gstMode;
+    const mode = gstMode ? (gstMode === 'NO_GST' ? 'NO_GST' : (gstMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE')) : existing.gstMode;
     const itemsList = Array.isArray(items) ? items : existing.items;
 
     const { subtotal, gstPercent, gstAmount, totalAmount } = calculateQuotationFinancials(itemsList, mode);
@@ -438,7 +445,7 @@ export const updateQuotation = async (req: Request, res: Response) => {
         gstPercent,
         gstAmount,
         totalAmount,
-        ...(penaltyTerms !== undefined && { penaltyTerms }),
+        ...(penaltyTerms !== undefined && { penaltyTerms: penaltyTerms ? String(penaltyTerms).trim() : null }),
         milestoneTerms: formattedMilestones,
         ...(notes !== undefined && { notes }),
         ...(validUntil && { validUntil: new Date(validUntil) }),
@@ -513,14 +520,14 @@ export const dispatchQuotation = async (req: Request, res: Response) => {
 
     // Build WhatsApp message format
     const formattedAmount = `₹${quotation.totalAmount.toLocaleString('en-IN')}`;
-    const gstNotice = quotation.gstMode === 'EXCLUSIVE' ? '+18% GST Exclusive' : '18% GST Inclusive';
+    const gstNotice = quotation.gstMode === 'NO_GST' ? 'No GST (0%)' : (quotation.gstMode === 'EXCLUSIVE' ? '+18% GST Exclusive' : '18% GST Inclusive');
     const shareMessage = `*Apex Buildtech Quotation: ${quotation.quotationNumber}*\n` +
       `Dear ${quotation.clientName},\n` +
       `Please find attached our detailed BOQ & Quotation for your ${quotation.projectType.replace(/_/g, ' ')} project at ${quotation.siteAddress}.\n\n` +
       `*Total Agreed Value:* ${formattedAmount} (${gstNotice})\n` +
       `*Rooms / Scopes Itemized:* ${quotation.items.length} works\n` +
       `*Payment Milestones:* 50% Advance, 40% Material Delivery, 10% Handover.\n` +
-      `*Late Payment Terms:* ${quotation.penaltyTerms || '2% weekly interest'}\n\n` +
+      `*Late Payment Terms:* ${quotation.penaltyTerms || 'Waived / None'}\n\n` +
       `You can view your official interactive quotation here: https://apexbuildtech.com/q/${quotation.quotationNumber}`;
 
     // Record outbound WhatsApp Log
@@ -641,9 +648,10 @@ export const generateMilestoneInvoiceFromQuotation = async (req: Request, res: R
     // Calculate milestone amount
     const pct = Number(percentage) || (isFinal ? 10 : 50);
     const milestoneTotal = Math.round((quotation.totalAmount * (pct / 100)) * 100) / 100;
-    const gstRate = 18.0;
-    const subtotal = Math.round((milestoneTotal / (1 + gstRate / 100)) * 100) / 100;
-    const gstAmount = Math.round((milestoneTotal - subtotal) * 100) / 100;
+    const isNoGst = quotation.gstMode === 'NO_GST';
+    const gstRate = isNoGst ? 0 : 18.0;
+    const subtotal = isNoGst ? milestoneTotal : Math.round((milestoneTotal / (1 + gstRate / 100)) * 100) / 100;
+    const gstAmount = isNoGst ? 0 : Math.round((milestoneTotal - subtotal) * 100) / 100;
 
     // Generate sequential invoice number: INV-YYYY-NNN
     const currentYear = new Date().getFullYear();

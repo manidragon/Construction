@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import api from '../services/api';
+import SearchableSelect from '../components/common/SearchableSelect';
 import {
   Building,
   Users,
@@ -208,8 +209,8 @@ export const OfficeManagement: React.FC = () => {
         const normLedger = Array.isArray(data.ledgerStream)
           ? data.ledgerStream
           : Array.isArray(data.unifiedLedger)
-          ? data.unifiedLedger
-          : [];
+            ? data.unifiedLedger
+            : [];
 
         setFinancials({
           summary: {
@@ -617,8 +618,8 @@ export const OfficeManagement: React.FC = () => {
   const ledgerList: any[] = Array.isArray(financials?.ledgerStream)
     ? financials.ledgerStream
     : Array.isArray((financials as any)?.unifiedLedger)
-    ? (financials as any).unifiedLedger
-    : [];
+      ? (financials as any).unifiedLedger
+      : [];
 
   // Export Unified Ledger to CSV for Google Sheets
   const handleExportGoogleSheets = () => {
@@ -861,11 +862,10 @@ _Generated automatically via ApexBuild ERP_`;
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id as any)}
-              className={`flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition whitespace-nowrap ${
-                isActive
+              className={`flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition whitespace-nowrap ${isActive
                   ? 'bg-slate-900 text-amber-400 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-              }`}
+                }`}
             >
               <Icon className="w-3.5 h-3.5" />
               <span>{t.label}</span>
@@ -1058,13 +1058,12 @@ _Generated automatically via ApexBuild ERP_`;
                       {staff.staffCode}
                     </span>
                     <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        staff.roleCategory === 'EXECUTIVE'
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${staff.roleCategory === 'EXECUTIVE'
                           ? 'bg-amber-100 text-amber-900 border border-amber-300'
                           : staff.roleCategory === 'SUPPORT_STAFF'
-                          ? 'bg-purple-50 text-purple-800 border border-purple-200'
-                          : 'bg-blue-50 text-blue-800 border border-blue-200'
-                      }`}
+                            ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                            : 'bg-blue-50 text-blue-800 border border-blue-200'
+                        }`}
                     >
                       {staff.roleCategory}
                     </span>
@@ -1298,9 +1297,8 @@ _Generated automatically via ApexBuild ERP_`;
                       return (
                         <th
                           key={dayNum}
-                          className={`p-1.5 text-center min-w-[34px] border-l border-slate-800 ${
-                            isSunday ? 'bg-amber-900/40 text-amber-300' : ''
-                          }`}
+                          className={`p-1.5 text-center min-w-[34px] border-l border-slate-800 ${isSunday ? 'bg-amber-900/40 text-amber-300' : ''
+                            }`}
                         >
                           <span className="block text-[11px] font-bold">{dayNum}</span>
                           <span className="block text-[8px] font-normal text-slate-400">{dayNames[dayOfWeek]}</span>
@@ -1514,11 +1512,10 @@ _Generated automatically via ApexBuild ERP_`;
                       <td className="p-3 text-slate-500">{exp.periodMonth || '-'}</td>
                       <td className="p-3">
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            exp.paymentMethod === 'CASH'
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${exp.paymentMethod === 'CASH'
                               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : 'bg-blue-50 text-blue-800 border border-blue-200'
-                          }`}
+                            }`}
                         >
                           {exp.paymentMethod}
                         </span>
@@ -1764,11 +1761,10 @@ _Generated automatically via ApexBuild ERP_`;
                         <td className="p-3 text-slate-500">{formatDate(p.disbursementDate)}</td>
                         <td className="p-3">
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              p.paymentMethod === 'CASH'
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.paymentMethod === 'CASH'
                                 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                 : 'bg-blue-50 text-blue-800 border border-blue-200'
-                            }`}
+                              }`}
                           >
                             {p.paymentMethod}
                           </span>
@@ -1872,46 +1868,44 @@ _Generated automatically via ApexBuild ERP_`;
                     </tr>
                   ) : (
                     filteredLedger.map((tx: any) => (
-                    <tr key={tx.id} className="hover:bg-slate-50 transition">
-                      <td className="p-3 font-mono text-slate-600">{formatDate(tx.date)}</td>
-                      <td className="p-3">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center space-x-1 ${
-                            tx.type === 'INCOME'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          {tx.type === 'INCOME' ? (
-                            <ArrowDownRight className="w-3 h-3 text-emerald-600 mr-0.5" />
-                          ) : (
-                            <ArrowUpRight className="w-3 h-3 text-rose-600 mr-0.5" />
-                          )}
-                          <span>{tx.type}</span>
-                        </span>
-                      </td>
-                      <td className="p-3 font-medium text-slate-700">{tx.category}</td>
-                      <td className="p-3 font-semibold text-slate-900">{tx.title}</td>
-                      <td className="p-3 text-slate-700">{tx.party}</td>
-                      <td className="p-3 text-slate-500 font-medium">{tx.projectName || 'Corporate'}</td>
-                      <td className="p-3">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                            tx.channel === 'CASH'
-                              ? 'bg-emerald-100 text-emerald-900'
-                              : 'bg-blue-100 text-blue-900'
-                          }`}
-                        >
-                          {tx.channel} ({tx.paymentMode})
-                        </span>
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-emerald-700">
-                        {tx.inflow > 0 ? `+${formatCurrency(tx.inflow)}` : '-'}
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-rose-700">
-                        {tx.outflow > 0 ? `-${formatCurrency(tx.outflow)}` : '-'}
-                      </td>
-                    </tr>
+                      <tr key={tx.id} className="hover:bg-slate-50 transition">
+                        <td className="p-3 font-mono text-slate-600">{formatDate(tx.date)}</td>
+                        <td className="p-3">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center space-x-1 ${tx.type === 'INCOME'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
+                          >
+                            {tx.type === 'INCOME' ? (
+                              <ArrowDownRight className="w-3 h-3 text-emerald-600 mr-0.5" />
+                            ) : (
+                              <ArrowUpRight className="w-3 h-3 text-rose-600 mr-0.5" />
+                            )}
+                            <span>{tx.type}</span>
+                          </span>
+                        </td>
+                        <td className="p-3 font-medium text-slate-700">{tx.category}</td>
+                        <td className="p-3 font-semibold text-slate-900">{tx.title}</td>
+                        <td className="p-3 text-slate-700">{tx.party}</td>
+                        <td className="p-3 text-slate-500 font-medium">{tx.projectName || 'Corporate'}</td>
+                        <td className="p-3">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded ${tx.channel === 'CASH'
+                                ? 'bg-emerald-100 text-emerald-900'
+                                : 'bg-blue-100 text-blue-900'
+                              }`}
+                          >
+                            {tx.channel} ({tx.paymentMode})
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-emerald-700">
+                          {tx.inflow > 0 ? `+${formatCurrency(tx.inflow)}` : '-'}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-rose-700">
+                          {tx.outflow > 0 ? `-${formatCurrency(tx.outflow)}` : '-'}
+                        </td>
+                      </tr>
                     ))
                   )}
                 </tbody>
@@ -3043,8 +3037,8 @@ _Generated automatically via ApexBuild ERP_`;
                     type="text"
                     placeholder="e.g. UTR-987123"
                     value={expenseForm.referenceNo}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, referenceNo: e.target.value })}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none font-mono"
+                    onChange={(e) => setExpenseForm({ ...expenseForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none font-mono uppercase"
                   />
                 </div>
 
@@ -3100,27 +3094,26 @@ _Generated automatically via ApexBuild ERP_`;
             <form onSubmit={handleDisburseSalary} className="space-y-4 mt-4">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Select Staff Member *</label>
-                <select
-                  required
+                <SearchableSelect
                   value={salaryForm.staffId}
-                  onChange={(e) => {
-                    const st = staffList.find((s) => s.id === e.target.value);
+                  onChange={(val) => {
+                    const st = staffList.find((s) => s.id === val);
                     setSalaryForm({
                       ...salaryForm,
-                      staffId: e.target.value,
+                      staffId: val,
                       basicSalary: st ? String(st.fixedSalary) : salaryForm.basicSalary,
                       paymentMethod: st?.paymentMode || 'BANK_TRANSFER',
                     });
                   }}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none"
-                >
-                  <option value="">-- Choose Employee --</option>
-                  {staffList.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.staffCode} - {s.name} ({s.designation}) - ₹{s.fixedSalary}/mo
-                    </option>
-                  ))}
-                </select>
+                  options={staffList.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    code: s.staffCode,
+                    sublabel: `${s.designation} • ₹${s.fixedSalary}/mo`,
+                  }))}
+                  placeholder="-- Choose Employee --"
+                  searchPlaceholder="Search staff by name, code, or designation..."
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3225,8 +3218,8 @@ _Generated automatically via ApexBuild ERP_`;
                       Math.max(
                         0,
                         (Number(salaryForm.basicSalary) || 0) +
-                          (Number(salaryForm.bonus) || 0) -
-                          (Number(salaryForm.deductions) || 0)
+                        (Number(salaryForm.bonus) || 0) -
+                        (Number(salaryForm.deductions) || 0)
                       )
                     )}
                   </strong>
@@ -3254,8 +3247,8 @@ _Generated automatically via ApexBuild ERP_`;
                     type="text"
                     placeholder="e.g. UTR-23489"
                     value={salaryForm.referenceNo}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, referenceNo: e.target.value })}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none font-mono"
+                    onChange={(e) => setSalaryForm({ ...salaryForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none font-mono uppercase"
                   />
                 </div>
               </div>

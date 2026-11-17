@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { logAudit, getTenantFilter } from '../middleware/auth';
 import { moveToRecycleBin } from './recycleBinController';
+import { getNextReceiptNumber } from './billingController';
 
 export const getProjects = async (req: Request, res: Response) => {
   try {
@@ -86,9 +87,19 @@ export const getProjects = async (req: Request, res: Response) => {
       const actualCost = expensesCost + materialsCost + labourCost;
       const balanceCash = totalReceived - actualCost;
       const remainingContract = Math.max(0, p.contractValue - actualCost);
+      const remainingBudget = Math.max(0, p.approvedBudget - actualCost);
+      // Realised net profit is calculated from approved budget (net scope excl. GST) minus overall actual expenses
+      const netProfit = p.approvedBudget - actualCost;
+      const netProfitMargin = p.approvedBudget > 0 ? (netProfit / p.approvedBudget) * 100 : 0;
+      const computedGstAmount = (p as any).gstAmount > 0
+        ? (p as any).gstAmount
+        : (p.contractValue > p.approvedBudget ? (p.contractValue - p.approvedBudget) : 0);
+      const computedGstMode = (p as any).gstMode || (computedGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
 
       return {
         ...p,
+        gstAmount: computedGstAmount,
+        gstMode: computedGstMode,
         financials: {
           totalBilled,
           totalReceived,
@@ -101,6 +112,9 @@ export const getProjects = async (req: Request, res: Response) => {
           actualCost,
           balanceCash,
           remainingContract,
+          remainingBudget,
+          netProfit,
+          netProfitMargin: Math.round(netProfitMargin * 10) / 10,
         },
       };
     });
@@ -194,10 +208,15 @@ export const getProjectById = async (req: Request, res: Response) => {
     const actualCost = materialsCost + labourCost + expensesCost;
     const remainingBudget = Math.max(0, project.approvedBudget - actualCost);
     const budgetBurnPercent = project.approvedBudget > 0 ? (actualCost / project.approvedBudget) * 100 : 0;
-    
-    // Profitability
-    const netProfit = totalBilled - actualCost;
-    const netProfitMargin = totalBilled > 0 ? (netProfit / totalBilled) * 100 : 0;
+
+    // Profitability: Realised net profit is strictly calculated from approved budget (net scope excl. GST) minus overall actual expenses
+    // GST is excluded because it is statutory liability payable to the government
+    const netProfit = project.approvedBudget - actualCost;
+    const netProfitMargin = project.approvedBudget > 0 ? (netProfit / project.approvedBudget) * 100 : 0;
+    const computedGstAmount = (project as any).gstAmount > 0
+      ? (project as any).gstAmount
+      : (project.contractValue > project.approvedBudget ? (project.contractValue - project.approvedBudget) : 0);
+    const computedGstMode = (project as any).gstMode || (computedGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
 
     // Site Workforce (Labours who worked on this project)
     const workerMap = new Map();
@@ -253,6 +272,8 @@ export const getProjectById = async (req: Request, res: Response) => {
       success: true,
       project: {
         ...project,
+        gstAmount: computedGstAmount,
+        gstMode: computedGstMode,
         siteWorkforce,
         projectSuppliers,
         financials: {
@@ -285,25 +306,26 @@ export const getNextProjectCode = async (req?: Request, res?: Response) => {
   try {
     const currentYear = new Date().getFullYear();
     const prefix = `PRJ-${currentYear}-`;
+    const tenantId = (req as any)?.user?.companyId || (req?.query?.tenantId as string) || null;
+    const tenantFilter = tenantId ? { tenantId } : (req ? getTenantFilter(req) : {});
 
-    const latest = await prisma.project.findFirst({
-      where: { code: { startsWith: prefix } },
-      orderBy: { code: 'desc' },
+    const projects = await prisma.project.findMany({
+      where: { code: { startsWith: prefix }, ...tenantFilter },
       select: { code: true },
     });
 
-    let nextSeq = 1;
-    if (latest && latest.code) {
-      const parts = latest.code.split('-');
-      const num = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(num)) {
-        nextSeq = num + 1;
+    let maxSeq = 0;
+    for (const p of projects) {
+      if (p.code) {
+        const parts = p.code.split('-');
+        const num = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
       }
-    } else {
-      const count = await prisma.project.count();
-      nextSeq = count + 1;
     }
 
+    const nextSeq = maxSeq + 1;
     const nextProjectCode = `${prefix}${String(nextSeq).padStart(3, '0')}`;
 
     if (res) {
@@ -345,7 +367,7 @@ export const createProject = async (req: Request, res: Response) => {
 
     let finalCode = code ? String(code).trim() : '';
     if (!finalCode) {
-      const generated = await getNextProjectCode();
+      const generated = await getNextProjectCode(req);
       finalCode = (generated as any).nextProjectCode;
     }
 
@@ -374,7 +396,11 @@ export const createProject = async (req: Request, res: Response) => {
     const finalClientEmail = clientEmail || quotation?.clientEmail || null;
     const finalBillingAddr = clientBillingAddr || quotation?.siteAddress || null;
     const finalPaymentTerms = paymentTerms || (quotation?.milestoneTerms ? 'Milestone terms per quotation' : null);
-    const finalTaxRate = Number(taxRatePercent) || quotation?.gstPercent || 18.0;
+    const finalContractValue = Number(contractValue) || (quotation ? quotation.totalAmount : 0);
+    const finalBudget = Number(approvedBudget) || (quotation ? quotation.subtotal : finalContractValue);
+    const finalGstAmount = quotation ? (quotation.gstAmount || 0) : Math.max(0, finalContractValue - finalBudget);
+    const finalGstMode = quotation ? (quotation.gstMode || 'EXCLUSIVE') : (finalGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
+    const finalTaxRate = Number(taxRatePercent) || quotation?.gstPercent || (finalGstAmount > 0 ? 18.0 : 0);
 
     const project = await prisma.project.create({
       data: {
@@ -392,8 +418,10 @@ export const createProject = async (req: Request, res: Response) => {
         state: state || 'Karnataka',
         projectType: projectType || 'RESIDENTIAL',
         contractType: contractType || 'ITEM_RATE',
-        contractValue: Number(contractValue) || (quotation ? quotation.totalAmount : 0),
-        approvedBudget: Number(approvedBudget) || (quotation ? quotation.subtotal : 0),
+        contractValue: finalContractValue,
+        approvedBudget: finalBudget,
+        gstAmount: finalGstAmount,
+        gstMode: finalGstMode,
         plannedStartDate: new Date(plannedStartDate),
         plannedEndDate: new Date(plannedEndDate),
         status: 'ACTIVE',
@@ -653,16 +681,17 @@ export const confirmProjectAdvancePayment = async (req: Request, res: Response) 
             },
           });
 
-          const currentYear = new Date().getFullYear();
-          const rcpCount = await prisma.clientReceipt.count();
+          const { nextReceiptNumber } = await getNextReceiptNumber(req, project.tenantId);
+          const finalReferenceNo = referenceNo ? String(referenceNo).trim().toUpperCase() : `UTR-${Date.now().toString().slice(-6)}`;
           await prisma.clientReceipt.create({
             data: {
-              receiptNumber: `RCP-${currentYear}-${String(rcpCount + 1).padStart(3, '0')}`,
+              tenantId: project.tenantId,
+              receiptNumber: nextReceiptNumber,
               projectId: project.id,
               invoiceId: inv.id,
               amount: inv.netInvoiceAmount,
               paymentMethod: 'NEFT_RTGS',
-              referenceNo: referenceNo || `UTR-${Date.now().toString().slice(-6)}`,
+              referenceNo: finalReferenceNo,
               notes: `Advance payment verified and confirmed by Finance (${req.user?.name || 'Admin'}). ${notes || ''}`,
             },
           });
@@ -1157,13 +1186,13 @@ export const getProjectDailyShareReport = async (req: Request, res: Response) =>
     const poIds = (project.purchaseOrders as any[]).map((po) => po.id);
     const supplierInvoices = poIds.length > 0
       ? await prisma.supplierInvoice.findMany({
-          where: {
-            purchaseOrderId: { in: poIds },
-          },
-          include: {
-            supplier: true,
-          },
-        })
+        where: {
+          purchaseOrderId: { in: poIds },
+        },
+        include: {
+          supplier: true,
+        },
+      })
       : [];
 
     const vendorMap = new Map<string, any>();
@@ -1278,7 +1307,7 @@ export const getProjectDailyShareReport = async (req: Request, res: Response) =>
       await prisma.project.update({
         where: { id: project.id },
         data: { clientContact: effectiveClientPhone },
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     return res.json({

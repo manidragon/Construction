@@ -24,6 +24,7 @@ import {
   Filter,
   Search,
 } from 'lucide-react';
+import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Procurement: React.FC = () => {
   const { hasRole } = useAuth();
@@ -1007,32 +1008,37 @@ export const Procurement: React.FC = () => {
             <form onSubmit={handleCreatePO} className="mt-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
-                  <select
+                  <SearchableSelect
+                    label="Project *"
                     required
+                    options={projects.map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      code: p.code,
+                    }))}
                     value={poForm.projectId}
-                    onChange={(e) => setPoForm({ ...poForm, projectId: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="">Select Project</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setPoForm({ ...poForm, projectId: val })}
+                    placeholder="Select Project"
+                    searchPlaceholder="Search project name or code..."
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Supplier *</label>
-                  <select
+                  <SearchableSelect
+                    label="Supplier *"
                     required
+                    options={suppliers.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      code: s.code || 'SUP',
+                      sublabel: s.phone ? `Ph: ${s.phone}` : undefined,
+                    }))}
                     value={poForm.supplierId}
-                    onChange={(e) => setPoForm({ ...poForm, supplierId: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="">Select Supplier</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setPoForm({ ...poForm, supplierId: val })}
+                    placeholder="Select Supplier"
+                    searchPlaceholder="Search supplier name or code..."
+                    onAddNew={() => setShowSupplierModal(true)}
+                    addNewLabel="+ Add New Supplier"
+                  />
                 </div>
               </div>
 
@@ -1467,18 +1473,22 @@ export const Procurement: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Supplier *</label>
-                  <select
+                  <SearchableSelect
+                    label="Supplier *"
                     required
+                    options={suppliers.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      code: s.code || 'SUP',
+                      sublabel: s.phone ? `Ph: ${s.phone}` : undefined,
+                    }))}
                     value={editPoForm.supplierId}
-                    onChange={(e) => setEditPoForm({ ...editPoForm, supplierId: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="">Select Supplier</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setEditPoForm({ ...editPoForm, supplierId: val })}
+                    placeholder="Select Supplier"
+                    searchPlaceholder="Search supplier name or code..."
+                    onAddNew={() => setShowSupplierModal(true)}
+                    addNewLabel="+ Add New Supplier"
+                  />
                 </div>
               </div>
 
@@ -1952,8 +1962,8 @@ export const Procurement: React.FC = () => {
                   required
                   placeholder="e.g. INV-BLJ-5510 or BILL-01-BALAJI"
                   value={invForm.invoiceNumber}
-                  onChange={(e) => setInvForm({ ...invForm, invoiceNumber: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                  onChange={(e) => setInvForm({ ...invForm, invoiceNumber: e.target.value.toUpperCase() })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 />
               </div>
 
@@ -1969,25 +1979,24 @@ export const Procurement: React.FC = () => {
                       <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded font-bold shrink-0 ml-1">From PO</span>
                     </div>
                   ) : (
-                    <select
-                      required
+                    <SearchableSelect
                       value={invForm.projectId}
-                      onChange={(e) => setInvForm({ ...invForm, projectId: e.target.value })}
-                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                    >
-                      <option value="">Select Project</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
-                      ))}
-                    </select>
+                      onChange={(val) => setInvForm({ ...invForm, projectId: val })}
+                      options={projects.map((p) => ({
+                        value: p.id,
+                        label: p.name,
+                        code: p.code,
+                      }))}
+                      placeholder="Select Project"
+                      searchPlaceholder="Search project..."
+                    />
                   )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Linked PO (Optional)</label>
-                  <select
+                  <SearchableSelect
                     value={invForm.purchaseOrderId}
-                    onChange={(e) => {
-                      const poId = e.target.value;
+                    onChange={(poId) => {
                       const selPO = purchaseOrders.find((p) => p.id === poId);
                       const selSupp = suppliers.find((s) => s.id === (selPO?.supplierId || invForm.supplierId));
                       const suppTag = selSupp ? selSupp.name.trim().split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '') : 'SUP';
@@ -2002,30 +2011,38 @@ export const Procurement: React.FC = () => {
                         taxAmount: selPO ? String(selPO.taxAmount) : invForm.taxAmount,
                       });
                     }}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="">None / Direct Bill</option>
-                    {purchaseOrders.map((po) => (
-                      <option key={po.id} value={po.id}>{po.poNumber} — [{po.project?.code}] {po.supplier?.name}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'None / Direct Bill' },
+                      ...purchaseOrders.map((po) => ({
+                        value: po.id,
+                        label: `[${po.project?.code || 'PRJ'}] ${po.supplier?.name || 'Supplier'}`,
+                        code: po.poNumber,
+                      })),
+                    ]}
+                    placeholder="None / Direct Bill"
+                    searchPlaceholder="Search PO number or project..."
+                  />
                 </div>
               </div>
 
               {/* Supplier */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Supplier *</label>
-                <select
+                <SearchableSelect
+                  label="Supplier *"
                   required
+                  options={suppliers.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    code: s.code || 'SUP',
+                    sublabel: s.phone ? `Ph: ${s.phone}` : undefined,
+                  }))}
                   value={invForm.supplierId}
-                  onChange={(e) => setInvForm({ ...invForm, supplierId: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">Select Supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
-                  ))}
-                </select>
+                  onChange={(val) => setInvForm({ ...invForm, supplierId: val })}
+                  placeholder="Select Supplier"
+                  searchPlaceholder="Search supplier name or code..."
+                  onAddNew={() => setShowSupplierModal(true)}
+                  addNewLabel="+ Add New Supplier"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -2353,12 +2370,17 @@ export const Procurement: React.FC = () => {
             </div>
             <form onSubmit={handleRecordPayment} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Supplier *</label>
-                <select
+                <SearchableSelect
+                  label="Supplier *"
                   required
+                  options={suppliers.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    code: s.code || 'SUP',
+                    sublabel: `Payable: ${formatCurrency(s.currentBalance)}`,
+                  }))}
                   value={paymentForm.supplierId}
-                  onChange={(e) => {
-                    const newSupplierId = e.target.value;
+                  onChange={(newSupplierId) => {
                     const suppUnpaidInvoices = invoices.filter(
                       (inv) => inv.supplierId === newSupplierId && inv.balanceDue > 0
                     );
@@ -2370,15 +2392,9 @@ export const Procurement: React.FC = () => {
                       amount: defaultInv ? String(defaultInv.balanceDue) : '',
                     });
                   }}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">Select Supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} (Payable: {formatCurrency(s.currentBalance)})
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Supplier"
+                  searchPlaceholder="Search supplier name or code..."
+                />
               </div>
 
               <div>
@@ -2390,30 +2406,32 @@ export const Procurement: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <select
+                <SearchableSelect
                   value={paymentForm.invoiceId}
-                  onChange={(e) => {
-                    const selInv = invoices.find((inv) => inv.id === e.target.value);
+                  onChange={(invId) => {
+                    const selInv = invoices.find((inv) => inv.id === invId);
                     setPaymentForm({
                       ...paymentForm,
-                      invoiceId: e.target.value,
+                      invoiceId: invId,
                       supplierId: selInv?.supplierId || paymentForm.supplierId,
                       amount: selInv ? String(selInv.balanceDue) : paymentForm.amount,
                     });
                   }}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">Auto-Allocate (FIFO across open bills) or On Account</option>
-                  {invoices
-                    .filter(
-                      (inv) => (!paymentForm.supplierId || inv.supplierId === paymentForm.supplierId) && inv.balanceDue > 0
-                    )
-                    .map((inv) => (
-                      <option key={inv.id} value={inv.id}>
-                        [{inv.invoiceNumber}] (Bal: {formatCurrency(inv.balanceDue)}) • Due {formatDate(inv.dueDate)}
-                      </option>
-                    ))}
-                </select>
+                  options={[
+                    { value: '', label: 'Auto-Allocate (FIFO across open bills) or On Account' },
+                    ...invoices
+                      .filter(
+                        (inv) => (!paymentForm.supplierId || inv.supplierId === paymentForm.supplierId) && inv.balanceDue > 0
+                      )
+                      .map((inv) => ({
+                        value: inv.id,
+                        label: `Bal: ${formatCurrency(inv.balanceDue)} • Due ${formatDate(inv.dueDate)}`,
+                        code: inv.invoiceNumber,
+                      })),
+                  ]}
+                  placeholder="Auto-Allocate (FIFO across open bills) or On Account"
+                  searchPlaceholder="Search invoice number or date..."
+                />
                 {paymentForm.invoiceId && (
                   <p className="text-[11px] text-emerald-600 font-semibold mt-1">
                     ✓ Invoice selected. Paying this will settle the bill and update its status to PAID.
@@ -2454,8 +2472,8 @@ export const Procurement: React.FC = () => {
                   type="text"
                   placeholder="e.g. HDFCR52024101900124"
                   value={paymentForm.referenceNo}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, referenceNo: e.target.value })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  onChange={(e) => setPaymentForm({ ...paymentForm, referenceNo: e.target.value.toUpperCase() })}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
                 />
               </div>
 
@@ -2498,8 +2516,8 @@ export const Procurement: React.FC = () => {
                     required
                     placeholder="SUP-STEEL-01"
                     value={suppForm.code}
-                    onChange={(e) => setSuppForm({ ...suppForm, code: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    onChange={(e) => setSuppForm({ ...suppForm, code: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
                   />
                 </div>
                 <div>
@@ -2700,7 +2718,7 @@ export const Procurement: React.FC = () => {
                     type="text"
                     placeholder="Auto-generated if blank"
                     value={quickMaterialForm.code}
-                    onChange={(e) => setQuickMaterialForm({ ...quickMaterialForm, code: e.target.value })}
+                    onChange={(e) => setQuickMaterialForm({ ...quickMaterialForm, code: e.target.value.toUpperCase() })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                   <span className="text-[10px] text-slate-400 block mt-0.5">Sequential code auto-assigned</span>

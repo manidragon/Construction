@@ -146,6 +146,8 @@ export interface Project {
   contractType: string;
   contractValue: number;
   approvedBudget: number;
+  gstAmount?: number;
+  gstMode?: 'EXCLUSIVE' | 'INCLUSIVE' | 'NO_GST';
   plannedStartDate: string;
   plannedEndDate: string;
   actualStartDate?: string;
@@ -1141,7 +1143,7 @@ export interface Quotation {
   projectType: LeadProjectType;
   status: 'DRAFT' | 'SHARED' | 'ACCEPTED' | 'REJECTED' | 'CONVERTED';
   subtotal: number;
-  gstMode: 'EXCLUSIVE' | 'INCLUSIVE';
+  gstMode: 'EXCLUSIVE' | 'INCLUSIVE' | 'NO_GST';
   gstPercent: number;
   gstAmount: number;
   totalAmount: number;
