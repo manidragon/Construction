@@ -215,6 +215,32 @@ export const createExpense = async (req: Request, res: Response) => {
       }).catch(err => console.error('Error incrementing BOQItem actualExpenditure:', err));
     }
 
+    // Automatic Document Vault Archiving:
+    // If receiptUrl is provided, automatically archive receipt into Document Vault under the project folder
+    if (receiptUrl) {
+      const { receiptDescription, receiptFileSize, receiptFileType } = req.body;
+      const receiptTitle = (receiptDescription && receiptDescription.trim())
+        ? receiptDescription.trim()
+        : `Expense Receipt: ${description} [${expenseNumber}]`;
+
+      await prisma.documentAttachment.create({
+        data: {
+          tenantId,
+          title: receiptTitle,
+          category: 'RECEIPT',
+          fileUrl: receiptUrl,
+          fileSize: Number(receiptFileSize) || 1024 * 120,
+          fileType: receiptFileType || 'image/jpeg',
+          projectId: expense.projectId || null,
+          siteId: expense.siteId || null,
+          referenceEntity: 'Expense',
+          referenceId: expense.id,
+          uploadedById: req.user?.id,
+          createdAt: expense.expenseDate ? new Date(expense.expenseDate) : new Date(),
+        },
+      }).catch(err => console.error('Error auto-archiving expense receipt to Document Vault:', err));
+    }
+
     // Auto-update Task actualCost if linked
     if (taskId) {
       await prisma.task.update({

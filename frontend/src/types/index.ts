@@ -29,12 +29,15 @@ export interface Company {
   ownerEmail?: string;
   status?: 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'SUSPENDED';
   planType?: 'FREE_TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE';
+  subscriptionModel?: string;
+  onboardingCompleted?: boolean;
+  suspendedReason?: string;
+  isSuspended?: boolean;
   trialStartDate?: string;
   trialEndDate?: string;
   daysRemaining?: number;
   isTrialExpired?: boolean;
   gstin?: string;
-  pan?: string;
   address: string;
   city: string;
   state: string;
@@ -42,6 +45,7 @@ export interface Company {
   phone: string;
   email: string;
   currencySymbol: string;
+  logo?: string;
   logoUrl?: string;
   businessAddress?: string;
   invoiceFooterNotes?: string;
@@ -61,8 +65,18 @@ export interface Tenant {
   databasePath?: string;
   databaseSize?: string;
   phone: string;
+  address?: string;
   status: 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'SUSPENDED';
-  planType: 'FREE_TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE';
+  planType: 'FREE_TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE' | string;
+  subscriptionModel?: 'TRIAL' | 'LIFETIME' | 'MONTHLY' | 'YEARLY' | string;
+  onboardingCompleted?: boolean;
+  suspendedReason?: string;
+  isSuspended?: boolean;
+  activeDevicesCount?: number;
+  staffAccountsCount?: number;
+  supportTicketsCount?: number;
+  saasTransactionsCount?: number;
+  totalPaidToDate?: number;
   trialStartDate?: string;
   trialEndDate?: string;
   daysRemaining: number;
@@ -86,12 +100,96 @@ export interface SuperAdminStats {
   trialTenants: number;
   expiredTenants: number;
   suspendedTenants: number;
+  lifetimeCount?: number;
+  monthlyCount?: number;
+  yearlyCount?: number;
+  totalStaffAccounts?: number;
+  totalActiveDevices?: number;
   totalUsers: number;
   totalProjects: number;
   totalLeads: number;
   totalInvoices: number;
   totalSaaSBilling: number;
   totalSaaSCollections: number;
+  totalSaaSInflows?: number;
+  openTicketsCount?: number;
+  totalTicketsCount?: number;
+}
+
+export interface SaaSTransaction {
+  id: string;
+  companyId: string;
+  company?: {
+    id: string;
+    name: string;
+    companyName?: string;
+    code: string;
+    status: string;
+    ownerEmail?: string;
+    phone?: string;
+    subscriptionModel?: string;
+  };
+  invoiceNumber: string;
+  transactionDate: string;
+  planType: string;
+  billingCycle: string;
+  amount: number;
+  currency: string;
+  paymentMode: string;
+  paymentRef?: string;
+  status: 'PAID' | 'PENDING' | 'FAILED' | 'REFUNDED';
+  periodStartDate?: string;
+  periodEndDate?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  ticketId: string;
+  senderType: 'USER' | 'AI_BOT' | 'SUPER_ADMIN';
+  senderName: string;
+  message: string;
+  attachments?: string;
+  createdAt: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  ticketNumber: string;
+  companyId: string;
+  company?: {
+    id: string;
+    name: string;
+    companyName?: string;
+    code: string;
+    phone?: string;
+    ownerEmail?: string;
+  };
+  userId?: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    phone?: string;
+  };
+  userName: string;
+  userEmail: string;
+  userPhone?: string;
+  subject: string;
+  description?: string;
+  category: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  escalatedFromChat: boolean;
+  chatTranscript?: string;
+  resolutionNotes?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: SupportTicketMessage[];
 }
 
 export interface WhatsAppLog {
@@ -679,7 +777,16 @@ export interface ClientInvoice {
   clientId?: string;
   client?: Client;
   projectId: string;
-  project: { code: string; name: string };
+  project: {
+    id?: string;
+    code: string;
+    name: string;
+    clientContact?: string;
+    clientName?: string;
+    clientEmail?: string;
+    clientBillingAddr?: string;
+    contractValue?: number;
+  };
   invoiceType: string;
   invoiceDate: string;
   dueDate: string;
@@ -697,6 +804,8 @@ export interface ClientInvoice {
   balanceDue: number;
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   certificationNotes?: string;
+  milestoneName?: string;
+  description?: string;
   items?: {
     id: string;
     description: string;
@@ -723,6 +832,7 @@ export interface ClientReceipt {
     clientName?: string;
     clientEmail?: string;
     clientBillingAddr?: string;
+    contractValue?: number;
   };
   invoiceId?: string;
   invoice?: {
@@ -732,6 +842,7 @@ export interface ClientReceipt {
     paidAmount?: number;
     balanceDue?: number;
     subtotal?: number;
+    milestoneName?: string;
   };
   receiptDate: string;
   amount: number;

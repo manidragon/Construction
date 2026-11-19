@@ -1,15 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useProject } from '../../context/ProjectContext';
-import { UserRole } from '../../types';
 import {
   Building2,
   HardHat,
   LogOut,
-  ChevronDown,
-  UserCheck,
   Menu,
   Sparkles,
+  ShieldCheck,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -18,60 +17,106 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAI }) => {
-  const { user, switchRole, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { projects, selectedProjectId, setSelectedProjectId } = useProject();
-  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
 
-  const rolesList: { role: UserRole; title: string; color: string }[] = [
-    { role: 'OWNER', title: '1. Managing Director & Owner', color: 'bg-purple-100 text-purple-800 border-purple-300' },
-    { role: 'PROJECT_MANAGER', title: '2. Project Manager (GM/PM)', color: 'bg-blue-100 text-blue-800 border-blue-300' },
-    { role: 'SITE_ENGINEER', title: '3. Site Engineer / Supervisor', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-    { role: 'ACCOUNTS_MANAGER', title: '4. Accounts Manager / CA', color: 'bg-amber-100 text-amber-800 border-amber-300' },
-    { role: 'PURCHASE_MANAGER', title: '5. Purchase / Procurement Lead', color: 'bg-cyan-100 text-cyan-800 border-cyan-300' },
-    { role: 'STOREKEEPER', title: '6. Storekeeper / Inventory Mgr', color: 'bg-orange-100 text-orange-800 border-orange-300' },
-    { role: 'HR_MANAGER', title: '7. HR / Labour Welfare Mgr', color: 'bg-rose-100 text-rose-800 border-rose-300' },
-    { role: 'AUDITOR', title: '8. Read-only Internal Auditor', color: 'bg-slate-100 text-slate-800 border-slate-300' },
-  ];
+  const getRoleBadge = (role?: string) => {
+    switch (role) {
+      case 'OWNER':
+      case 'TENANT_ADMIN':
+        return {
+          title: 'Managing Director & Owner',
+          color: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+        };
+      case 'PROJECT_MANAGER':
+        return {
+          title: 'Project Manager (GM/PM)',
+          color: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+        };
+      case 'SITE_ENGINEER':
+        return {
+          title: 'Site Engineer / Supervisor',
+          color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+        };
+      case 'ACCOUNTS_MANAGER':
+        return {
+          title: 'Accounts Manager / CA',
+          color: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+        };
+      case 'PURCHASE_MANAGER':
+        return {
+          title: 'Purchase Lead / Procurement',
+          color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+        };
+      case 'STOREKEEPER':
+        return {
+          title: 'Storekeeper / Inventory Mgr',
+          color: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+        };
+      case 'HR_MANAGER':
+        return {
+          title: 'HR / Workforce Manager',
+          color: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+        };
+      case 'AUDITOR':
+        return {
+          title: 'Internal Auditor (Read-Only)',
+          color: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+        };
+      case 'SUPER_ADMIN':
+        return {
+          title: 'Super Admin (Platform)',
+          color: 'bg-red-500/20 text-red-300 border-red-500/30',
+        };
+      default:
+        return {
+          title: 'Staff Member',
+          color: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+        };
+    }
+  };
 
-  const currentRoleInfo = rolesList.find((r) => r.role === user?.role || (user?.role === 'TENANT_ADMIN' && r.role === 'OWNER')) || rolesList[0];
+  const roleInfo = getRoleBadge(user?.role);
+  const companyName = user?.company?.companyName || user?.company?.name || 'ApexBuild Construction';
+  const companyCode = user?.company?.code || '';
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 px-4 py-2.5 flex items-center justify-between shadow-md">
+    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 px-3 sm:px-4 py-2 flex items-center justify-between shadow-md">
       {/* Left: Brand & Mobile Toggle */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2.5 sm:space-x-3">
         <button
           onClick={onToggleSidebar}
-          className="lg:hidden p-1.5 rounded-md hover:bg-slate-800 text-slate-300 transition"
+          className="lg:hidden p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 transition"
           aria-label="Toggle menu"
         >
           <Menu className="w-5 h-5" />
         </button>
 
         <div className="flex items-center space-x-2.5">
-          <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black shadow-sm shadow-amber-500/20">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 font-black shadow-sm shadow-amber-500/20 shrink-0">
             <HardHat className="w-5 h-5" />
           </div>
-          <div>
+          <div className="hidden xs:block">
             <div className="flex items-center space-x-2">
               <span className="font-extrabold text-base tracking-wide text-white">APEX<span className="text-amber-400">BUILD</span></span>
               <span className="bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold uppercase">
-                ERP v1.0
+                ERP
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 tracking-wider hidden sm:block">Construction Site Operations & Accounts</p>
+            <p className="text-[10px] text-slate-400 tracking-wider hidden md:block">Construction Site Operations & Accounts</p>
           </div>
         </div>
       </div>
 
       {/* Center: Global Project Switcher */}
-      <div className="hidden md:flex items-center space-x-2.5 bg-slate-800/90 hover:bg-slate-800 px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-700/80 hover:border-slate-600 shadow-sm flex-1 max-w-xl lg:max-w-2xl mx-2 lg:mx-4 transition-colors">
+      <div className="hidden md:flex items-center space-x-2.5 bg-slate-800/90 hover:bg-slate-800 px-3.5 py-1.5 rounded-xl border border-slate-700/80 hover:border-slate-600 shadow-sm flex-1 max-w-md lg:max-w-xl mx-2 lg:mx-4 transition-colors">
         <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
         <span className="text-xs font-bold text-slate-400 whitespace-nowrap">Filter Project:</span>
         <select
           value={selectedProjectId}
           onChange={(e) => setSelectedProjectId(e.target.value)}
           aria-label="Filter active project"
-          className="bg-transparent text-xs sm:text-sm text-white font-semibold focus:outline-none w-full cursor-pointer truncate py-0.5"
+          className="bg-transparent text-xs text-white font-semibold focus:outline-none w-full cursor-pointer truncate py-0.5"
         >
           <option value="" className="bg-slate-900 text-white font-medium">🌐 All Projects (Enterprise Overview)</option>
           {projects.map((p) => (
@@ -82,83 +127,57 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAI }) => 
         </select>
       </div>
 
-      {/* Right: Demo Role Switcher & User Profile */}
-      <div className="flex items-center space-x-2.5">
-        {/* AI Assistant Button */}
+      {/* Right: Authenticated User Credentials, Role Badge & Logout */}
+      <div className="flex items-center space-x-2 sm:space-x-3">
+        {/* In-App AI Support Assistant Button */}
         {onOpenAI && (
           <button
             onClick={onOpenAI}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 hover:opacity-95 transition"
-            title="Open AI Chatbot & Automation Engine"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 hover:opacity-95 transition cursor-pointer"
+            title="Open AI Support & Guided Workflow Assistant"
           >
-            <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-            <span className="hidden sm:inline">AI Bot</span>
+            <Sparkles className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
+            <span className="font-extrabold hidden sm:inline">AI Support Bot</span>
           </button>
         )}
 
-        {/* Role Switcher Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
-            className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-lg border font-medium shadow-sm transition hover:opacity-95 ${currentRoleInfo.color}`}
-            title="Click to switch between any of the 8 enterprise roles"
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span className="font-semibold hidden sm:inline">{currentRoleInfo.title.replace(/^\d+\.\s*/, '')}</span>
-            <ChevronDown className="w-3.5 h-3.5 opacity-70" />
-          </button>
-
-          {roleDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 py-2 z-50 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="px-3 py-1.5 border-b border-slate-100 text-xs text-slate-500 font-semibold uppercase tracking-wider flex items-center justify-between">
-                <span>Switch Role (Instant Preview)</span>
-                <span className="bg-blue-50 text-blue-600 text-[10px] px-1.5 py-0.5 rounded">Demo Tool</span>
-              </div>
-              <div className="max-h-72 overflow-y-auto py-1">
-                {rolesList.map((r) => (
-                  <button
-                    key={r.role}
-                    onClick={() => {
-                      switchRole(r.role);
-                      setRoleDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between hover:bg-slate-50 transition ${
-                      user?.role === r.role || (user?.role === 'TENANT_ADMIN' && r.role === 'OWNER')
-                        ? 'bg-amber-50 text-amber-900 font-bold'
-                        : 'text-slate-700'
-                    }`}
-                  >
-                    <span>{r.title}</span>
-                    {(user?.role === r.role || (user?.role === 'TENANT_ADMIN' && r.role === 'OWNER')) && (
-                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {/* Tenant Company Badge */}
+        <div className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1 bg-slate-800/80 border border-slate-700/70 rounded-xl text-xs" title={`Tenant Workspace: ${companyName}`}>
+          <Building2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="font-semibold text-slate-200 truncate max-w-[130px]">{companyName}</span>
+          {companyCode && (
+            <span className="text-[10px] font-mono px-1 py-0.2 bg-slate-700 text-amber-300 rounded font-bold">
+              {companyCode}
+            </span>
           )}
         </div>
 
-        {/* User Badge */}
-        <div className="hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800">
-          <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-amber-400">
-            {user?.name?.charAt(0) || 'U'}
+        {/* User Credentials & Verified Role Badge */}
+        <div className="flex items-center space-x-2 pl-2 border-l border-slate-800">
+          <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-black text-amber-400 shrink-0 shadow-sm">
+            {user?.name?.charAt(0).toUpperCase() || <UserIcon className="w-4 h-4 text-slate-400" />}
           </div>
-          <div className="text-left">
-            <p className="text-xs font-semibold leading-tight text-slate-200">{user?.name || 'User'}</p>
-            <p className="text-[10px] text-slate-400 leading-tight">
-              {user?.designation || currentRoleInfo.title.replace(/^\d+\.\s*/, '')}
-            </p>
+          <div className="text-left hidden sm:block">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-xs font-bold leading-tight text-slate-100 max-w-[120px] truncate">{user?.name || 'Authorized User'}</span>
+            </div>
+            <div className="flex items-center space-x-1 mt-0.5">
+              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold border tracking-wide ${roleInfo.color}`}>
+                <ShieldCheck className="w-2.5 h-2.5 mr-1" />
+                {roleInfo.title.split(' ')[0]} {roleInfo.title.split(' ')[1] || ''}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Logout Button */}
+        {/* Dedicated Logout Button */}
         <button
           onClick={logout}
-          title="Sign Out"
-          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-red-400 transition"
+          title="Sign Out from Enterprise ERP"
+          className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/60 border border-slate-700/80 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-semibold transition"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-3.5 h-3.5 text-rose-400" />
+          <span className="hidden md:inline">Sign Out</span>
         </button>
       </div>
     </header>

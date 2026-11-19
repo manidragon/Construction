@@ -19,10 +19,11 @@ import {
   Share2,
 } from 'lucide-react';
 import { ReceiptShareModal } from '../components/ReceiptShareModal';
+import { InvoiceShareModal } from '../components/InvoiceShareModal';
 import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Billing: React.FC = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const { projects, selectedProjectId, setSelectedProjectId, refreshProjects } = useProject();
   const [projectId, setProjectId] = useState<string>(selectedProjectId || '');
   const [clients, setClients] = useState<Client[]>([]);
@@ -33,6 +34,7 @@ export const Billing: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'clients'>('invoices');
   const [printInvoice, setPrintInvoice] = useState<ClientInvoice | null>(null);
   const [sharingReceipt, setSharingReceipt] = useState<ClientReceipt | null>(null);
+  const [sharingInvoice, setSharingInvoice] = useState<ClientInvoice | null>(null);
 
   // Modals
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -88,14 +90,15 @@ export const Billing: React.FC = () => {
     clientId: '',
     projectId: '',
     invoiceType: 'RUNNING_ACCOUNT_RA',
+    description: 'Running Account Bill - Work Progress',
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: '',
     workPeriodStart: '',
     workPeriodEnd: '',
     subtotal: '',
-    retentionPercent: '5.0',
-    tdsPercent: '2.0',
-    gstPercent: '18.0',
+    retentionPercent: '0',
+    tdsPercent: '0',
+    gstPercent: '0',
     certificationNotes: 'Joint measurement certified by Client Chief Project Manager and Consulting Architect.',
   });
 
@@ -152,12 +155,48 @@ export const Billing: React.FC = () => {
     fetchData();
   }, [projectId]);
 
-  // Compute next sequential RA Bill number formatted with the project's identifier
-  // e.g. RA-01-SKYLINE -> RA-02-Greenfield -> RA-03-SKYLINE
+  // Live Auto-Refresh: Sync Billing UI in real-time when AI Copilot creates, confirms, or reverses receipts
+  useEffect(() => {
+    const handleLiveSync = () => {
+      fetchData();
+      refreshProjects();
+    };
+    window.addEventListener('client-receipt-created', handleLiveSync);
+    window.addEventListener('client-receipt-reversed', handleLiveSync);
+    window.addEventListener('refresh-billing', handleLiveSync);
+    return () => {
+      window.removeEventListener('client-receipt-created', handleLiveSync);
+      window.removeEventListener('client-receipt-reversed', handleLiveSync);
+      window.removeEventListener('refresh-billing', handleLiveSync);
+    };
+  }, [projectId]);
+
+  // Helper to extract clean alphanumeric client tag for invoice numbers
+  const extractClientTag = (client?: any) => {
+    if (!client) return '';
+    if (client.code && !client.code.startsWith('CLI-')) {
+      return client.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    }
+    if (client.name) {
+      const words = client.name.trim().split(/\s+/);
+      let candidate = words[0];
+      if (['MR', 'MRS', 'MS', 'DR', 'THE'].includes(candidate.toUpperCase().replace(/\./g, '')) && words.length > 1) {
+        candidate = words[1];
+      }
+      return candidate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    }
+    if (client.code) return client.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return '';
+  };
+
+  // Compute next sequential RA Bill number formatted with the selected client or project's identifier
+  // e.g. RA-01-SKYLINE -> RA-06-ARUN -> RA-07-KUMAR
   const computeNextInvoiceNumber = (
-    targetProjId: string,
+    targetProjId?: string,
+    targetClientId?: string,
     invoiceList: ClientInvoice[] = invoices,
-    projectList: any[] = projects
+    projectList: any[] = projects,
+    clientList: any[] = clients
   ) => {
     let maxNum = 0;
     for (const inv of invoiceList) {
@@ -177,32 +216,41 @@ export const Billing: React.FC = () => {
     const nextSeq = maxNum + 1;
     const paddedSeq = String(nextSeq).padStart(2, '0');
 
-    const selProj = projectList.find((p) => p.id === targetProjId);
-    let projectTag = '';
+    let dynamicTag = '';
 
-    if (selProj) {
-      // Derive project tag directly from the selected project's name
-      if (selProj.name) {
-        const words = selProj.name.trim().split(/\s+/);
-        let candidate = words[0];
-        if (['THE', 'A', 'AN'].includes(candidate.toUpperCase()) && words.length > 1) {
-          candidate = words[1];
-        }
-        const clean = candidate.replace(/[^a-zA-Z0-9]/g, '');
-        if (clean.toUpperCase() === 'SKYLINE') {
-          projectTag = 'SKYLINE';
-        } else {
-          projectTag = clean;
-        }
+    // 1. If targetClientId is specified, derive tag directly from client code/name
+    if (targetClientId) {
+      const matchedClient = clientList.find((c) => c.id === targetClientId);
+      dynamicTag = extractClientTag(matchedClient);
+    }
+
+    // 2. If no client tag derived, check project's matching client
+    if (!dynamicTag && targetProjId) {
+      const selProj = projectList.find((p) => p.id === targetProjId);
+      if (selProj?.clientName) {
+        const clientByProj = clientList.find(
+          (c) => c.name === selProj.clientName || c.companyName === selProj.clientName
+        );
+        dynamicTag = extractClientTag(clientByProj);
       }
 
-      // Fallback to project code
-      if (!projectTag && selProj.code) {
-        projectTag = selProj.code.replace(/[^a-zA-Z0-9]/g, '');
+      // 3. Fallback to project name/code
+      if (!dynamicTag && selProj) {
+        if (selProj.name) {
+          const words = selProj.name.trim().split(/\s+/);
+          let candidate = words[0];
+          if (['THE', 'A', 'AN'].includes(candidate.toUpperCase()) && words.length > 1) {
+            candidate = words[1];
+          }
+          dynamicTag = candidate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        }
+        if (!dynamicTag && selProj.code) {
+          dynamicTag = selProj.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        }
       }
     }
 
-    return projectTag ? `RA-${paddedSeq}-${projectTag}` : `RA-${paddedSeq}`;
+    return dynamicTag ? `RA-${paddedSeq}-${dynamicTag}` : `RA-${paddedSeq}`;
   };
 
   const openGenerateInvoiceModal = async () => {
@@ -211,24 +259,33 @@ export const Billing: React.FC = () => {
     const matchedC = clients.find(
       (c) => c.name === selP?.clientName || c.companyName === selP?.clientName
     );
-    const initialBillNumber = computeNextInvoiceNumber(targetId, invoices, projects);
+    const initialBillNumber = computeNextInvoiceNumber(targetId, matchedC?.id, invoices, projects, clients);
+
+    const projectInvoices = invoices.filter((inv) => inv.projectId === targetId);
+    const defaultPurpose =
+      projectInvoices.length === 0
+        ? 'Mobilization Advance Payment'
+        : `Running Account (RA) Bill #${projectInvoices.length + 1} - Work Progress`;
+    const defaultType = projectInvoices.length === 0 ? 'ADVANCE' : 'RUNNING_ACCOUNT_RA';
 
     setInvForm({
       ...invForm,
       projectId: targetId,
       clientId: matchedC?.id || '',
       invoiceNumber: initialBillNumber,
+      invoiceType: defaultType,
+      description: defaultPurpose,
       subtotal: selP ? String(selP.contractValue) : invForm.subtotal,
-      retentionPercent: '5.0',
-      tdsPercent: '2.0',
-      gstPercent: '18.0',
+      retentionPercent: '0',
+      tdsPercent: '0',
+      gstPercent: '0',
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     });
     setShowInvoiceModal(true);
 
     // Also fetch from backend in background to guarantee database sync
     try {
-      const res = await api.getNextInvoiceNumber(targetId);
+      const res = await api.getNextInvoiceNumber(targetId, matchedC?.id);
       if (res.success && res.nextInvoiceNumber) {
         setInvForm((prev) => ({
           ...prev,
@@ -244,9 +301,16 @@ export const Billing: React.FC = () => {
     e.preventDefault();
     try {
       const targetProjId = invForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
+      const isAdv =
+        (invForm.description || '').toLowerCase().includes('advance') ||
+        invForm.invoiceType === 'ADVANCE';
+
       const payload = {
         ...invForm,
         projectId: targetProjId,
+        invoiceType: isAdv ? 'ADVANCE' : invForm.invoiceType,
+        description: invForm.description,
+        milestoneName: invForm.description,
         retentionPercent: invForm.retentionPercent !== '' && invForm.retentionPercent !== null ? invForm.retentionPercent : '0',
         tdsPercent: invForm.tdsPercent !== '' && invForm.tdsPercent !== null ? invForm.tdsPercent : '0',
         gstPercent: invForm.gstPercent !== '' && invForm.gstPercent !== null ? invForm.gstPercent : '0',
@@ -256,6 +320,9 @@ export const Billing: React.FC = () => {
         setShowInvoiceModal(false);
         fetchData();
         refreshProjects();
+        if (res.invoice) {
+          setSharingInvoice(res.invoice);
+        }
       }
     } catch (err: any) {
       alert(err.message || 'Failed to create invoice');
@@ -289,6 +356,10 @@ export const Billing: React.FC = () => {
         refreshProjects();
         // Immediately open the Share Receipt modal so user can share with client after the transaction
         if (res.receipt) {
+          setReceipts((prev) => {
+            const exists = prev.some((r) => r.id === res.receipt.id);
+            return exists ? prev : [res.receipt, ...prev];
+          });
           setSharingReceipt(res.receipt);
         }
       }
@@ -586,20 +657,20 @@ export const Billing: React.FC = () => {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] text-slate-500 font-medium">Total Invoiced (Net Billing)</span>
-          <p className="text-xl font-extrabold text-slate-900 mt-1">{formatCurrency(summary?.totalBilled || 0)}</p>
-          <span className="text-[10px] text-slate-400">Total certified RA bills generated</span>
+        <div className="bg-indigo-700 border border-indigo-600 rounded-2xl p-4 shadow-md text-white transition hover:bg-indigo-600">
+          <span className="text-[11px] text-white font-bold uppercase tracking-wider">Total Invoiced (Net Billing)</span>
+          <p className="text-2xl font-black text-white mt-1">{formatCurrency(summary?.totalBilled || 0)}</p>
+          <span className="text-[11px] text-indigo-100 font-medium">Total certified RA bills generated</span>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] text-slate-500 font-medium">Total Cash Collected</span>
-          <p className="text-xl font-extrabold text-emerald-600 mt-1">{formatCurrency(summary?.totalCollected || 0)}</p>
-          <span className="text-[10px] text-slate-400">Net RTGS/NEFT payments deposited</span>
+        <div className="bg-emerald-600 border border-emerald-500 rounded-2xl p-4 shadow-md text-white transition hover:bg-emerald-500">
+          <span className="text-[11px] text-white font-bold uppercase tracking-wider">Total Cash Collected</span>
+          <p className="text-2xl font-black text-white mt-1">{formatCurrency(summary?.totalCollected || 0)}</p>
+          <span className="text-[11px] text-emerald-100 font-medium">Net RTGS/NEFT payments deposited</span>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] text-slate-500 font-medium">Outstanding Client Receivables</span>
-          <p className="text-xl font-extrabold text-amber-600 mt-1">{formatCurrency(summary?.totalOutstanding || 0)}</p>
-          <span className="text-[10px] text-slate-400">Due against approved invoices</span>
+        <div className="bg-amber-600 border border-amber-500 rounded-2xl p-4 shadow-md text-white transition hover:bg-amber-500">
+          <span className="text-[11px] text-white font-bold uppercase tracking-wider">Outstanding Client Receivables</span>
+          <p className="text-2xl font-black text-white mt-1">{formatCurrency(summary?.totalOutstanding || 0)}</p>
+          <span className="text-[11px] text-amber-100 font-medium">Due against approved invoices</span>
         </div>
       </div>
 
@@ -660,6 +731,18 @@ export const Billing: React.FC = () => {
                     <td className="py-3 px-3">
                       <strong className="text-slate-900 block">{inv.project?.name}</strong>
                       <span className="text-[10px] text-slate-500">{inv.client?.name || 'Prestige Urban'}</span>
+                      {inv.milestoneName && (
+                        <span
+                          className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                            inv.invoiceType === 'ADVANCE' ||
+                            inv.milestoneName.toLowerCase().includes('advance')
+                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                              : 'bg-slate-100 text-slate-700 border border-slate-200'
+                          }`}
+                        >
+                          {inv.milestoneName}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-3 text-slate-500">{formatDate(inv.invoiceDate)}</td>
                     <td className="py-3 px-3 text-slate-500">{formatDate(inv.dueDate)}</td>
@@ -679,6 +762,13 @@ export const Billing: React.FC = () => {
                     </td>
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center space-x-1">
+                        <button
+                          onClick={() => setSharingInvoice(inv)}
+                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                          title="Share RA Bill with Client (WhatsApp / PDF)"
+                        >
+                          <Share2 className="w-4 h-4 text-emerald-600" />
+                        </button>
                         <button
                           onClick={() => setViewingInvoice(inv)}
                           className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
@@ -849,15 +939,36 @@ export const Billing: React.FC = () => {
 
       {/* Generate RA Bill Modal */}
       {showInvoiceModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full my-8 p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Generate Running Account (RA) Bill</h3>
-              <button onClick={() => setShowInvoiceModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shrink-0">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Generate Running Account (RA) Bill
+                  </h3>
+                  <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                    {invForm.invoiceNumber || 'NEW'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Generate certified progressive milestone & tax invoice for client
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                title="Close"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleCreateInvoice} className="mt-4 space-y-3">
+
+            <form onSubmit={handleCreateInvoice} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3.5 text-xs">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
                 <SearchableSelect
@@ -872,12 +983,13 @@ export const Billing: React.FC = () => {
                     const matchingClient = clients.find(
                       (c) => c.name === selProj?.clientName || c.companyName === selProj?.clientName
                     );
-                    const updatedBillNumber = computeNextInvoiceNumber(newProjId, invoices, projects);
+                    const targetClient = matchingClient?.id || invForm.clientId;
+                    const updatedBillNumber = computeNextInvoiceNumber(newProjId, targetClient, invoices, projects, clients);
 
                     setInvForm({
                       ...invForm,
                       projectId: newProjId,
-                      clientId: matchingClient?.id || invForm.clientId,
+                      clientId: targetClient,
                       invoiceNumber: updatedBillNumber,
                       subtotal: selProj ? String(selProj.contractValue) : invForm.subtotal,
                       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -885,7 +997,7 @@ export const Billing: React.FC = () => {
 
                     // Background verify with backend
                     try {
-                      const res = await api.getNextInvoiceNumber(newProjId);
+                      const res = await api.getNextInvoiceNumber(newProjId, targetClient);
                       if (res.success && res.nextInvoiceNumber) {
                         setInvForm((prev) => ({
                           ...prev,
@@ -906,13 +1018,20 @@ export const Billing: React.FC = () => {
                     <label className="block text-xs font-bold text-slate-700">RA Bill # *</label>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const targetProj = invForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
-                        const nextNum = computeNextInvoiceNumber(targetProj, invoices, projects);
+                        const targetClient = invForm.clientId;
+                        const nextNum = computeNextInvoiceNumber(targetProj, targetClient, invoices, projects, clients);
                         setInvForm({ ...invForm, invoiceNumber: nextNum });
+                        try {
+                          const res = await api.getNextInvoiceNumber(targetProj, targetClient);
+                          if (res.success && res.nextInvoiceNumber) {
+                            setInvForm((prev) => ({ ...prev, invoiceNumber: res.nextInvoiceNumber }));
+                          }
+                        } catch (err) {}
                       }}
                       className="text-[10px] text-amber-600 hover:text-amber-700 font-bold flex items-center space-x-1"
-                      title="Reset to next sequential bill number"
+                      title="Reset to next sequential bill number with client tag"
                     >
                       <span>⚡ Auto-Number</span>
                     </button>
@@ -926,7 +1045,7 @@ export const Billing: React.FC = () => {
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Auto-generated next sequential number with project name.
+                    Sequential number automatically tagged to client / project.
                   </p>
                 </div>
                 <div>
@@ -940,12 +1059,93 @@ export const Billing: React.FC = () => {
                       sublabel: c.companyName || c.phone,
                     }))}
                     value={invForm.clientId}
-                    onChange={(val) => setInvForm({ ...invForm, clientId: val })}
+                    onChange={async (val) => {
+                      const targetProj = invForm.projectId || projectId || selectedProjectId || '';
+                      const updatedBillNumber = computeNextInvoiceNumber(targetProj, val, invoices, projects, clients);
+                      setInvForm({
+                        ...invForm,
+                        clientId: val,
+                        invoiceNumber: updatedBillNumber,
+                      });
+
+                      try {
+                        const res = await api.getNextInvoiceNumber(targetProj, val);
+                        if (res.success && res.nextInvoiceNumber) {
+                          setInvForm((prev) => ({
+                            ...prev,
+                            invoiceNumber: res.nextInvoiceNumber,
+                          }));
+                        }
+                      } catch (err) { }
+                    }}
                     placeholder="Select Client"
                     searchPlaceholder="Search client name or code..."
                     onAddNew={() => setShowClientModal(true)}
                     addNewLabel="+ Add New Client"
                   />
+                </div>
+              </div>
+
+              {/* Payment Purpose / Bill Description */}
+              <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Bill Description / Payment Purpose *
+                  </label>
+                  <span className="text-[10px] text-amber-750 font-semibold">
+                    State what this payment is for (e.g. Advance or Milestone)
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Mobilization Advance, Running Account Bill #1 - Civil, Woodwork Milestone..."
+                  value={invForm.description}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const isAdv = val.toLowerCase().includes('advance');
+                    setInvForm({
+                      ...invForm,
+                      description: val,
+                      invoiceType: isAdv ? 'ADVANCE' : invForm.invoiceType,
+                    });
+                  }}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 shadow-sm"
+                />
+
+                {/* Quick Presets */}
+                <div>
+                  <span className="text-[10px] text-slate-500 font-bold block mb-1">
+                    Quick Presets:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: '💰 Mobilization Advance', type: 'ADVANCE', desc: 'Mobilization Advance Payment' },
+                      { label: '🏗️ RA Bill - Work Progress', type: 'RUNNING_ACCOUNT_RA', desc: 'Running Account (RA) Bill - Work Progress' },
+                      { label: '📦 Material Procurement Advance', type: 'ADVANCE', desc: 'Advance for Material Procurement & Site Supply' },
+                      { label: '🎯 Stage Completion Milestone', type: 'MILESTONE', desc: 'Stage Completion Milestone Payment' },
+                      { label: '🔑 Final Handover & Retention', type: 'FINAL', desc: 'Final Handover Bill & Retention Release' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() =>
+                          setInvForm({
+                            ...invForm,
+                            description: preset.desc,
+                            invoiceType: preset.type,
+                          })
+                        }
+                        className={`text-[10px] px-2.5 py-1 rounded-md font-semibold border transition ${
+                          invForm.description === preset.desc
+                            ? 'bg-amber-500 text-slate-950 border-amber-600 font-extrabold shadow-sm'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-amber-50 hover:border-amber-300'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1079,20 +1279,29 @@ export const Billing: React.FC = () => {
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowInvoiceModal(false)}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
-                >
-                  Generate RA Bill
-                </button>
+              </div>
+
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between z-10 shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  * Required fields marked with asterisk
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowInvoiceModal(false)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-white font-semibold transition text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 text-xs"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Generate & Share RA Bill</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1101,117 +1310,133 @@ export const Billing: React.FC = () => {
 
       {/* Record Client Receipt Modal */}
       {showReceiptModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shrink-0">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Record Client Payment Received</h3>
+                <h3 className="text-base font-extrabold text-slate-900">Record Client Payment Received</h3>
                 {nextReceiptNumber && (
-                  <span className="text-[11px] text-emerald-700 font-mono font-bold block mt-0.5">
+                  <span className="text-xs text-emerald-700 font-mono font-bold block mt-0.5">
                     Next Receipt Ref: {nextReceiptNumber}
                   </span>
                 )}
               </div>
-              <button onClick={() => setShowReceiptModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => setShowReceiptModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                title="Close"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleRecordReceipt} className="mt-4 space-y-3">
-              <div>
-                <SearchableSelect
-                  label="Select RA Bill to Settle"
-                  options={invoices
-                    .filter((i) => i.balanceDue > 0)
-                    .map((inv) => ({
-                      value: inv.id,
-                      label: `${inv.project?.name || 'Project'} — Bal: ${formatCurrency(inv.balanceDue)}`,
-                      code: inv.invoiceNumber,
-                      sublabel: `Client: ${inv.client?.name || 'Client'} | Total: ${formatCurrency(inv.netInvoiceAmount)}`,
-                    }))}
-                  value={receiptForm.invoiceId}
-                  onChange={(val) => {
-                    const selInv = invoices.find((inv) => inv.id === val);
-                    setReceiptForm({
-                      ...receiptForm,
-                      invoiceId: val,
-                      projectId: selInv?.projectId || receiptForm.projectId,
-                      clientId: selInv?.clientId || receiptForm.clientId,
-                      amount: selInv ? String(selInv.balanceDue) : receiptForm.amount,
-                    });
-                  }}
-                  placeholder="Select RA Bill to Settle"
-                  searchPlaceholder="Search bill #, project, client..."
-                />
-              </div>
 
-              {receiptForm.invoiceId && (() => {
-                const selInv = invoices.find((inv) => inv.id === receiptForm.invoiceId);
-                return selInv ? (
-                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500 font-medium">Project:</span>
-                      <strong className="text-slate-900">{selInv.project?.name}</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500 font-medium">Client:</span>
-                      <strong className="text-slate-800">{selInv.client?.name || 'Prestige Urban'}</strong>
-                    </div>
-                  </div>
-                ) : null;
-              })()}
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleRecordReceipt} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3.5 text-xs">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount Received (₹) *</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="e.g. 10000000"
-                    value={receiptForm.amount}
-                    onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  <SearchableSelect
+                    label="Select RA Bill to Settle"
+                    options={invoices
+                      .filter((i) => i.balanceDue > 0)
+                      .map((inv) => ({
+                        value: inv.id,
+                        label: `${inv.project?.name || 'Project'} — Bal: ${formatCurrency(inv.balanceDue)}`,
+                        code: inv.invoiceNumber,
+                        sublabel: `Client: ${inv.client?.name || 'Client'} | Total: ${formatCurrency(inv.netInvoiceAmount)}`,
+                      }))}
+                    value={receiptForm.invoiceId}
+                    onChange={(val) => {
+                      const selInv = invoices.find((inv) => inv.id === val);
+                      setReceiptForm({
+                        ...receiptForm,
+                        invoiceId: val,
+                        projectId: selInv?.projectId || receiptForm.projectId,
+                        clientId: selInv?.clientId || receiptForm.clientId,
+                        amount: selInv ? String(selInv.balanceDue) : receiptForm.amount,
+                      });
+                    }}
+                    placeholder="Select RA Bill to Settle"
+                    searchPlaceholder="Search bill #, project, client..."
                   />
                 </div>
+
+                {receiptForm.invoiceId && (() => {
+                  const selInv = invoices.find((inv) => inv.id === receiptForm.invoiceId);
+                  return selInv ? (
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Project:</span>
+                        <strong className="text-slate-900">{selInv.project?.name}</strong>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Client:</span>
+                        <strong className="text-slate-800">{selInv.client?.name || 'Prestige Urban'}</strong>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Amount Received (₹) *</label>
+                    <input
+                      type="number"
+                      required
+                      placeholder="e.g. 10000000"
+                      value={receiptForm.amount}
+                      onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Method *</label>
+                    <select
+                      value={receiptForm.paymentMethod}
+                      onChange={(e) => setReceiptForm({ ...receiptForm, paymentMethod: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      <option value="NEFT_RTGS">RTGS / NEFT</option>
+                      <option value="CHEQUE">Cheque / Demand Draft</option>
+                      <option value="UPI">UPI</option>
+                      <option value="CASH">Cash</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Method *</label>
-                  <select
-                    value={receiptForm.paymentMethod}
-                    onChange={(e) => setReceiptForm({ ...receiptForm, paymentMethod: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="NEFT_RTGS">RTGS / NEFT</option>
-                    <option value="CHEQUE">Cheque / Demand Draft</option>
-                    <option value="UPI">UPI</option>
-                    <option value="CASH">Cash</option>
-                  </select>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Bank UTR / Transaction Ref #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. RTGS/HDFCN24289004512"
+                    value={receiptForm.referenceNo}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Bank UTR / Transaction Ref #</label>
-                <input
-                  type="text"
-                  placeholder="e.g. RTGS/HDFCN24289004512"
-                  value={receiptForm.referenceNo}
-                  onChange={(e) => setReceiptForm({ ...receiptForm, referenceNo: e.target.value.toUpperCase() })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowReceiptModal(false)}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
-                >
-                  Post Payment Receipt
-                </button>
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between z-10 shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Instant balance ledger & tax collection update
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReceiptModal(false)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-white font-semibold transition text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 text-xs"
+                  >
+                    Post Payment Receipt
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1316,9 +1541,23 @@ export const Billing: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-8 space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">APEX BUILDTECH & INFRASTRUCTURE PVT. LTD.</h2>
-                <p className="text-xs text-slate-500">GSTIN: 29AABCU9603R1ZM • Bangalore, Karnataka</p>
+              <div className="flex items-center gap-3">
+                {user?.company?.logo ? (
+                  <img
+                    src={user.company.logo}
+                    alt="Logo"
+                    className="w-12 h-12 object-contain rounded-lg border border-slate-200 p-0.5 bg-white"
+                  />
+                ) : null}
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">
+                    {user?.company?.name || user?.company?.companyName || 'APEX BUILDTECH & INFRASTRUCTURE PVT. LTD.'}
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    {user?.company?.gstin ? `GSTIN: ${user.company.gstin} • ` : ''}
+                    {user?.company?.address || 'Bangalore, Karnataka'}
+                  </p>
+                </div>
               </div>
               <button onClick={() => setPrintInvoice(null)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -2195,11 +2434,21 @@ export const Billing: React.FC = () => {
         </div>
       )}
 
-      {/* Share Client Receipt Modal */}
+      {/* Share Client Receipt Modal (With Cumulative Project Transaction History) */}
       <ReceiptShareModal
         isOpen={!!sharingReceipt}
         receipt={sharingReceipt}
+        allReceipts={receipts}
+        projects={projects}
+        invoices={invoices}
         onClose={() => setSharingReceipt(null)}
+      />
+
+      {/* Share RA Bill Modal (With Purpose & Bank Details) */}
+      <InvoiceShareModal
+        isOpen={!!sharingInvoice}
+        invoice={sharingInvoice}
+        onClose={() => setSharingInvoice(null)}
       />
     </div>
   );

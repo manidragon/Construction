@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -20,12 +20,20 @@ import {
   updateTenantStatus,
   getTenantCurrentStatus,
   resetDemoTenantData,
+  getSaaSTransactions,
+  recordSaaSTransaction,
+  getSupportTickets,
+  createSupportTicket,
+  replySupportTicket,
+  updateSupportTicketStatus,
+  completeCompanyOnboarding,
 } from '../controllers/tenantController';
 import {
   getCompanySettings,
   updateCompanySettings,
   testWhatsAppConnection,
   getWhatsAppLogs,
+  uploadCompanyLogo,
 } from '../controllers/companySettingsController';
 import { checkTrialStatus } from '../middleware/auth';
 import { getExecutiveMetrics } from '../controllers/dashboardController';
@@ -113,6 +121,7 @@ import {
   createSupplierInvoice,
   updateSupplierInvoice,
   deleteSupplierInvoice,
+  getSupplierPayments,
   recordSupplierPayment,
   deleteSupplierPayment,
 } from '../controllers/procurementController';
@@ -135,7 +144,7 @@ import {
   unassignWorkerFromProject,
 } from '../controllers/labourController';
 import { getTasks, createTask, updateTask, deleteTask, addTaskComment, quickAddTask } from '../controllers/taskController';
-import { getDropdownOptions, createDropdownOption, deleteDropdownOption } from '../controllers/dropdownController';
+import { getDropdownOptions, createDropdownOption, updateDropdownOption, deleteDropdownOption } from '../controllers/dropdownController';
 import { transitionStatus, getActivityLogs } from '../controllers/lifecycleController';
 import { getDailyAttendanceRoster, saveBulkAttendance as saveBulkShiftAttendance, markAllPresent } from '../controllers/attendanceController';
 import { getDailyReports, getDailyReportById, createDailyReport, updateDailyReport, deleteDailyReport, approveDailyReport } from '../controllers/dprController';
@@ -185,7 +194,7 @@ import {
   logEquipmentUsage,
   recordMaintenance,
 } from '../controllers/equipmentController';
-import { getDocuments, createDocument } from '../controllers/documentController';
+import { getDocuments, createDocument, deleteDocument } from '../controllers/documentController';
 import {
   getStaffList,
   createStaff,
@@ -206,7 +215,7 @@ import {
   getStaffMonthlyAttendanceMatrix,
   saveStaffAttendanceCell,
 } from '../controllers/officeController';
-import { processAIPrompt } from '../controllers/aiController';
+import { processAIPrompt, executeConfirmedAIAction } from '../controllers/aiController';
 import {
   getRecycleBinItems,
   restoreRecycleBinItem,
@@ -272,12 +281,24 @@ router.patch('/superadmin/tenants/:id/extend-trial', requireRole('SUPER_ADMIN'),
 router.patch('/superadmin/tenants/:id/status', requireRole('SUPER_ADMIN'), updateTenantStatus);
 router.post('/superadmin/tenants/:id/reset-demo', requireRole('SUPER_ADMIN'), resetDemoTenantData);
 router.post('/company/reset-demo', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), resetDemoTenantData);
+router.get('/superadmin/saas-transactions', requireRole('SUPER_ADMIN'), getSaaSTransactions);
+router.post('/superadmin/saas-transactions', requireRole('SUPER_ADMIN'), recordSaaSTransaction);
+
+// Support & Chat Archive
+router.get('/support/tickets', getSupportTickets);
+router.post('/support/tickets', createSupportTicket);
+router.post('/support/tickets/:id/messages', replySupportTicket);
+router.patch('/support/tickets/:id/status', updateSupportTicketStatus);
+
+// Client Onboarding Setup
+router.post('/company/onboarding', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), completeCompanyOnboarding);
 
 // ----------------------------------------------------------------------
 // Company Branding, Invoice Prefs & Outbound WhatsApp Configuration
 // ----------------------------------------------------------------------
 router.get('/company/settings', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), getCompanySettings);
 router.put('/company/settings', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), updateCompanySettings);
+router.post('/company/upload-logo', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), upload.single('logo'), uploadCompanyLogo);
 router.post('/whatsapp/test-connection', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), testWhatsAppConnection);
 router.get('/whatsapp/logs', getWhatsAppLogs);
 
@@ -373,6 +394,7 @@ router.get('/procurement/invoices', getSupplierInvoices);
 router.post('/procurement/invoices', requireRole('OWNER', 'ACCOUNTS_MANAGER'), createSupplierInvoice);
 router.put('/procurement/invoices/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), updateSupplierInvoice);
 router.delete('/procurement/invoices/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteSupplierInvoice);
+router.get('/procurement/payments', getSupplierPayments);
 router.post('/procurement/payments', requireRole('OWNER', 'ACCOUNTS_MANAGER'), recordSupplierPayment);
 router.delete('/procurement/payments/:id', requireRole('OWNER', 'ACCOUNTS_MANAGER'), deleteSupplierPayment);
 
@@ -475,9 +497,22 @@ router.post('/equipment', requireRole('OWNER', 'PROJECT_MANAGER', 'STOREKEEPER')
 router.post('/equipment/:id/usage', requireRole('OWNER', 'SITE_ENGINEER', 'PROJECT_MANAGER'), logEquipmentUsage);
 router.post('/equipment/:id/maintenance', requireRole('OWNER', 'PROJECT_MANAGER', 'STOREKEEPER'), recordMaintenance);
 
-// Documents
+// Documents & Direct File Uploads
 router.get('/documents', getDocuments);
 router.post('/documents', upload.single('file'), createDocument);
+router.delete('/documents/:id', deleteDocument);
+router.post('/upload', upload.single('file'), (req: any, res: any) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No file uploaded.' });
+  }
+  return res.json({
+    success: true,
+    fileUrl: `/uploads/${req.file.filename}`,
+    originalName: req.file.originalname,
+    size: req.file.size,
+    mimetype: req.file.mimetype,
+  });
+});
 
 // Office Staff Management
 router.get('/office/staff', getStaffList);
@@ -525,6 +560,7 @@ router.get('/office/financials', getCompanyOverallFinancials);
 
 // AI Chatbot Automation Engine
 router.post('/ai/chat', processAIPrompt);
+router.post('/ai/confirm-action', executeConfirmedAIAction);
 
 // -------------------------------------------------------------
 // Universal Operational Architecture: Dynamic Dropdowns, Lifecycle & Daily Operations
@@ -533,6 +569,7 @@ router.post('/ai/chat', processAIPrompt);
 // Dynamic Dropdown Metadata Management
 router.get('/dropdowns', getDropdownOptions);
 router.post('/dropdowns', createDropdownOption);
+router.put('/dropdowns/:id', updateDropdownOption);
 router.delete('/dropdowns/:id', deleteDropdownOption);
 
 // Generic Status & Lifecycle Handler Engine

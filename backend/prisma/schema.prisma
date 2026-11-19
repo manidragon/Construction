@@ -42,6 +42,10 @@ model Company {
   email                     String
   currencySymbol            String   @default("₹")
   fiscalYearStart           Int      @default(4) // April
+  subscriptionModel         String   @default("TRIAL") // TRIAL, LIFETIME, MONTHLY, YEARLY
+  onboardingCompleted       Boolean  @default(false)
+  suspendedReason           String?
+  activeDevicesCount        Int      @default(1)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -77,6 +81,9 @@ model Company {
   officeExpenses            OfficeExpense[]
   subcontractors            Subcontractor[]
   pettyCashAccounts         PettyCashAccount[]
+  saasTransactions          SaaSTransaction[]
+  supportTickets            SupportTicket[]
+  deviceSessions            ActiveDeviceSession[]
 }
 
 model User {
@@ -111,6 +118,8 @@ model User {
   taskComments     TaskComment[]
   leadsAssignedAsPM Lead[] @relation("LeadAssignedPM")
   whatsappLogsSent WhatsAppLog[]     @relation("WhatsAppSender")
+  supportTickets   SupportTicket[]
+  deviceSessions   ActiveDeviceSession[]
 }
 
 model AuditLog {
@@ -1471,4 +1480,89 @@ model RecycleBinItem {
 
   @@index([tenantId, entityType])
   @@index([tenantId, deletedAt])
+}
+
+// -------------------------------------------------------------
+// SaaS Multi-Tenant Platform & Customer Support
+// -------------------------------------------------------------
+
+model SaaSTransaction {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoiceNumber   String   @unique
+  transactionDate DateTime @default(now())
+  planType        String   // LIFETIME_DEAL, MONTHLY_SUBSCRIPTION, YEARLY_SUBSCRIPTION, ENTERPRISE_UPGRADE
+  billingCycle    String   // ONE_TIME, MONTHLY, YEARLY
+  amount          Float
+  currency        String   @default("INR")
+  paymentMode     String   // RAZORPAY_ONLINE, STRIPE_CARD, BANK_RTGS_NEFT, UPI_AUTOPAY, MANUAL_OFFLINE
+  paymentRef      String?
+  status          String   @default("PAID") // PAID, PENDING, FAILED, REFUNDED
+  periodStartDate DateTime?
+  periodEndDate   DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([transactionDate])
+}
+
+model SupportTicket {
+  id                String                 @id @default(uuid())
+  ticketNumber      String                 @unique // e.g. TKT-2026-001
+  companyId         String
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId            String?
+  user              User?                  @relation(fields: [userId], references: [id])
+  userName          String
+  userEmail         String
+  userPhone         String?
+  subject           String
+  category          String                 @default("FEATURE_GUIDANCE") // FEATURE_GUIDANCE, BILLING_SUBSCRIPTION, BUG_REPORT, HUMAN_ESCALATION, GENERAL_QUERY
+  priority          String                 @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status            String                 @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  escalatedFromChat Boolean                @default(false)
+  chatTranscript    String?                // Full chat log JSON
+  resolutionNotes   String?
+  resolvedAt        DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  messages          SupportTicketMessage[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model SupportTicketMessage {
+  id          String        @id @default(uuid())
+  ticketId    String
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderType  String        // USER, AI_BOT, SUPER_ADMIN
+  senderName  String
+  message     String
+  attachments String?
+  createdAt   DateTime      @default(now())
+
+  @@index([ticketId])
+}
+
+model ActiveDeviceSession {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceType   String   @default("DESKTOP") // DESKTOP, LAPTOP, MOBILE, TABLET
+  browser      String?
+  os           String?
+  ipAddress    String?
+  userAgent    String?
+  lastActiveAt DateTime @default(now())
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+  @@index([userId])
 }

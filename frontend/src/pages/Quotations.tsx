@@ -1928,14 +1928,27 @@ export const Quotations: React.FC = () => {
             <div className="p-6 sm:p-8 space-y-6 text-xs text-slate-700 max-h-[75vh] overflow-y-auto custom-scrollbar">
               {/* Document Banner */}
               <div className="flex items-start justify-between border-b border-slate-200 pb-5">
-                <div>
-                  <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                    APEX<span className="text-amber-500">BUILD</span> INTERIORS & INFRA
-                  </h1>
-                  <p className="text-slate-500 text-[11px] mt-0.5">
-                    Civil Construction, Turnkey Interiors & Commercial Fitouts
-                  </p>
-                  <p className="text-slate-400 text-[11px]">GSTIN: 29AABCU9603R1ZM • Bangalore, India</p>
+                <div className="flex items-center gap-3.5">
+                  {user?.company?.logo ? (
+                    <img
+                      src={user.company.logo}
+                      alt="Company Logo"
+                      className="w-14 h-14 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-sm"
+                    />
+                  ) : null}
+                  <div>
+                    <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                      {user?.company?.name || user?.company?.companyName || 'APEXBUILD INTERIORS & INFRA'}
+                    </h1>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Civil Construction, Turnkey Interiors & Commercial Fitouts
+                    </p>
+                    <p className="text-slate-400 text-[11px]">
+                      {user?.company?.gstin ? `GSTIN: ${user.company.gstin} • ` : ''}
+                      {user?.company?.address || 'Bangalore, India'}
+                      {user?.company?.phone ? ` • Tel: ${user.company.phone}` : ''}
+                    </p>
+                  </div>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quotation No</span>

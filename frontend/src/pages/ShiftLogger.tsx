@@ -358,58 +358,58 @@ export const ShiftLogger: React.FC = () => {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 shadow-sm hover:border-slate-700 transition">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-2">
+        <div className="bg-indigo-700 border border-indigo-600 rounded-2xl p-4 shadow-md transition hover:bg-indigo-600">
+          <div className="flex items-center justify-between text-white text-[11px] font-bold uppercase tracking-wider mb-2">
             <span>Total Staff</span>
-            <Users className="w-4 h-4 text-slate-400" />
+            <Users className="w-4 h-4 text-white" />
           </div>
-          <div className="text-2xl font-black text-white">{totalCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
+          <div className="text-2xl sm:text-3xl font-black text-white">{totalCount}</div>
+          <div className="text-[11px] text-indigo-100 mt-1 flex items-center gap-1.5 font-medium">
+            <span className="w-2 h-2 rounded-full bg-white inline-block animate-pulse" />
             <span>Active Enterprise Roster</span>
           </div>
         </div>
 
-        <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-4 shadow-sm hover:border-emerald-500/50 transition">
-          <div className="flex items-center justify-between text-emerald-400 text-[11px] font-bold uppercase tracking-wider mb-2">
+        <div className="bg-emerald-600 border border-emerald-500 rounded-2xl p-4 shadow-md transition hover:bg-emerald-500">
+          <div className="flex items-center justify-between text-white text-[11px] font-bold uppercase tracking-wider mb-2">
             <span>Present (Full Day)</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 text-white" />
           </div>
-          <div className="text-2xl font-black text-emerald-300">{presentCount}</div>
-          <div className="text-[11px] text-emerald-400/80 mt-1 font-medium">
+          <div className="text-2xl sm:text-3xl font-black text-white">{presentCount}</div>
+          <div className="text-[11px] text-emerald-100 mt-1 font-medium">
             8h standard shift logged
           </div>
         </div>
 
-        <div className="bg-sky-950/30 border border-sky-500/30 rounded-2xl p-4 shadow-sm hover:border-sky-500/50 transition">
-          <div className="flex items-center justify-between text-sky-400 text-[11px] font-bold uppercase tracking-wider mb-2">
+        <div className="bg-sky-600 border border-sky-500 rounded-2xl p-4 shadow-md transition hover:bg-sky-500">
+          <div className="flex items-center justify-between text-white text-[11px] font-bold uppercase tracking-wider mb-2">
             <span>On-Site / Field</span>
-            <Building2 className="w-4 h-4 text-sky-400" />
+            <Building2 className="w-4 h-4 text-white" />
           </div>
-          <div className="text-2xl font-black text-sky-300">{onSiteCount}</div>
-          <div className="text-[11px] text-sky-400/80 mt-1 font-medium">
+          <div className="text-2xl sm:text-3xl font-black text-white">{onSiteCount}</div>
+          <div className="text-[11px] text-sky-100 mt-1 font-medium">
             Site inspections & supervision
           </div>
         </div>
 
-        <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-4 shadow-sm hover:border-amber-500/50 transition">
-          <div className="flex items-center justify-between text-amber-400 text-[11px] font-bold uppercase tracking-wider mb-2">
+        <div className="bg-amber-500 border border-amber-400 rounded-2xl p-4 shadow-md transition hover:bg-amber-400">
+          <div className="flex items-center justify-between text-white text-[11px] font-bold uppercase tracking-wider mb-2">
             <span>Half-Day</span>
-            <Clock className="w-4 h-4 text-amber-400" />
+            <Clock className="w-4 h-4 text-white" />
           </div>
-          <div className="text-2xl font-black text-amber-300">{halfDayCount}</div>
-          <div className="text-[11px] text-amber-400/80 mt-1 font-medium">
+          <div className="text-2xl sm:text-3xl font-black text-white">{halfDayCount}</div>
+          <div className="text-[11px] text-amber-100 mt-1 font-medium">
             4h half-shift recorded
           </div>
         </div>
 
-        <div className="bg-rose-950/30 border border-rose-500/30 rounded-2xl p-4 shadow-sm hover:border-rose-500/50 transition col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-rose-400 text-[11px] font-bold uppercase tracking-wider mb-2">
+        <div className="bg-rose-600 border border-rose-500 rounded-2xl p-4 shadow-md transition hover:bg-rose-500 col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between text-white text-[11px] font-bold uppercase tracking-wider mb-2">
             <span>Absent / Leave</span>
-            <AlertCircle className="w-4 h-4 text-rose-400" />
+            <AlertCircle className="w-4 h-4 text-white" />
           </div>
-          <div className="text-2xl font-black text-rose-300">{absentCount}</div>
-          <div className="text-[11px] text-rose-400/80 mt-1 font-medium">
+          <div className="text-2xl sm:text-3xl font-black text-white">{absentCount}</div>
+          <div className="text-[11px] text-rose-100 mt-1 font-medium">
             Uninformed / sanctioned leaves
           </div>
         </div>

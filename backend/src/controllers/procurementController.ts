@@ -268,6 +268,32 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
 
     await logAudit(req.user?.id, 'CREATE_PO', 'PURCHASE_ORDER', po.id, { poNumber, totalAmount }, req.ip);
 
+    // Automatic Document Vault Archiving:
+    // If an attachmentUrl / receiptUrl is provided for this PO, archive into Document Vault under the project folder
+    const { attachmentUrl, receiptUrl, receiptDescription, receiptFileSize, receiptFileType } = req.body;
+    const docFileUrl = attachmentUrl || receiptUrl;
+    if (docFileUrl) {
+      const docTitle = (receiptDescription && receiptDescription.trim())
+        ? receiptDescription.trim()
+        : `PO Document: ${po.poNumber} - ${supplier.name}`;
+
+      await prisma.documentAttachment.create({
+        data: {
+          tenantId,
+          title: docTitle,
+          category: 'INVOICE',
+          fileUrl: docFileUrl,
+          fileSize: Number(receiptFileSize) || 1024 * 150,
+          fileType: receiptFileType || 'application/pdf',
+          projectId: po.projectId,
+          referenceEntity: 'PurchaseOrder',
+          referenceId: po.id,
+          uploadedById: req.user?.id,
+          createdAt: po.poDate ? new Date(po.poDate) : new Date(),
+        },
+      }).catch(err => console.error('Error auto-archiving PO attachment to Document Vault:', err));
+    }
+
     return res.status(201).json({ success: true, purchaseOrder: po });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -753,6 +779,32 @@ export const createSupplierInvoice = async (req: Request, res: Response) => {
 
     await logAudit(req.user?.id, 'CREATE_SUPPLIER_INVOICE', 'SUPPLIER_INVOICE', invoice.id, { invoiceNumber, total, projectId: resolvedProjectId }, req.ip);
 
+    // Automatic Document Vault Archiving:
+    // If billCopyUrl / receiptUrl is provided for this vendor bill, archive into Document Vault
+    const { billCopyUrl, receiptUrl, receiptDescription, receiptFileSize, receiptFileType } = req.body;
+    const billDocUrl = billCopyUrl || receiptUrl;
+    if (billDocUrl) {
+      const billTitle = (receiptDescription && receiptDescription.trim())
+        ? receiptDescription.trim()
+        : `Vendor Bill: ${invoice.invoiceNumber} - ${supplier.name}`;
+
+      await prisma.documentAttachment.create({
+        data: {
+          tenantId,
+          title: billTitle,
+          category: 'INVOICE',
+          fileUrl: billDocUrl,
+          fileSize: Number(receiptFileSize) || 1024 * 140,
+          fileType: receiptFileType || 'application/pdf',
+          projectId: resolvedProjectId,
+          referenceEntity: 'SupplierInvoice',
+          referenceId: invoice.id,
+          uploadedById: req.user?.id,
+          createdAt: invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date(),
+        },
+      }).catch(err => console.error('Error auto-archiving supplier bill to Document Vault:', err));
+    }
+
     return res.status(201).json({ success: true, invoice });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -876,6 +928,49 @@ export const recordSupplierPayment = async (req: Request, res: Response) => {
     }
 
     await logAudit(req.user?.id, 'SUPPLIER_PAYMENT', 'SUPPLIER_PAYMENT', payment.id, { paymentNumber, amount: paymentAmount }, req.ip);
+
+    // Automatic Document Vault Archiving:
+    // If receiptUrl / billCopyUrl is provided, archive vendor receipt into Document Vault
+    const { receiptUrl, billCopyUrl, receiptDescription, receiptFileSize, receiptFileType, projectId: reqProjectId } = req.body;
+    const vendorDocUrl = receiptUrl || billCopyUrl;
+    if (vendorDocUrl) {
+      let targetProjectId = reqProjectId || null;
+      if (!targetProjectId && payment.invoiceId) {
+        const inv = await prisma.supplierInvoice.findUnique({
+          where: { id: payment.invoiceId },
+          select: { projectId: true },
+        });
+        if (inv?.projectId) targetProjectId = inv.projectId;
+      }
+      if (!targetProjectId) {
+        const po = await prisma.purchaseOrder.findFirst({
+          where: { supplierId, ...tenantFilter },
+          select: { projectId: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (po) targetProjectId = po.projectId;
+      }
+
+      const vendorDocTitle = (receiptDescription && receiptDescription.trim())
+        ? receiptDescription.trim()
+        : `Vendor Payment Receipt: ${payment.paymentNumber} - ${supplier.name}`;
+
+      await prisma.documentAttachment.create({
+        data: {
+          tenantId,
+          title: vendorDocTitle,
+          category: 'RECEIPT',
+          fileUrl: vendorDocUrl,
+          fileSize: Number(receiptFileSize) || 1024 * 120,
+          fileType: receiptFileType || 'image/jpeg',
+          projectId: targetProjectId,
+          referenceEntity: 'SupplierPayment',
+          referenceId: payment.id,
+          uploadedById: req.user?.id,
+          createdAt: payment.paymentDate ? new Date(payment.paymentDate) : new Date(),
+        },
+      }).catch(err => console.error('Error auto-archiving vendor payment receipt to Document Vault:', err));
+    }
 
     return res.status(201).json({ success: true, payment });
   } catch (error: any) {
@@ -1035,6 +1130,57 @@ export const deleteSupplierInvoice = async (req: Request, res: Response) => {
 
     await logAudit(req.user?.id, 'DELETE_SUPPLIER_INVOICE', 'SUPPLIER_INVOICE', id, { invoiceNumber: existing.invoiceNumber }, req.ip);
     return res.json({ success: true, message: `Supplier Invoice ${existing.invoiceNumber} deleted successfully.` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getSupplierPayments = async (req: Request, res: Response) => {
+  try {
+    const tenantFilter = getTenantFilter(req);
+    const { supplierId, invoiceId } = req.query;
+
+    const where: any = { ...tenantFilter };
+    if (supplierId) where.supplierId = String(supplierId);
+    if (invoiceId) where.invoiceId = String(invoiceId);
+
+    const payments = await prisma.supplierPayment.findMany({
+      where,
+      include: {
+        supplier: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            phone: true,
+            email: true,
+            gstin: true,
+            address: true,
+            city: true,
+            bankName: true,
+            bankAccountNo: true,
+            bankIfsc: true,
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            invoiceDate: true,
+            totalAmount: true,
+            paidAmount: true,
+            balanceDue: true,
+            projectId: true,
+            purchaseOrderId: true,
+            project: { select: { id: true, code: true, name: true } },
+            purchaseOrder: { select: { id: true, poNumber: true } },
+          },
+        },
+      },
+      orderBy: { paymentDate: 'desc' },
+    });
+
+    return res.json({ success: true, payments });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

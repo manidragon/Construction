@@ -19,6 +19,10 @@ import {
   Layers,
   Link2,
   TrendingUp,
+  Upload,
+  FileText,
+  Download,
+  Image,
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
 
@@ -35,6 +39,12 @@ export const Expenses: React.FC = () => {
   // Modals
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showVoucherModal, setShowVoucherModal] = useState(false);
+
+  // Receipt File Upload & Vault Archive
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptDescription, setReceiptDescription] = useState('');
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | null>(null);
 
   // BOQ & Task Selection Data
   const [projectBOQItems, setProjectBOQItems] = useState<any[]>([]);
@@ -168,14 +178,39 @@ export const Expenses: React.FC = () => {
     e.preventDefault();
     try {
       const targetProjId = expForm.projectId || projectId || selectedProjectId || (projects[0]?.id || '');
+      let uploadedUrl = '';
+      let uploadedSize = 0;
+      let uploadedType = '';
+
+      if (receiptFile) {
+        setUploadingReceipt(true);
+        const uploadData = new FormData();
+        uploadData.append('file', receiptFile);
+        uploadData.append('category', 'RECEIPT');
+        if (targetProjId) uploadData.append('projectId', targetProjId);
+        uploadData.append('description', receiptDescription.trim() || expForm.description.trim());
+        const uploadRes = await api.uploadFile(uploadData);
+        if (uploadRes.success && uploadRes.fileUrl) {
+          uploadedUrl = uploadRes.fileUrl;
+          uploadedSize = uploadRes.size || receiptFile.size;
+          uploadedType = uploadRes.mimetype || receiptFile.type;
+        }
+      }
+
       const res = await api.createExpense({
         ...expForm,
         projectId: targetProjId,
         taskId: expForm.taskId || undefined,
         boqItemId: expForm.boqItemId || undefined,
+        receiptUrl: uploadedUrl || undefined,
+        receiptDescription: receiptDescription.trim() || expForm.description.trim() || undefined,
+        receiptFileSize: uploadedSize || undefined,
+        receiptFileType: uploadedType || undefined,
       });
       if (res.success) {
         setShowExpenseModal(false);
+        setReceiptFile(null);
+        setReceiptDescription('');
         fetchData();
         setExpForm({
           projectId: '',
@@ -193,6 +228,8 @@ export const Expenses: React.FC = () => {
       }
     } catch (err: any) {
       alert(err.message || 'Failed to record expense');
+    } finally {
+      setUploadingReceipt(false);
     }
   };
 
@@ -586,18 +623,26 @@ export const Expenses: React.FC = () => {
 
       {/* Record Direct Expense Modal */}
       {showExpenseModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 my-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Record Direct Site & Fit-Out Expense</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Link direct expenditure to Project, Task, and BOQ Line Item with live variance mapping.</p>
+                <h3 className="text-base font-extrabold text-slate-900">Record Direct Site & Fit-Out Expense</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Link direct expenditure to Project, Task, and BOQ with live vault archiving.</p>
               </div>
-              <button onClick={() => setShowExpenseModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => setShowExpenseModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                title="Close"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleCreateExpense} className="mt-4 space-y-3">
+            <form onSubmit={handleCreateExpense} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3.5 text-xs">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Project *</label>
                 <SearchableSelect
@@ -812,25 +857,78 @@ export const Expenses: React.FC = () => {
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+              {/* Receipt / Vendor Bill Copy Upload */}
+              <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-amber-950 flex items-center space-x-1.5">
+                    <Upload className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Attach Expense Receipt / Vendor Bill (PNG, JPG, PDF, WebP)</span>
+                  </label>
+                  <span className="text-[10px] text-amber-850 font-medium">
+                    Auto-archives to Document Vault
+                  </span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setReceiptFile(file);
+                    if (file && !receiptDescription) {
+                      setReceiptDescription(file.name.replace(/\.[^/.]+$/, ''));
+                    }
+                  }}
+                  className="w-full text-xs text-slate-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-600 cursor-pointer"
+                />
+
+                {receiptFile && (
+                  <div className="space-y-1 pt-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Receipt Description <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Transport charges for steel delivery or Site office electricity bill"
+                      value={receiptDescription}
+                      onChange={(e) => setReceiptDescription(e.target.value)}
+                      className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-medium"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Mandatory description used to categorize this file inside the Document Vault.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Fixed Footer */}
+            <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between z-10 shrink-0">
+              <span className="text-[11px] text-slate-500 font-medium">
+                * Required fields marked with asterisk
+              </span>
+              <div className="flex items-center space-x-2">
                 <button
                   type="button"
                   onClick={() => setShowExpenseModal(false)}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-white font-semibold transition text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg shadow-sm"
+                  disabled={uploadingReceipt}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 text-xs disabled:opacity-50"
                 >
-                  Record Expense
+                  <Receipt className="w-4 h-4" />
+                  <span>{uploadingReceipt ? 'Uploading & Archiving...' : 'Record Expense'}</span>
                 </button>
               </div>
-            </form>
-          </div>
+            </div>
+          </form>
         </div>
-      )}
+      </div>
+    )}
 
       {/* Record Petty Cash Voucher Modal */}
       {showVoucherModal && (

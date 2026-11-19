@@ -338,6 +338,29 @@ export const TeamManagement: React.FC = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  const isOwnerOrAdmin = currentUser?.role === 'OWNER' || currentUser?.role === 'TENANT_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+
+  if (!isOwnerOrAdmin) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-xl text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-600 flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Access Restricted</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Staff & Team Credentials management is reserved exclusively for the company's <strong>Managing Director & Business Owner</strong>.
+            </p>
+          </div>
+          <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700">
+            Current Logged-in Role: <span className="font-bold text-slate-900 dark:text-white">{currentUser?.role}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const totalMembers = team.length;
   const activeMembers = team.filter((m) => m.isActive).length;
   const pmAndEngineers = team.filter(

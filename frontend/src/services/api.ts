@@ -123,6 +123,7 @@ class ApiService {
   createSupplierInvoice = (data: any) => this.request<any>('/procurement/invoices', { method: 'POST', body: JSON.stringify(data) });
   updateSupplierInvoice = (id: string, data: any) => this.request<any>(`/procurement/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteSupplierInvoice = (id: string) => this.request<any>(`/procurement/invoices/${id}`, { method: 'DELETE' });
+  getSupplierPayments = (params: string = '') => this.request<any>(`/procurement/payments${params ? `?${params}` : ''}`);
   recordSupplierPayment = (data: any) => this.request<any>('/procurement/payments', { method: 'POST', body: JSON.stringify(data) });
   deleteSupplierPayment = (id: string) => this.request<any>(`/procurement/payments/${id}`, { method: 'DELETE' });
 
@@ -185,7 +186,13 @@ class ApiService {
   updateClient = (id: string, data: any) => this.request<any>(`/billing/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteClient = (id: string) => this.request<any>(`/billing/clients/${id}`, { method: 'DELETE' });
   getClientInvoices = (params: string = '') => this.request<any>(`/billing/invoices${params ? `?${params}` : ''}`);
-  getNextInvoiceNumber = (projectId?: string) => this.request<any>(`/billing/next-invoice-number${projectId ? `?projectId=${projectId}` : ''}`);
+  getNextInvoiceNumber = (projectId?: string, clientId?: string) => {
+    const params = new URLSearchParams();
+    if (projectId) params.append('projectId', projectId);
+    if (clientId) params.append('clientId', clientId);
+    const qs = params.toString();
+    return this.request<any>(`/billing/next-invoice-number${qs ? `?${qs}` : ''}`);
+  };
   createClientInvoice = (data: any) => this.request<any>('/billing/invoices', { method: 'POST', body: JSON.stringify(data) });
   updateClientInvoice = (id: string, data: any) => this.request<any>(`/billing/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteClientInvoice = (id: string) => this.request<any>(`/billing/invoices/${id}`, { method: 'DELETE' });
@@ -245,9 +252,11 @@ class ApiService {
   logEquipmentUsage = (id: string, data: any) => this.request<any>(`/equipment/${id}/usage`, { method: 'POST', body: JSON.stringify(data) });
   recordMaintenance = (id: string, data: any) => this.request<any>(`/equipment/${id}/maintenance`, { method: 'POST', body: JSON.stringify(data) });
 
-  // Documents
+  // Documents & Direct File Uploads
   getDocuments = (params: string = '') => this.request<any>(`/documents${params ? `?${params}` : ''}`);
   uploadDocument = (formData: FormData) => this.request<any>('/documents', { method: 'POST', body: formData });
+  deleteDocument = (id: string) => this.request<any>(`/documents/${id}`, { method: 'DELETE' });
+  uploadFile = (formData: FormData) => this.request<any>('/upload', { method: 'POST', body: formData });
 
   // Office Staff & Overheads Management
   getOfficeStaff = (params: string = '') => this.request<any>(`/office/staff${params ? `?${params}` : ''}`);
@@ -290,7 +299,10 @@ class ApiService {
   getCompanyOverallFinancials = () => this.request<any>('/office/financials');
 
   // AI Chatbot Automation Engine
-  sendAIPrompt = (prompt: string) => this.request<any>('/ai/chat', { method: 'POST', body: JSON.stringify({ prompt }) });
+  sendAIPrompt = (prompt: string, context?: any) =>
+    this.request<any>('/ai/chat', { method: 'POST', body: JSON.stringify({ prompt, context }) });
+  confirmAIAction = (data: any) =>
+    this.request<any>('/ai/confirm-action', { method: 'POST', body: JSON.stringify(data) });
 
   // MODULE 1: Leads Pipeline
   getLeads = (params: string = '') => this.request<any>(`/leads${params ? `?${params}` : ''}`);
@@ -335,11 +347,34 @@ class ApiService {
   resetMyDemoCompany = () =>
     this.request<any>('/company/reset-demo', { method: 'POST' });
   getTenantCurrentStatus = () => this.request<any>('/company/current-status');
+  getSaaSTransactions = (params: string = '') =>
+    this.request<any>(`/superadmin/saas-transactions${params ? `?${params}` : ''}`);
+  recordSaaSTransaction = (data: any) =>
+    this.request<any>('/superadmin/saas-transactions', { method: 'POST', body: JSON.stringify(data) });
+
+  // SUPPORT & CHAT ARCHIVE
+  getSupportTickets = (params: string = '') =>
+    this.request<any>(`/support/tickets${params ? `?${params}` : ''}`);
+  createSupportTicket = (data: any) =>
+    this.request<any>('/support/tickets', { method: 'POST', body: JSON.stringify(data) });
+  replySupportTicket = (id: string, data: any) =>
+    this.request<any>(`/support/tickets/${id}/messages`, { method: 'POST', body: JSON.stringify(data) });
+  updateSupportTicketStatus = (id: string, data: any) =>
+    this.request<any>(`/support/tickets/${id}/status`, { method: 'PATCH', body: JSON.stringify(data) });
+
+  // CLIENT COMPANY ONBOARDING WIZARD
+  completeCompanyOnboarding = (data: any) =>
+    this.request<any>('/company/onboarding', { method: 'POST', body: JSON.stringify(data) });
 
   // COMPANY CONFIGURATION & OUTBOUND WHATSAPP LOGS
   getCompanySettings = () => this.request<any>('/company/settings');
   updateCompanySettings = (data: any) =>
     this.request<any>('/company/settings', { method: 'PUT', body: JSON.stringify(data) });
+  uploadCompanyLogo = (file: File) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    return this.request<any>('/company/upload-logo', { method: 'POST', body: formData });
+  };
   testWhatsAppConnection = (data: any) =>
     this.request<any>('/whatsapp/test-connection', { method: 'POST', body: JSON.stringify(data) });
   getWhatsAppLogs = (params: string = '') =>
@@ -364,6 +399,8 @@ class ApiService {
     this.request<any>(`/dropdowns${category ? `?category=${category}` : ''}`);
   createDropdownOption = (data: { category: string; label: string; value?: string }) =>
     this.request<any>('/dropdowns', { method: 'POST', body: JSON.stringify(data) });
+  updateDropdownOption = (id: string, data: { label: string; value?: string; category?: string }) =>
+    this.request<any>(`/dropdowns/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   deleteDropdownOption = (id: string) =>
     this.request<any>(`/dropdowns/${id}`, { method: 'DELETE' });
 

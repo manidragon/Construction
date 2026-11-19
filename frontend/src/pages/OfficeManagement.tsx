@@ -13,6 +13,7 @@ import {
 import { formatCurrency, formatDate } from '../utils/formatters';
 import api from '../services/api';
 import SearchableSelect from '../components/common/SearchableSelect';
+import { StaffSalaryShareModal } from '../components/StaffSalaryShareModal';
 import {
   Building,
   Users,
@@ -146,6 +147,8 @@ export const OfficeManagement: React.FC = () => {
   const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<StaffSalaryPayment | null>(null);
   const [selectedStaffForSalary, setSelectedStaffForSalary] = useState<OfficeStaff | null>(null);
+  const [sharingSalaryPayment, setSharingSalaryPayment] = useState<StaffSalaryPayment | null>(null);
+  const [sharingStaff, setSharingStaff] = useState<OfficeStaff | null>(null);
 
   // Staff Form
   const [staffForm, setStaffForm] = useState({ ...defaultStaffForm });
@@ -588,6 +591,15 @@ export const OfficeManagement: React.FC = () => {
       if (res.success) {
         showNotification(`Salary voucher ${res.payment?.voucherNo || ''} generated successfully!`);
         setShowSalaryModal(false);
+        const stf = staffList.find((s) => s.id === salaryForm.staffId);
+        setSharingStaff(stf || null);
+        setSharingSalaryPayment(res.payment || {
+          ...salaryForm,
+          netPaid:
+            (Number(salaryForm.basicSalary) || 0) +
+            (Number(salaryForm.bonus) || 0) -
+            (Number(salaryForm.deductions) || 0),
+        });
         fetchAllData();
       }
     } catch (err: any) {
@@ -1776,15 +1788,29 @@ _Generated automatically via ApexBuild ERP_`;
                           {formatCurrency(p.netPaid)}
                         </td>
                         <td className="p-3 text-center">
-                          <button
-                            onClick={() => {
-                              setSelectedVoucher(p);
-                              setShowVoucherModal(true);
-                            }}
-                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-bold text-[11px] transition"
-                          >
-                            View Slip
-                          </button>
+                          <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedVoucher(p);
+                                setShowVoucherModal(true);
+                              }}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-bold text-[11px] transition"
+                            >
+                              View Slip
+                            </button>
+                            <button
+                              onClick={() => {
+                                const stf = staffList.find((s) => s.id === p.staffId) || p.staff;
+                                setSharingStaff(stf || null);
+                                setSharingSalaryPayment(p);
+                              }}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded font-bold text-[11px] transition flex items-center space-x-1 shadow-2xs"
+                              title="Share Salary Voucher on WhatsApp & PDF"
+                            >
+                              <Share2 className="w-3 h-3 text-emerald-600" />
+                              <span>Share</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -3079,19 +3105,30 @@ _Generated automatically via ApexBuild ERP_`;
           MODAL 3: DISBURSE SALARY (VOUCHER GENERATOR)
       ===================================================================== */}
       {showSalaryModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10 shrink-0">
               <div className="flex items-center space-x-2">
-                <DollarSign className="w-5 h-5 text-amber-500" />
-                <h2 className="text-base font-bold text-slate-900">Disburse Staff Salary Voucher</h2>
+                <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Disburse Staff Salary Voucher</h2>
+                  <p className="text-[11px] text-slate-500">Post salary remittance and share advice</p>
+                </div>
               </div>
-              <button onClick={() => setShowSalaryModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => setShowSalaryModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleDisburseSalary} className="space-y-4 mt-4">
+            <form onSubmit={handleDisburseSalary} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Select Staff Member *</label>
                 <SearchableSelect
@@ -3248,31 +3285,66 @@ _Generated automatically via ApexBuild ERP_`;
                     placeholder="e.g. UTR-23489"
                     value={salaryForm.referenceNo}
                     onChange={(e) => setSalaryForm({ ...salaryForm, referenceNo: e.target.value.toUpperCase() })}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none font-mono uppercase"
+                    className="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none font-mono uppercase"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end space-x-2 pt-4 border-t border-slate-100">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Disbursement Purpose / Description (e.g. Advance / Monthly Salary) *
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Monthly salary payout / Mid-month advance / Festival bonus..."
+                  value={salaryForm.notes}
+                  onChange={(e) => setSalaryForm({ ...salaryForm, notes: e.target.value })}
+                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Fixed Footer */}
+            <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between z-10 shrink-0">
+              <span className="text-[11px] text-slate-500 font-medium">
+                Posts to journal & generates shareable voucher
+              </span>
+              <div className="flex items-center space-x-2">
                 <button
                   type="button"
                   onClick={() => setShowSalaryModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                  className="px-4 py-2 border border-slate-300 hover:bg-white text-slate-700 rounded-xl text-xs font-bold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl text-xs font-bold transition disabled:opacity-50"
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center space-x-1.5"
                 >
-                  {isSubmitting ? 'Disbursing...' : 'Disburse & Post Voucher'}
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>{isSubmitting ? 'Disbursing...' : 'Disburse & Share'}</span>
                 </button>
               </div>
-            </form>
-          </div>
+            </div>
+          </form>
         </div>
-      )}
+      </div>
+    )}
+
+    {/* STAFF SALARY SHARE & PDF VOUCHER MODAL */}
+    {sharingSalaryPayment && (
+      <StaffSalaryShareModal
+        isOpen={!!sharingSalaryPayment}
+        onClose={() => {
+          setSharingSalaryPayment(null);
+          setSharingStaff(null);
+        }}
+        payment={sharingSalaryPayment}
+        staff={sharingStaff}
+        allPayments={salaryPayments}
+      />
+    )}
 
       {/* =====================================================================
           MODAL 4: PRINTABLE SALARY SLIP / VOUCHER VIEW

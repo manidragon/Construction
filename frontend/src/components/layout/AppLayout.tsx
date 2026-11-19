@@ -5,6 +5,8 @@ import { Sidebar } from './Sidebar';
 import { AIChatbotModal } from '../AIChatbotModal';
 import { TrialBanner } from '../TrialBanner';
 import { TrialExpiredModal } from '../TrialExpiredModal';
+import { BillingLockScreen } from '../common/BillingLockScreen';
+import { CompanyOnboardingWizard } from '../onboarding/CompanyOnboardingWizard';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import { Sparkles } from 'lucide-react';
@@ -88,6 +90,35 @@ export const AppLayout: React.FC = () => {
           <div className="h-16 w-full pointer-events-none shrink-0" aria-hidden="true" />
         </main>
       </div>
+
+      {/* Suspended Account Billing Lock Screen */}
+      {activeCompany && (activeCompany.status === 'SUSPENDED' || activeCompany.isSuspended) && (
+        <BillingLockScreen
+          companyName={activeCompany.companyName || activeCompany.name}
+          companyCode={activeCompany.code}
+          isSuspended={true}
+          isTrialExpired={false}
+          suspendedReason={activeCompany.suspendedReason}
+          ownerEmail={activeCompany.ownerEmail || activeCompany.email}
+          phone={activeCompany.phone}
+          onRefresh={() => {
+            api.getTenantCurrentStatus().then((res) => {
+              if (res.success && res.company) setCompanyStatus(res.company);
+            });
+          }}
+          onLogout={logout}
+        />
+      )}
+
+      {/* Mandatory Company Profile Setup Wizard for New Onboarded Companies */}
+      {user && user.role !== 'SUPER_ADMIN' && activeCompany && activeCompany.onboardingCompleted === false && (
+        <CompanyOnboardingWizard
+          initialCompany={activeCompany}
+          onCompleted={(updated) => {
+            setCompanyStatus(updated);
+          }}
+        />
+      )}
 
       {/* Trial Expired Upgrade Dialog */}
       <TrialExpiredModal

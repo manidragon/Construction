@@ -98,6 +98,7 @@ export const getLeads = async (req: Request, res: Response) => {
             id: true,
             quotationNumber: true,
             status: true,
+            subtotal: true,
             totalAmount: true,
             gstMode: true,
             gstAmount: true,

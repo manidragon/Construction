@@ -844,8 +844,9 @@ export const recordWagePayment = async (req: Request, res: Response) => {
     });
 
     // Also persist to WagePayment model
+    let createdWagePayment: any = null;
     try {
-      await (prisma as any).wagePayment.create({
+      createdWagePayment = await (prisma as any).wagePayment.create({
         data: {
           projectId,
           workerId: workerId || null,
@@ -874,6 +875,16 @@ export const recordWagePayment = async (req: Request, res: Response) => {
       success: true,
       message: `₹${payAmount.toLocaleString('en-IN')} wage disbursement successfully posted to General Ledger (${journal.entryNumber}).`,
       journal,
+      payment: createdWagePayment || {
+        projectId,
+        workerId: workerId || null,
+        amount: payAmount,
+        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        paymentMethod: paymentMethod || 'CASH',
+        referenceNo: journal.entryNumber,
+        wagePeriod: wagePeriod || null,
+        narration: finalNarration,
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });

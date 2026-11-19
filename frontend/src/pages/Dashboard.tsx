@@ -121,54 +121,54 @@ export const Dashboard: React.FC = () => {
 
         {/* Storekeeper KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-cyan-700 border border-cyan-600 p-4 rounded-xl shadow-md transition hover:bg-cyan-600 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Stores Stock Valuation</span>
-              <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Layers className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-cyan-700 mt-2 truncate">{formatCurrency(s.materialStockValue || 0)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.materialStockValue || 0)}</p>
+            <div className="flex items-center text-[11px] text-cyan-100 mt-1 font-medium truncate">
               <span>Weighted avg. inventory asset value</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Low Stock Alerts</span>
-              <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-red-600 mt-2 truncate">{s.lowStockAlertsCount || 0}</p>
-            <div className="flex items-center text-[11px] text-red-600 mt-1 font-semibold truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.lowStockAlertsCount || 0}</p>
+            <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
               <span>Items below minimum threshold</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-amber-600 border border-amber-500 p-4 rounded-xl shadow-md transition hover:bg-amber-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Pending Site Requisitions</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <ClipboardList className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-2 truncate">{s.pendingRequisitions || 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.pendingRequisitions || 0}</p>
+            <div className="flex items-center text-[11px] text-amber-100 mt-1 font-medium truncate">
               <span>Site indents awaiting issue / dispatch</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-emerald-600 border border-emerald-500 p-4 rounded-xl shadow-md transition hover:bg-emerald-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Active Purchase Orders</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Truck className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-2 truncate">{s.totalPOCount || 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.totalPOCount || 0}</p>
+            <div className="flex items-center text-[11px] text-emerald-100 mt-1 font-medium truncate">
               <span>Vendor deliveries in pipeline</span>
             </div>
           </div>
@@ -384,54 +384,54 @@ export const Dashboard: React.FC = () => {
 
         {/* Site Engineer KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-blue-600 border border-blue-500 p-4 rounded-xl shadow-md transition hover:bg-blue-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Active Site Tasks</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.activeTasksCount ?? 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.activeTasksCount ?? 0}</p>
+            <div className="flex items-center text-[11px] text-blue-100 mt-1 font-medium truncate">
               <span>Work currently in progress on site</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Delayed / Overdue Tasks</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-2 truncate">{s.overdueTasksCount || 0}</p>
-            <div className="flex items-center text-[11px] text-amber-600 mt-1 font-semibold truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.overdueTasksCount || 0}</p>
+            <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
               <span>Requires immediate supervisor action</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-emerald-600 border border-emerald-500 p-4 rounded-xl shadow-md transition hover:bg-emerald-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Daily Site Reports (DPR)</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <FileText className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-emerald-700 mt-2 truncate">{s.totalDPRCount ?? 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.totalDPRCount ?? 0}</p>
+            <div className="flex items-center text-[11px] text-emerald-100 mt-1 font-medium truncate">
               <span>Shift logs submitted across sites</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-purple-600 border border-purple-500 p-4 rounded-xl shadow-md transition hover:bg-purple-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Pending Material Indents</span>
-              <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Boxes className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-purple-700 mt-2 truncate">{s.pendingRequisitions || 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.pendingRequisitions || 0}</p>
+            <div className="flex items-center text-[11px] text-purple-100 mt-1 font-medium truncate">
               <span>Requisitions raised to stores</span>
             </div>
           </div>
@@ -557,54 +557,54 @@ export const Dashboard: React.FC = () => {
 
         {/* Purchase KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-indigo-700 border border-indigo-600 p-4 rounded-xl shadow-md transition hover:bg-indigo-600 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Total Material Purchases</span>
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <ShoppingCart className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-indigo-700 mt-2 truncate">{formatCurrency(s.totalMaterialsCost || 0)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalMaterialsCost || 0)}</p>
+            <div className="flex items-center text-[11px] text-indigo-100 mt-1 font-medium truncate">
               <span>Total purchase orders committed</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Supplier & Vendor Payables</span>
-              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-rose-600 mt-2 truncate">{formatCurrency(s.supplierPayables || 0)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.supplierPayables || 0)}</p>
+            <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
               <span>Outstanding balance to material suppliers</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-amber-600 border border-amber-500 p-4 rounded-xl shadow-md transition hover:bg-amber-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Pending Site Requisitions</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <ClipboardList className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-2 truncate">{s.pendingRequisitions || 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.pendingRequisitions || 0}</p>
+            <div className="flex items-center text-[11px] text-amber-100 mt-1 font-medium truncate">
               <span>Site indents awaiting PO release</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-cyan-700 border border-cyan-600 p-4 rounded-xl shadow-md transition hover:bg-cyan-600 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Stores Stock Valuation</span>
-              <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Layers className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-cyan-700 mt-2 truncate">{formatCurrency(s.materialStockValue || 0)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.materialStockValue || 0)}</p>
+            <div className="flex items-center text-[11px] text-cyan-100 mt-1 font-medium truncate">
               <span>Current stores stock value</span>
             </div>
           </div>
@@ -691,54 +691,54 @@ export const Dashboard: React.FC = () => {
 
         {/* HR KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Total Labour Wages Incurred</span>
-              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <IndianRupee className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-rose-700 mt-2 truncate">{formatCurrency(s.totalLabourCost || 0)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalLabourCost || 0)}</p>
+            <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
               <span>Calculated from muster roll shift logs</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-blue-600 border border-blue-500 p-4 rounded-xl shadow-md transition hover:bg-blue-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Registered Trade Workers</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Users className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.totalWorkersCount ?? 0}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.totalWorkersCount ?? 0}</p>
+            <div className="flex items-center text-[11px] text-blue-100 mt-1 font-medium truncate">
               <span>Masons, helpers, carpenters & trades</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-emerald-600 border border-emerald-500 p-4 rounded-xl shadow-md transition hover:bg-emerald-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Active Construction Sites</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Building2 className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-emerald-700 mt-2 truncate">{s.activeProjects}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.activeProjects}</p>
+            <div className="flex items-center text-[11px] text-emerald-100 mt-1 font-medium truncate">
               <span>Sites with active labour shifts</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-purple-600 border border-purple-500 p-4 rounded-xl shadow-md transition hover:bg-purple-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Statutory Compliance Status</span>
-              <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-purple-700 mt-2 truncate">Active</p>
-            <div className="flex items-center text-[11px] text-emerald-600 mt-1 font-semibold truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">Active</p>
+            <div className="flex items-center text-[11px] text-purple-100 mt-1 font-medium truncate">
               <span>ESI, PF & safety protocols met</span>
             </div>
           </div>
@@ -862,54 +862,54 @@ export const Dashboard: React.FC = () => {
 
         {/* Accounts KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-emerald-600 border border-emerald-500 p-4 rounded-xl shadow-md transition hover:bg-emerald-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Total Certified RA Bills</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <ArrowUpRight className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.totalClientBilling)}</p>
-            <div className="flex items-center text-[11px] text-emerald-600 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalClientBilling)}</p>
+            <div className="flex items-center text-[11px] text-emerald-100 mt-1 font-medium truncate">
               <span>Billed revenue recognized</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-teal-600 border border-teal-500 p-4 rounded-xl shadow-md transition hover:bg-teal-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Total Cash Collected</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-2 truncate">{formatCurrency(s.totalMoneyReceived)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalMoneyReceived)}</p>
+            <div className="flex items-center text-[11px] text-teal-100 mt-1 font-medium truncate">
               <span>Net bank & RTGS collections</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-amber-600 border border-amber-500 p-4 rounded-xl shadow-md transition hover:bg-amber-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Client Receivables (Due)</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-2 truncate">{formatCurrency(s.outstandingReceivables)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.outstandingReceivables)}</p>
+            <div className="flex items-center text-[11px] text-amber-100 mt-1 font-medium truncate">
               <span>Billed balance due from clients</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Supplier & Vendor Payables</span>
-              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-rose-600 mt-2 truncate">{formatCurrency(s.supplierPayables)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.supplierPayables)}</p>
+            <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
               <span>Liabilities to material vendors</span>
             </div>
           </div>
@@ -1103,54 +1103,54 @@ export const Dashboard: React.FC = () => {
 
         {/* PM KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-indigo-700 border border-indigo-600 p-4 rounded-xl shadow-md transition hover:bg-indigo-600 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Approved Project Budgets</span>
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <IndianRupee className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.totalApprovedBudget)}</p>
-            <div className="flex items-center text-[11px] text-emerald-600 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalApprovedBudget)}</p>
+            <div className="flex items-center text-[11px] text-indigo-100 mt-1 font-medium truncate">
               <span>Planned cost ceiling</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-md transition hover:bg-slate-700 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Actual Incurred Cost</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <ArrowDownRight className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.actualExpenditureToDate)}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.actualExpenditureToDate)}</p>
+            <div className="flex items-center text-[11px] text-slate-200 mt-1 font-medium truncate">
               <span>Materials + Labour + Expenses</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-blue-600 border border-blue-500 p-4 rounded-xl shadow-md transition hover:bg-blue-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Active Projects Portfolio</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <Building2 className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 truncate">{s.activeProjects} / {s.totalProjects}</p>
-            <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.activeProjects} / {s.totalProjects}</p>
+            <div className="flex items-center text-[11px] text-blue-100 mt-1 font-medium truncate">
               <span>Ongoing sites under execution</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+          <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+            <div className="flex items-center justify-between text-white text-xs font-bold">
               <span>Delayed / Overdue Tasks</span>
-              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-rose-600 mt-2 truncate">{s.overdueTasksCount || 0}</p>
-            <div className="flex items-center text-[11px] text-rose-600 mt-1 font-semibold truncate">
+            <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{s.overdueTasksCount || 0}</p>
+            <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
               <span>Critical milestones requiring escalation</span>
             </div>
           </div>
@@ -1312,113 +1312,113 @@ export const Dashboard: React.FC = () => {
       {/* Primary KPI Grid (8 Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Contract Value */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-blue-600 border border-blue-500 p-4 rounded-xl shadow-md transition hover:bg-blue-500 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Total Contract Value</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.totalContractValue)}</p>
-          <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalContractValue)}</p>
+          <div className="flex items-center text-[11px] text-blue-100 mt-1 font-medium truncate">
             <span>Approved contract orders</span>
           </div>
         </div>
 
         {/* Total Approved Budgets */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-indigo-700 border border-indigo-600 p-4 rounded-xl shadow-md transition hover:bg-indigo-600 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Approved Project Budgets</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <IndianRupee className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.totalApprovedBudget)}</p>
-          <div className="flex items-center text-[11px] text-emerald-600 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalApprovedBudget)}</p>
+          <div className="flex items-center text-[11px] text-indigo-100 mt-1 font-medium truncate">
             <span>Planned cost ceiling</span>
           </div>
         </div>
 
         {/* Actual Expenditure to Date */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-md transition hover:bg-slate-700 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Actual Cost Incurred</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <ArrowDownRight className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.actualExpenditureToDate)}</p>
-          <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.actualExpenditureToDate)}</p>
+          <div className="flex items-center text-[11px] text-slate-200 mt-1 font-medium truncate">
             <span>Materials + Labour + Expenses</span>
           </div>
         </div>
 
         {/* Total Client Billing */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-emerald-600 border border-emerald-500 p-4 rounded-xl shadow-md transition hover:bg-emerald-500 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Total Certified RA Bills</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <ArrowUpRight className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 truncate">{formatCurrency(s.totalClientBilling)}</p>
-          <div className="flex items-center text-[11px] text-emerald-600 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalClientBilling)}</p>
+          <div className="flex items-center text-[11px] text-emerald-100 mt-1 font-medium truncate">
             <span>Billed revenue recognized</span>
           </div>
         </div>
 
         {/* Money Received (Cash Collected) */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-teal-600 border border-teal-500 p-4 rounded-xl shadow-md transition hover:bg-teal-500 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Total Cash Collected</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-2 truncate">{formatCurrency(s.totalMoneyReceived)}</p>
-          <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.totalMoneyReceived)}</p>
+          <div className="flex items-center text-[11px] text-teal-100 mt-1 font-medium truncate">
             <span>Net bank & RTGS collections</span>
           </div>
         </div>
 
         {/* Outstanding Receivables */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-amber-600 border border-amber-500 p-4 rounded-xl shadow-md transition hover:bg-amber-500 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Client Receivables (Due)</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <Clock className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-2 truncate">{formatCurrency(s.outstandingReceivables)}</p>
-          <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.outstandingReceivables)}</p>
+          <div className="flex items-center text-[11px] text-amber-100 mt-1 font-medium truncate">
             <span>Billed balance due from clients</span>
           </div>
         </div>
 
         {/* Supplier & Vendor Payables */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-rose-600 border border-rose-500 p-4 rounded-xl shadow-md transition hover:bg-rose-500 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Supplier & Vendor Payables</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-rose-600 mt-2 truncate">{formatCurrency(s.supplierPayables)}</p>
-          <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.supplierPayables)}</p>
+          <div className="flex items-center text-[11px] text-rose-100 mt-1 font-medium truncate">
             <span>Liabilities to material vendors</span>
           </div>
         </div>
 
         {/* Material Stock Valuation */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition min-w-0">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-cyan-700 border border-cyan-600 p-4 rounded-xl shadow-md transition hover:bg-cyan-600 min-w-0">
+          <div className="flex items-center justify-between text-white text-xs font-bold">
             <span>Stores Stock Valuation</span>
-            <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-extrabold text-cyan-700 mt-2 truncate">{formatCurrency(s.materialStockValue)}</p>
-          <div className="flex items-center text-[11px] text-slate-500 mt-1 truncate">
+          <p className="text-xl sm:text-2xl font-black text-white mt-2 truncate">{formatCurrency(s.materialStockValue)}</p>
+          <div className="flex items-center text-[11px] text-cyan-100 mt-1 font-medium truncate">
             <span>Weighted average stores value</span>
           </div>
         </div>

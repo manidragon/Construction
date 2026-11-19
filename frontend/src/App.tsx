@@ -72,27 +72,31 @@ const VendorAdminRoute: React.FC<{ children: React.ReactElement }> = ({ children
 };
 
 import { ScrollToTop } from './components/ScrollToTop';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 export const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ScrollToTop />
-      <AuthProvider>
-        <ProjectProvider>
-          <Routes>
-            {/* Public Auth Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SelfServeSignup />} />
+      <ErrorBoundary>
+        <AuthProvider>
+          <ProjectProvider>
+            <Routes>
+              {/* Public Auth Routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SelfServeSignup />} />
 
-            {/* Authenticated Application Shell */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
+              {/* Authenticated Application Shell */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <ErrorBoundary>
+                      <AppLayout />
+                    </ErrorBoundary>
+                  </ProtectedRoute>
+                }
+              >
               <Route index element={<Dashboard />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="company-settings" element={<CompanySettings />} />
@@ -144,7 +148,8 @@ export const App: React.FC = () => {
           </Routes>
         </ProjectProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </ErrorBoundary>
+  </BrowserRouter>
   );
 };
 

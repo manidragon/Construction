@@ -44,6 +44,7 @@ import {
   Eye,
   Edit,
   Trash2,
+  X,
 } from 'lucide-react';
 import DynamicSelect from '../components/common/DynamicSelect';
 import SearchableSelect from '../components/common/SearchableSelect';
@@ -367,26 +368,25 @@ export const Leads: React.FC = () => {
     navigate(`/quotations?${params.toString()}`);
   };
 
-  const handleStageChange = async (lead: Lead, newStage: LeadStage) => {
-    if (newStage === 'LEAD_WON') {
-      // Trigger Module 3 Conversion Gate Prompt
-      setLeadToConvert(lead);
-      const estimatedAmt =
-        lead.budgetRange === '10L_25L' ? 100000 :
-        lead.budgetRange === '25L_50L' ? 250000 :
-        lead.budgetRange === '50L_1CR' ? 500000 : 1000000;
-      setConvertForm({
-        advanceAmount: estimatedAmt,
-        paymentMethod: 'NEFT_RTGS',
-        referenceNo: `UTR-${Math.floor(100000 + Math.random() * 900000)}`,
-        advanceNotes: `Booking advance token for ${lead.clientName}`,
-        projectName: `${lead.clientName} - ${PROJECT_TYPE_LABELS[lead.projectType]}`,
-      });
-      setConvertError('');
-      setShowConvertModal(true);
-      return;
-    }
+  const openConvertModal = (lead: Lead) => {
+    setLeadToConvert(lead);
+    const estimatedAmt =
+      lead.budgetRange === '10L_25L' ? 100000 :
+      lead.budgetRange === '25L_50L' ? 250000 :
+      lead.budgetRange === '50L_1CR' ? 500000 : 1000000;
+    const projectTypeName = formatProjectType(lead.projectType);
+    setConvertForm({
+      advanceAmount: estimatedAmt,
+      paymentMethod: 'NEFT_RTGS',
+      referenceNo: `UTR-${Math.floor(100000 + Math.random() * 900000)}`,
+      advanceNotes: `Booking advance token for ${lead.clientName || 'Client'}`,
+      projectName: `${lead.clientName || 'Project'} - ${projectTypeName}`,
+    });
+    setConvertError('');
+    setShowConvertModal(true);
+  };
 
+  const handleStageChange = async (lead: Lead, newStage: LeadStage) => {
     setTransitioningId(lead.id);
     try {
       const res = await api.updateLifecycleStatus({
@@ -404,6 +404,12 @@ export const Leads: React.FC = () => {
         setTimeout(() => setStandardToast(null), 5000);
       }
       await fetchLeads();
+
+      // If transition is to LEAD_WON and the lead has not yet been converted to a project,
+      // open the kickoff project advance modal
+      if (newStage === 'LEAD_WON' && !lead.convertedProjectId && !lead.convertedProject) {
+        openConvertModal(lead);
+      }
     } catch (err: any) {
       setStandardToast({
         message: err.message || `Failed to update stage`,
@@ -448,11 +454,16 @@ export const Leads: React.FC = () => {
 
   // Filtered Leads
   const filteredLeads = leads.filter((lead) => {
+    const clientName = lead.clientName || '';
+    const contactNumber = lead.contactNumber || '';
+    const leadNumber = lead.leadNumber || '';
+    const siteAddress = lead.siteAddress || '';
+
     const matchesSearch =
-      lead.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.contactNumber.includes(searchQuery) ||
-      lead.leadNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.siteAddress.toLowerCase().includes(searchQuery.toLowerCase());
+      clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      contactNumber.includes(searchQuery) ||
+      leadNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      siteAddress.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesTeam = selectedTeam === 'ALL' || lead.assignedTeam === selectedTeam;
     const matchesType = selectedType === 'ALL' || lead.projectType === selectedType;
@@ -776,6 +787,37 @@ export const Leads: React.FC = () => {
                               </select>
                             </div>
 
+                            {/* Lead Won Action / Project Link */}
+                            {lead.stage === 'LEAD_WON' && (
+                              <div className="pt-0.5">
+                                {lead.convertedProject ? (
+                                  <div className="flex items-center justify-between p-1.5 bg-emerald-50 rounded-lg border border-emerald-200 text-[10px] text-emerald-800 font-semibold">
+                                    <span className="flex items-center space-x-1 truncate">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      <span className="truncate">Project: {lead.convertedProject.code}</span>
+                                    </span>
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${
+                                      lead.convertedProject.advancePaymentConfirmed
+                                        ? 'bg-emerald-200 text-emerald-900'
+                                        : 'bg-amber-200 text-amber-900'
+                                    }`}>
+                                      {lead.convertedProject.advancePaymentConfirmed ? 'Kickoff Unlocked' : 'Adv. Pending'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => openConvertModal(lead)}
+                                    className="w-full h-7 px-2 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition flex items-center justify-center space-x-1 shadow-sm"
+                                    title="Convert Won Lead to Active Project"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Convert to Project</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
                             {/* View, Edit, Quote, Delete Buttons */}
                             <div className="flex items-center justify-between gap-1 text-xs">
                               {/* View Details */}
@@ -855,7 +897,7 @@ export const Leads: React.FC = () => {
                     <td className="py-3 px-4 font-mono font-bold text-amber-700">
                       {lead.leadNumber}
                       <span className="block text-[10px] text-slate-400 font-normal">
-                        {SOURCE_LABELS[lead.source]}
+                        {formatSource(lead.source)}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -873,11 +915,11 @@ export const Leads: React.FC = () => {
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                        {PROJECT_TYPE_LABELS[lead.projectType]}
+                        {PROJECT_TYPE_LABELS[lead.projectType] || formatProjectType(lead.projectType)}
                       </span>
                     </td>
                     <td className="py-3 px-4 font-bold text-emerald-700">
-                      {BUDGET_RANGE_LABELS[lead.budgetRange]}
+                      {BUDGET_RANGE_LABELS[lead.budgetRange] || formatBudget(lead.budgetRange)}
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-semibold text-slate-800 text-[11px]">
@@ -965,22 +1007,36 @@ export const Leads: React.FC = () => {
 
       {/* MODAL 1: Capture Lead Form */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shrink-0">
               <div>
-                <h3 className="font-bold text-base text-slate-900">Module 1: Capture New Construction / Interior Lead</h3>
-                <p className="text-xs text-slate-500">Auto-numbering {nextNumber} • Team & Staff Assignment</p>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Capture New Construction / Interior Lead
+                  </h3>
+                  <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                    {nextNumber}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Enter client profile, requirements, budget & pipeline stage
+                </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                title="Close"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateLead} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateLead} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
               {/* Row 1: Client Name & Contact */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1181,22 +1237,28 @@ export const Leads: React.FC = () => {
                   />
                 </div>
               </div>
+            </div>
 
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-sm transition"
-                >
-                  Save Lead & Open Pipeline
-                </button>
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between z-10 shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  * Required fields marked with asterisk
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-white font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5"
+                  >
+                    <span>Save Lead & Open Pipeline</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1205,9 +1267,10 @@ export const Leads: React.FC = () => {
 
       {/* MODAL: Edit Lead Form */}
       {editingLead && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shrink-0">
               <div>
                 <div className="flex items-center space-x-2">
                   <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
@@ -1224,234 +1287,239 @@ export const Leads: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEditingLead(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                title="Close"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateLead} className="space-y-4 text-xs">
-              {/* Row 1: Client Name & Contact */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Client Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.clientName}
-                    onChange={(e) => setEditFormData({ ...editFormData, clientName: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Contact Number (WhatsApp) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.contactNumber}
-                    onChange={(e) => setEditFormData({ ...editFormData, contactNumber: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: Email & Site Address */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={editFormData.email}
-                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">City & State</label>
-                  <div className="grid grid-cols-2 gap-2">
+            <form onSubmit={handleUpdateLead} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
+                {/* Row 1: Client Name & Contact */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Client Name *</label>
                     <input
                       type="text"
-                      value={editFormData.city}
-                      onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                      required
+                      value={editFormData.clientName}
+                      onChange={(e) => setEditFormData({ ...editFormData, clientName: e.target.value })}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      placeholder="City"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Contact Number (WhatsApp) *</label>
                     <input
                       type="text"
-                      value={editFormData.state}
-                      onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      placeholder="State"
+                      required
+                      value={editFormData.contactNumber}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactNumber: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Site Address & Location *</label>
-                <input
-                  type="text"
-                  required
-                  value={editFormData.siteAddress}
-                  onChange={(e) => setEditFormData({ ...editFormData, siteAddress: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-              </div>
+                {/* Row 2: Email & Site Address */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={editFormData.email}
+                      onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">City & State</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={editFormData.city}
+                        onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        placeholder="City"
+                      />
+                      <input
+                        type="text"
+                        value={editFormData.state}
+                        onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        placeholder="State"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-              {/* Row 3: Project Type, Budget & Lead Source */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Project Type</label>
-                  <select
-                    value={editFormData.projectType}
-                    onChange={(e) => setEditFormData({ ...editFormData, projectType: e.target.value as LeadProjectType })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
-                  >
-                    <option value="RESIDENTIAL_INTERIOR">Residential Interior</option>
-                    <option value="COMMERCIAL_FITOUT">Commercial Fit-out</option>
-                    <option value="FULL_VILLA_CONSTRUCTION">Full Villa Construction</option>
-                    <option value="RENOVATION">Renovation & Remodel</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Estimated Budget Range</label>
-                  <select
-                    value={editFormData.budgetRange}
-                    onChange={(e) => setEditFormData({ ...editFormData, budgetRange: e.target.value as LeadBudgetRange })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
-                  >
-                    <option value="10L_25L">₹10L - ₹25L</option>
-                    <option value="25L_50L">₹25L - ₹50L</option>
-                    <option value="50L_1CR">₹50L - ₹1 Crore</option>
-                    <option value="1CR_2.5CR">₹1 Crore - ₹2.5 Crores</option>
-                    <option value="2.5CR_PLUS">₹2.5 Crores+</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Lead Source</label>
-                  <DynamicSelect
-                    category="LeadSource"
-                    value={editFormData.source}
-                    onChange={(val) => setEditFormData({ ...editFormData, source: val as LeadSource })}
-                    fallbackOptions={LEAD_SOURCE_FALLBACK_OPTIONS}
-                    className="!bg-white !border-slate-300 !text-slate-900 !py-2 !rounded-lg !text-xs font-semibold"
+                  <label className="block text-slate-700 font-semibold mb-1">Site Address & Location *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.siteAddress}
+                    onChange={(e) => setEditFormData({ ...editFormData, siteAddress: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   />
                 </div>
-              </div>
 
-              {/* Row 4: Stage & Team Assignment */}
-              <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200/80 space-y-3">
-                <div className="flex items-center space-x-1.5 text-amber-900 font-bold">
-                  <Users className="w-4 h-4 text-amber-600" />
-                  <span>Stage, Team & Project Manager Assignment</span>
-                </div>
+                {/* Row 3: Project Type, Budget & Lead Source */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-slate-700 font-semibold mb-1">Pipeline Stage</label>
+                    <label className="block text-slate-700 font-semibold mb-1">Project Type</label>
+                    <DynamicSelect
+                      category="ServiceType"
+                      value={editFormData.projectType}
+                      onChange={(val) => setEditFormData({ ...editFormData, projectType: val as any })}
+                      className="!bg-white !border-slate-300 !text-slate-900 !py-2 !rounded-lg !text-xs font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Estimated Budget Range</label>
                     <select
-                      value={editFormData.stage}
-                      onChange={(e) => setEditFormData({ ...editFormData, stage: e.target.value as LeadStage })}
+                      value={editFormData.budgetRange}
+                      onChange={(e) => setEditFormData({ ...editFormData, budgetRange: e.target.value as LeadBudgetRange })}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
                     >
-                      {STAGES.map((s) => (
-                        <option key={s.key} value={s.key}>
-                          {s.label}
-                        </option>
-                      ))}
+                      <option value="10L_25L">₹10L - ₹25L</option>
+                      <option value="25L_50L">₹25L - ₹50L</option>
+                      <option value="50L_1CR">₹50L - ₹1 Crore</option>
+                      <option value="1CR_2.5CR">₹1 Crore - ₹2.5 Crores</option>
+                      <option value="2.5CR_PLUS">₹2.5 Crores+</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-700 font-semibold mb-1">Assigned Team</label>
-                    <select
-                      value={editFormData.assignedTeam}
-                      onChange={(e) => setEditFormData({ ...editFormData, assignedTeam: e.target.value as AssignedTeam })}
+                    <label className="block text-slate-700 font-semibold mb-1">Lead Source</label>
+                    <DynamicSelect
+                      category="LeadSource"
+                      value={editFormData.source}
+                      onChange={(val) => setEditFormData({ ...editFormData, source: val as LeadSource })}
+                      fallbackOptions={LEAD_SOURCE_FALLBACK_OPTIONS}
+                      className="!bg-white !border-slate-300 !text-slate-900 !py-2 !rounded-lg !text-xs font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: Stage & Team Assignment */}
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200/80 space-y-3">
+                  <div className="flex items-center space-x-1.5 text-amber-900 font-bold">
+                    <Users className="w-4 h-4 text-amber-600" />
+                    <span>Stage, Team & Project Manager Assignment</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Pipeline Stage</label>
+                      <select
+                        value={editFormData.stage}
+                        onChange={(e) => setEditFormData({ ...editFormData, stage: e.target.value as LeadStage })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
+                      >
+                        {STAGES.map((s) => (
+                          <option key={s.key} value={s.key}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Assigned Team</label>
+                      <select
+                        value={editFormData.assignedTeam}
+                        onChange={(e) => setEditFormData({ ...editFormData, assignedTeam: e.target.value as AssignedTeam })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      >
+                        <option value="DESIGN_TEAM">Design Team</option>
+                        <option value="EXECUTION_TEAM">Execution Team</option>
+                        <option value="SALES_TEAM">Sales Team</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Assigned PM</label>
+                      <SearchableSelect
+                        value={editFormData.assignedProjectManagerId}
+                        onChange={(val) => setEditFormData({ ...editFormData, assignedProjectManagerId: val })}
+                        options={[
+                          { value: '', label: '-- Select Project Manager --' },
+                          ...pmUsers.map((pm) => ({
+                            value: pm.id,
+                            label: pm.name,
+                            sublabel: pm.designation || pm.role,
+                          })),
+                        ]}
+                        placeholder="-- Select Project Manager --"
+                        searchPlaceholder="Search PM or Sales Lead..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 5: Confidential Notes */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5 text-slate-800 font-bold">
+                      <Lock className="w-4 h-4 text-amber-600" />
+                      <span>Confidential Site Visit & Budget Notes</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 italic">
+                      Restricted: Only Admin/Owner & Assigned PM
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Site Visit Date</label>
+                    <input
+                      type="date"
+                      value={editFormData.siteVisitDate}
+                      onChange={(e) => setEditFormData({ ...editFormData, siteVisitDate: e.target.value })}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    >
-                      <option value="DESIGN_TEAM">Design Team</option>
-                      <option value="EXECUTION_TEAM">Execution Team</option>
-                      <option value="SALES_TEAM">Sales Team</option>
-                    </select>
+                    />
                   </div>
+
                   <div>
-                    <label className="block text-slate-700 font-semibold mb-1">Assigned PM</label>
-                    <SearchableSelect
-                      value={editFormData.assignedProjectManagerId}
-                      onChange={(val) => setEditFormData({ ...editFormData, assignedProjectManagerId: val })}
-                      options={[
-                        { value: '', label: '-- Select Project Manager --' },
-                        ...pmUsers.map((pm) => ({
-                          value: pm.id,
-                          label: pm.name,
-                          sublabel: pm.designation || pm.role,
-                        })),
-                      ]}
-                      placeholder="-- Select Project Manager --"
-                      searchPlaceholder="Search PM or Sales Lead..."
+                    <label className="block text-slate-700 font-semibold mb-1">Site Visit Notes & Measurements</label>
+                    <textarea
+                      rows={2}
+                      value={editFormData.siteVisitNotes}
+                      onChange={(e) => setEditFormData({ ...editFormData, siteVisitNotes: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Client Budget Discussion Notes</label>
+                    <textarea
+                      rows={2}
+                      value={editFormData.clientBudgetDiscussion}
+                      onChange={(e) => setEditFormData({ ...editFormData, clientBudgetDiscussion: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Row 5: Confidential Notes */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5 text-slate-800 font-bold">
-                    <Lock className="w-4 h-4 text-amber-600" />
-                    <span>Confidential Site Visit & Budget Notes</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 italic">
-                    Restricted: Only Admin/Owner & Assigned PM
-                  </span>
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between z-10 shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  * Required fields marked with asterisk
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingLead(null)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-white font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{savingEdit ? 'Updating Lead...' : `Update Lead (${editingLead.leadNumber})`}</span>
+                  </button>
                 </div>
-
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Site Visit Date</label>
-                  <input
-                    type="date"
-                    value={editFormData.siteVisitDate}
-                    onChange={(e) => setEditFormData({ ...editFormData, siteVisitDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Site Visit Notes & Measurements</label>
-                  <textarea
-                    rows={2}
-                    value={editFormData.siteVisitNotes}
-                    onChange={(e) => setEditFormData({ ...editFormData, siteVisitNotes: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Client Budget Discussion Notes</label>
-                  <textarea
-                    rows={2}
-                    value={editFormData.clientBudgetDiscussion}
-                    onChange={(e) => setEditFormData({ ...editFormData, clientBudgetDiscussion: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingLead(null)}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingEdit}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{savingEdit ? 'Updating Lead...' : `Update Lead (${editingLead.leadNumber})`}</span>
-                </button>
               </div>
             </form>
           </div>
@@ -1460,9 +1528,10 @@ export const Leads: React.FC = () => {
 
       {/* MODAL 2: Lead Details & Confidential Notes View */}
       {selectedLeadForDetail && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
               <div>
                 <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                   {selectedLeadForDetail.leadNumber}
@@ -1493,15 +1562,17 @@ export const Leads: React.FC = () => {
                   <span>Delete</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setSelectedLeadForDetail(null)}
-                  className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
+                  className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 rounded-lg hover:bg-slate-100"
                 >
                   ✕
                 </button>
               </div>
             </div>
 
-            <div className="space-y-4 text-xs">
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
               {/* Basic Details Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl">
                 <div>
@@ -1621,64 +1692,72 @@ export const Leads: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Actions Footer */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                <div className="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedLeadForDetail(null)}
-                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-50"
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteLead(selectedLeadForDetail)}
-                    className="px-3.5 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl font-bold flex items-center space-x-1 transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Lead</span>
-                  </button>
-                </div>
-                <div className="flex items-center space-x-2">
+            {/* Fixed Actions Footer */}
+            <div className="sticky bottom-0 bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-between z-10">
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLeadForDetail(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-100"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteLead(selectedLeadForDetail)}
+                  className="px-3.5 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl font-bold flex items-center space-x-1 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Lead</span>
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const l = selectedLeadForDetail;
+                    setSelectedLeadForDetail(null);
+                    handleStartEdit(l);
+                  }}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Edit Lead</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const l = selectedLeadForDetail;
+                    setSelectedLeadForDetail(null);
+                    if (l) handleOpenQuotationForLead(l);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Open Client Quotation</span>
+                </button>
+                {(!selectedLeadForDetail.convertedProject && !selectedLeadForDetail.convertedProjectId) && (
                   <button
                     type="button"
                     onClick={() => {
                       const l = selectedLeadForDetail;
                       setSelectedLeadForDetail(null);
-                      handleStartEdit(l);
+                      if (l) {
+                        if (l.stage !== 'LEAD_WON') {
+                          handleStageChange(l, 'LEAD_WON');
+                        } else {
+                          openConvertModal(l);
+                        }
+                      }
                     }}
-                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm"
                   >
-                    <Edit className="w-3.5 h-3.5" />
-                    <span>Edit Lead</span>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{selectedLeadForDetail.stage === 'LEAD_WON' ? 'Convert to Active Project' : 'Convert to Won Project'}</span>
                   </button>
-                  <button
-                    onClick={() => {
-                      const l = selectedLeadForDetail;
-                      setSelectedLeadForDetail(null);
-                      if (l) handleOpenQuotationForLead(l);
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>Open Client Quotation</span>
-                  </button>
-                  {selectedLeadForDetail.stage !== 'LEAD_WON' && (
-                    <button
-                      onClick={() => {
-                        const l = selectedLeadForDetail;
-                        setSelectedLeadForDetail(null);
-                        handleStageChange(l, 'LEAD_WON');
-                      }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Convert to Won Project</span>
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -1687,9 +1766,10 @@ export const Leads: React.FC = () => {
 
       {/* MODAL 3: MODULE 3 - Lead Won & Project Kickoff Gate */}
       {showConvertModal && leadToConvert && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
               <div>
                 <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 uppercase">
                   Module 3: Project Kickoff Gate
@@ -1699,144 +1779,152 @@ export const Leads: React.FC = () => {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowConvertModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 rounded-lg hover:bg-slate-100"
               >
                 ✕
               </button>
             </div>
 
-            {convertError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>{convertError}</span>
-              </div>
-            )}
-
-            {/* Kickoff Gate Explanation Banner */}
-            <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
-              <p className="font-bold flex items-center space-x-1.5">
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
-                <span>Strict Construction Kickoff Gate:</span>
-              </p>
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                When marked as Won, execution schedules and site task assignments will remain <strong>LOCKED</strong> until the Finance Department confirms receipt of this initial advance payment entry.
-              </p>
-            </div>
-
-            {leadToConvert?.quotations && leadToConvert.quotations.length > 0 && (() => {
-              const q = leadToConvert.quotations[leadToConvert.quotations.length - 1];
-              return (
-                <div className="mb-3.5 p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-blue-950">Linked Proposal: {q.quotationNumber}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-200 text-blue-900">
-                      {q.gstMode === 'NO_GST' ? 'No GST (0%)' : q.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}
-                    </span>
+            <form onSubmit={handleConvertLead} className="flex flex-col flex-1 overflow-hidden">
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3.5 text-xs">
+                {convertError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{convertError}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-blue-900">
-                    <div>
-                      <span className="text-blue-600 block text-[10px]">Approved Scope Budget</span>
-                      <strong className="text-slate-800">₹{q.subtotal.toLocaleString('en-IN')}</strong>
-                    </div>
-                    <div>
-                      <span className="text-blue-600 block text-[10px]">Statutory GST Tax</span>
-                      <strong className="text-amber-700">{q.gstAmount > 0 ? `₹${q.gstAmount.toLocaleString('en-IN')}` : '₹0'}</strong>
-                    </div>
-                    <div>
-                      <span className="text-blue-600 block text-[10px]">Agreed Contract Total</span>
-                      <strong className="text-emerald-700">₹{q.totalAmount.toLocaleString('en-IN')}</strong>
-                    </div>
-                  </div>
+                )}
+
+                {/* Kickoff Gate Explanation Banner */}
+                <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
+                  <p className="font-bold flex items-center space-x-1.5">
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    <span>Strict Construction Kickoff Gate:</span>
+                  </p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    When marked as Won, execution schedules and site task assignments will remain <strong>LOCKED</strong> until the Finance Department confirms receipt of this initial advance payment entry.
+                  </p>
                 </div>
-              );
-            })()}
 
-            <form onSubmit={handleConvertLead} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Project Name</label>
-                <input
-                  type="text"
-                  required
-                  value={convertForm.projectName}
-                  onChange={(e) => setConvertForm({ ...convertForm, projectName: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-              </div>
+                {Array.isArray(leadToConvert?.quotations) && leadToConvert.quotations.length > 0 && (() => {
+                  const q = leadToConvert.quotations[leadToConvert.quotations.length - 1];
+                  const subtotalVal = q.subtotal ?? (q.totalAmount ? q.totalAmount - (q.gstAmount || 0) : 0);
+                  const gstVal = q.gstAmount || 0;
+                  const totalVal = q.totalAmount || 0;
+                  return (
+                    <div className="mb-3.5 p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-blue-950">Linked Proposal: {q.quotationNumber || 'Quotation'}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-200 text-blue-900">
+                          {q.gstMode === 'NO_GST' ? 'No GST (0%)' : q.gstMode === 'EXCLUSIVE' ? '+18% Exclusive' : '18% Inclusive'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-blue-900">
+                        <div>
+                          <span className="text-blue-600 block text-[10px]">Approved Scope Budget</span>
+                          <strong className="text-slate-800">₹{subtotalVal.toLocaleString('en-IN')}</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-600 block text-[10px]">Statutory GST Tax</span>
+                          <strong className="text-amber-700">{gstVal > 0 ? `₹${gstVal.toLocaleString('en-IN')}` : '₹0'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-blue-600 block text-[10px]">Agreed Contract Total</span>
+                          <strong className="text-emerald-700">₹{totalVal.toLocaleString('en-IN')}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Initial Advance Payment Amount (₹) *
-                  </label>
+                  <label className="block text-slate-700 font-semibold mb-1">Project Name</label>
                   <input
-                    type="number"
+                    type="text"
                     required
-                    min={1}
-                    value={convertForm.advanceAmount}
-                    onChange={(e) => setConvertForm({ ...convertForm, advanceAmount: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold text-emerald-700 text-sm"
+                    value={convertForm.projectName}
+                    onChange={(e) => setConvertForm({ ...convertForm, projectName: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   />
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">
+                      Initial Advance Payment Amount (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={convertForm.advanceAmount}
+                      onChange={(e) => setConvertForm({ ...convertForm, advanceAmount: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold text-emerald-700 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Payment Method *</label>
+                    <select
+                      value={convertForm.paymentMethod}
+                      onChange={(e) => setConvertForm({ ...convertForm, paymentMethod: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
+                    >
+                      <option value="NEFT_RTGS">Bank Transfer (NEFT / RTGS / IMPS)</option>
+                      <option value="CHEQUE">Account Payee Cheque</option>
+                      <option value="UPI">UPI Transfer</option>
+                      <option value="CASH">Cash Collection</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Payment Method *</label>
-                  <select
-                    value={convertForm.paymentMethod}
-                    onChange={(e) => setConvertForm({ ...convertForm, paymentMethod: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
-                  >
-                    <option value="NEFT_RTGS">Bank Transfer (NEFT / RTGS / IMPS)</option>
-                    <option value="CHEQUE">Account Payee Cheque</option>
-                    <option value="UPI">UPI Transfer</option>
-                    <option value="CASH">Cash Collection</option>
-                  </select>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    Bank Reference Number / Cheque / UTR # *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. HDFC-RTGS-9823412 or Cheque #004521"
+                    value={convertForm.referenceNo}
+                    onChange={(e) => setConvertForm({ ...convertForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Advance Payment Remarks / Notes</label>
+                  <textarea
+                    rows={2}
+                    value={convertForm.advanceNotes}
+                    onChange={(e) => setConvertForm({ ...convertForm, advanceNotes: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Role Indicator Banner */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600">
+                  {user?.role === 'OWNER' || user?.role === 'ACCOUNTS_MANAGER' ? (
+                    <p className="text-emerald-700 font-bold flex items-center space-x-1">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Logged as Finance Officer ({user?.name || 'Authorized Staff'}): Advance will be confirmed immediately and site task scheduling will be unlocked.</span>
+                    </p>
+                  ) : (
+                    <p className="text-amber-700 font-semibold flex items-center space-x-1">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      <span>Logged as {user?.role || 'Sales'}: Will be routed to Accounts Department for verification before site tasks can be scheduled.</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  Bank Reference Number / Cheque / UTR # *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. HDFC-RTGS-9823412 or Cheque #004521"
-                  value={convertForm.referenceNo}
-                  onChange={(e) => setConvertForm({ ...convertForm, referenceNo: e.target.value.toUpperCase() })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Advance Payment Remarks / Notes</label>
-                <textarea
-                  rows={2}
-                  value={convertForm.advanceNotes}
-                  onChange={(e) => setConvertForm({ ...convertForm, advanceNotes: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Role Indicator Banner */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600">
-                {user?.role === 'OWNER' || user?.role === 'ACCOUNTS_MANAGER' ? (
-                  <p className="text-emerald-700 font-bold flex items-center space-x-1">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Logged as Finance Officer ({user?.name}): Advance will be confirmed immediately and site task scheduling will be unlocked.</span>
-                  </p>
-                ) : (
-                  <p className="text-amber-700 font-semibold flex items-center space-x-1">
-                    <Clock className="w-4 h-4 text-amber-600" />
-                    <span>Logged as {user?.role || 'Sales'}: Will be routed to Accounts Department for verification before site tasks can be scheduled.</span>
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-end space-x-2 z-10">
                 <button
                   type="button"
                   onClick={() => setShowConvertModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold"
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-100"
                 >
                   Cancel
                 </button>

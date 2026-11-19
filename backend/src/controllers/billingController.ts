@@ -90,7 +90,7 @@ export const getClientInvoices = async (req: Request, res: Response) => {
       where,
       include: {
         client: true,
-        project: { select: { id: true, code: true, name: true } },
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true, contractValue: true } },
         items: true,
         receipts: true,
       },
@@ -115,7 +115,11 @@ export const getClientInvoices = async (req: Request, res: Response) => {
  * Automatically calculate the next sequential RA Bill number with project tag.
  * e.g. RA-01-SKYLINE, RA-02-Greenfield, RA-03-SKYLINE, etc.
  */
-export const generateNextInvoiceNumber = async (projectId?: string, tenantFilter?: any) => {
+export const generateNextInvoiceNumber = async (
+  projectId?: string,
+  tenantFilter?: any,
+  clientId?: string
+) => {
   const allInvoices = await prisma.clientInvoice.findMany({
     where: tenantFilter ? tenantFilter : {},
     select: { invoiceNumber: true, projectId: true },
@@ -137,8 +141,33 @@ export const generateNextInvoiceNumber = async (projectId?: string, tenantFilter
   const nextSeq = maxNum + 1;
   const paddedSeq = String(nextSeq).padStart(2, '0');
 
-  let projectTag = '';
-  if (projectId) {
+  let entityTag = '';
+
+  // 1. If clientId is provided, derive tag directly from client code or name
+  if (clientId) {
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, ...(tenantFilter || {}) },
+      select: { id: true, code: true, name: true, companyName: true },
+    });
+
+    if (client) {
+      if (client.code && !client.code.startsWith('CLI-')) {
+        entityTag = client.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      } else if (client.name) {
+        const words = client.name.trim().split(/\s+/);
+        let candidate = words[0];
+        if (['MR', 'MRS', 'MS', 'DR', 'THE'].includes(candidate.toUpperCase().replace(/\./g, '')) && words.length > 1) {
+          candidate = words[1];
+        }
+        entityTag = candidate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      } else if (client.code) {
+        entityTag = client.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      }
+    }
+  }
+
+  // 2. If no client tag derived yet and projectId is present, fallback to project name/code
+  if (!entityTag && projectId) {
     const project = await prisma.project.findFirst({
       where: { id: projectId, ...(tenantFilter || {}) },
       select: { id: true, code: true, name: true },
@@ -154,28 +183,32 @@ export const generateNextInvoiceNumber = async (projectId?: string, tenantFilter
         }
         const clean = candidate.replace(/[^a-zA-Z0-9]/g, '');
         if (clean.toUpperCase() === 'SKYLINE') {
-          projectTag = 'SKYLINE';
+          entityTag = 'SKYLINE';
         } else {
-          projectTag = clean;
+          entityTag = clean.toUpperCase();
         }
       }
 
       // Fallback to project code if name is empty
-      if (!projectTag && project.code) {
-        projectTag = project.code.replace(/[^a-zA-Z0-9]/g, '');
+      if (!entityTag && project.code) {
+        entityTag = project.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
       }
     }
   }
 
-  const nextInvoiceNumber = projectTag ? `RA-${paddedSeq}-${projectTag}` : `RA-${paddedSeq}`;
-  return { nextInvoiceNumber, nextSeq, projectTag };
+  const nextInvoiceNumber = entityTag ? `RA-${paddedSeq}-${entityTag}` : `RA-${paddedSeq}`;
+  return { nextInvoiceNumber, nextSeq, projectTag: entityTag };
 };
 
 export const getNextInvoiceNumber = async (req: Request, res: Response) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, clientId } = req.query;
     const tenantFilter = getTenantFilter(req);
-    const result = await generateNextInvoiceNumber(projectId as string | undefined, tenantFilter);
+    const result = await generateNextInvoiceNumber(
+      projectId as string | undefined,
+      tenantFilter,
+      clientId as string | undefined
+    );
     return res.json({ success: true, ...result });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -201,6 +234,7 @@ export const createClientInvoice = async (req: Request, res: Response) => {
       items,
       quotationId,
       milestoneName,
+      description,
       isFinalHandover,
     } = req.body;
 
@@ -311,7 +345,7 @@ export const createClientInvoice = async (req: Request, res: Response) => {
           clientId: finalClientId || null,
           projectId,
           quotationId: quotationId || null,
-          milestoneName: milestoneName || null,
+          milestoneName: description || milestoneName || null,
           isFinalHandover: Boolean(isFinalHandover),
           invoiceType: invoiceType || 'RUNNING_ACCOUNT_RA',
           invoiceDate: new Date(invoiceDate),
@@ -377,7 +411,17 @@ export const createClientInvoice = async (req: Request, res: Response) => {
 
     await logAudit(req.user?.id, 'CREATE_CLIENT_INVOICE', 'CLIENT_INVOICE', invoice.id, { invoiceNumber, netInvoiceAmount }, req.ip);
 
-    return res.status(201).json({ success: true, invoice });
+    // Fetch full invoice details with client and project relations for instant client sharing
+    const fullInvoice = await prisma.clientInvoice.findFirst({
+      where: { id: invoice.id, ...tenantFilter },
+      include: {
+        client: true,
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true, contractValue: true } },
+        items: true,
+      },
+    });
+
+    return res.status(201).json({ success: true, invoice: fullInvoice || invoice });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -451,8 +495,8 @@ export const getClientReceipts = async (req: Request, res: Response) => {
       where,
       include: {
         client: true,
-        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true } },
-        invoice: { select: { id: true, invoiceNumber: true, netInvoiceAmount: true, paidAmount: true, balanceDue: true, subtotal: true } },
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true, contractValue: true } },
+        invoice: { select: { id: true, invoiceNumber: true, netInvoiceAmount: true, paidAmount: true, balanceDue: true, subtotal: true, milestoneName: true } },
       },
       orderBy: { receiptDate: 'desc' },
     });
@@ -584,8 +628,8 @@ export const recordClientReceipt = async (req: Request, res: Response) => {
       where: { id: receipt.id, ...tenantFilter },
       include: {
         client: true,
-        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true } },
-        invoice: { select: { id: true, invoiceNumber: true, netInvoiceAmount: true, paidAmount: true, balanceDue: true, subtotal: true } },
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true, contractValue: true } },
+        invoice: { select: { id: true, invoiceNumber: true, netInvoiceAmount: true, paidAmount: true, balanceDue: true, subtotal: true, milestoneName: true } },
       },
     });
 
@@ -716,6 +760,8 @@ export const updateClientInvoice = async (req: Request, res: Response) => {
       tdsPercent,
       gstPercent,
       certificationNotes,
+      milestoneName,
+      description,
       status,
     } = req.body;
 
@@ -756,11 +802,12 @@ export const updateClientInvoice = async (req: Request, res: Response) => {
         netInvoiceAmount,
         balanceDue,
         certificationNotes: certificationNotes !== undefined ? certificationNotes : existing.certificationNotes,
+        milestoneName: description !== undefined ? description : (milestoneName !== undefined ? milestoneName : existing.milestoneName),
         status: status || existing.status,
       },
       include: {
         client: true,
-        project: { select: { id: true, code: true, name: true } },
+        project: { select: { id: true, code: true, name: true, clientContact: true, clientName: true, clientEmail: true, clientBillingAddr: true, contractValue: true } },
         items: true,
       },
     });

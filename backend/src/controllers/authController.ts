@@ -104,6 +104,39 @@ export const login = async (req: Request, res: Response) => {
 
     await logAudit(user.id, 'LOGIN', 'USER', user.id, { email: user.email, role: cleanRole }, req.ip);
 
+    // Record active device session
+    try {
+      const userAgent = String(req.headers['user-agent'] || 'Browser/Desktop');
+      let deviceType = 'DESKTOP';
+      if (/mobile|android|iphone/i.test(userAgent)) deviceType = 'MOBILE';
+      else if (/tablet|ipad/i.test(userAgent)) deviceType = 'TABLET';
+      else if (/laptop/i.test(userAgent)) deviceType = 'LAPTOP';
+
+      await (prisma as any).activeDeviceSession?.create({
+        data: {
+          companyId: user.companyId,
+          userId: user.id,
+          deviceType,
+          browser: userAgent.slice(0, 100),
+          os: /windows/i.test(userAgent) ? 'Windows' : /mac/i.test(userAgent) ? 'macOS' : /linux/i.test(userAgent) ? 'Linux' : 'OS',
+          ipAddress: req.ip || req.socket.remoteAddress || '127.0.0.1',
+          userAgent: userAgent.slice(0, 200),
+          isActive: true,
+        },
+      });
+
+      const activeDevCount = await (prisma as any).activeDeviceSession?.count({
+        where: { companyId: user.companyId, isActive: true },
+      }).catch(() => 1);
+
+      await prisma.company.update({
+        where: { id: user.companyId },
+        data: { activeDevicesCount: Math.max(1, activeDevCount || 1) },
+      });
+    } catch (sessionErr) {
+      // Non-blocking device session recording
+    }
+
     return res.json({
       success: true,
       token,

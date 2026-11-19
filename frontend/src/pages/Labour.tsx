@@ -32,8 +32,10 @@ import {
   ExternalLink,
   Lock,
   Check,
+  Share2,
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
+import { LabourWageShareModal } from '../components/LabourWageShareModal';
 
 export const Labour: React.FC = () => {
   const { hasRole } = useAuth();
@@ -71,6 +73,12 @@ export const Labour: React.FC = () => {
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
   const [detailsWorker, setDetailsWorker] = useState<any | null>(null);
 
+  // Labour Wage Share Modal
+  const [sharingWagePayment, setSharingWagePayment] = useState<any | null>(null);
+  const [sharingWorker, setSharingWorker] = useState<any | null>(null);
+  const [sharingWageProject, setSharingWageProject] = useState<any | null>(null);
+  const [sharingTotalEarned, setSharingTotalEarned] = useState<number | undefined>(undefined);
+
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [attendances, setAttendances] = useState<LabourAttendance[]>([]);
   const [musterRoll, setMusterRoll] = useState<any[]>([]);
@@ -81,10 +89,10 @@ export const Labour: React.FC = () => {
     queryTab === 'musterRoll' || queryTab === 'muster-roll' || queryTab === 'wages'
       ? 'musterRoll'
       : queryTab === 'workers'
-      ? 'workers'
-      : queryTab === 'subcontractors'
-      ? 'subcontractors'
-      : 'attendance'
+        ? 'workers'
+        : queryTab === 'subcontractors'
+          ? 'subcontractors'
+          : 'attendance'
   );
 
   // Attendance grid local state (workerId -> status, otHours, workActivity)
@@ -208,6 +216,28 @@ export const Labour: React.FC = () => {
         setPayoutSuccess(res.message || 'Wage disbursement successfully posted to General Ledger!');
         setTimeout(() => setPayoutSuccess(null), 6000);
         fetchData();
+
+        // Trigger Wage Disbursement Share Modal
+        const currentWorker = workers.find((w) => w.id === payoutForm.workerId);
+        const currentProject = projects.find((p) => p.id === projectId);
+        const musterItem = musterRoll.find((m) => m.worker?.id === payoutForm.workerId);
+
+        const newPaymentRecord = res.payment || {
+          projectId,
+          workerId: payoutForm.payoutType === 'INDIVIDUAL' ? payoutForm.workerId : undefined,
+          amount: Number(payoutForm.amount),
+          paymentMethod: payoutForm.paymentMethod,
+          paymentAccountCode: payoutForm.paymentAccountCode,
+          paymentDate: payoutForm.paymentDate,
+          wagePeriod: payoutForm.wagePeriod,
+          narration: payoutForm.narration,
+          referenceNo: res.journal?.entryNumber,
+        };
+
+        setSharingWagePayment(newPaymentRecord);
+        setSharingWorker(currentWorker || (payoutForm.payoutType === 'INDIVIDUAL' ? { id: payoutForm.workerId, name: 'Labour Worker' } : null));
+        setSharingWageProject(currentProject || { id: projectId });
+        setSharingTotalEarned(musterItem ? musterItem.grossWageEarned : undefined);
       }
     } catch (err: any) {
       setPayoutModalError(err.message || 'Failed to record wage disbursement');
@@ -788,11 +818,10 @@ export const Labour: React.FC = () => {
                 return p;
               });
             }}
-            className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${
-              activeTab === t.id
-                ? 'bg-slate-900 text-amber-400 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-            }`}
+            className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-bold rounded-xl transition ${activeTab === t.id
+              ? 'bg-slate-900 text-amber-400 shadow-sm'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
           >
             <t.icon className="w-4 h-4" />
             <span>{t.label}</span>
@@ -809,11 +838,10 @@ export const Labour: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAttendanceCategory('WORKERS')}
-                className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
-                  attendanceCategory === 'WORKERS'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${attendanceCategory === 'WORKERS'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
               >
                 <Users className="w-4 h-4" />
                 <span>👷 Site Daily Workers ({workers.length})</span>
@@ -822,11 +850,10 @@ export const Labour: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAttendanceCategory('OFFICE_STAFF')}
-                className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
-                  attendanceCategory === 'OFFICE_STAFF'
-                    ? 'bg-slate-900 text-amber-400 shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${attendanceCategory === 'OFFICE_STAFF'
+                  ? 'bg-slate-900 text-amber-400 shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
               >
                 <Briefcase className="w-4 h-4" />
                 <span>🏢 Office Staff / Salaried ({staffList.length})</span>
@@ -920,17 +947,16 @@ export const Labour: React.FC = () => {
                                       });
                                     }}
                                     title={isBlockedFuture ? 'Cannot mark Present/Half-day in advance' : st}
-                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition ${
-                                      isBlockedFuture
-                                        ? 'opacity-30 cursor-not-allowed text-slate-400'
-                                        : state.status === st
+                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition ${isBlockedFuture
+                                      ? 'opacity-30 cursor-not-allowed text-slate-400'
+                                      : state.status === st
                                         ? st === 'PRESENT'
                                           ? 'bg-emerald-600 text-white shadow-sm'
                                           : st === 'HALF_DAY'
-                                          ? 'bg-amber-500 text-white shadow-sm'
-                                          : 'bg-red-500 text-white shadow-sm'
+                                            ? 'bg-amber-500 text-white shadow-sm'
+                                            : 'bg-red-500 text-white shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                    }`}
+                                      }`}
                                   >
                                     {st === 'PRESENT' ? 'P' : st === 'HALF_DAY' ? 'HD' : 'A'}
                                   </button>
@@ -1088,23 +1114,22 @@ export const Labour: React.FC = () => {
                                       });
                                     }}
                                     title={isBlockedFuture ? 'Cannot mark Present/Half-day in advance' : option.title}
-                                    className={`px-1.5 py-1 text-[10px] font-bold rounded-md transition ${
-                                      isBlockedFuture
-                                        ? 'opacity-30 cursor-not-allowed text-slate-400'
-                                        : state.status === option.key
+                                    className={`px-1.5 py-1 text-[10px] font-bold rounded-md transition ${isBlockedFuture
+                                      ? 'opacity-30 cursor-not-allowed text-slate-400'
+                                      : state.status === option.key
                                         ? option.key === 'PRESENT'
                                           ? 'bg-emerald-600 text-white shadow-sm'
                                           : option.key === 'HALF_DAY'
-                                          ? 'bg-amber-500 text-white shadow-sm'
-                                          : option.key === 'PAID_LEAVE'
-                                          ? 'bg-blue-600 text-white shadow-sm'
-                                          : option.key === 'HOLIDAY'
-                                          ? 'bg-purple-600 text-white shadow-sm'
-                                          : option.key === 'LEAVE'
-                                          ? 'bg-orange-500 text-white shadow-sm'
-                                          : 'bg-red-500 text-white shadow-sm'
+                                            ? 'bg-amber-500 text-white shadow-sm'
+                                            : option.key === 'PAID_LEAVE'
+                                              ? 'bg-blue-600 text-white shadow-sm'
+                                              : option.key === 'HOLIDAY'
+                                                ? 'bg-purple-600 text-white shadow-sm'
+                                                : option.key === 'LEAVE'
+                                                  ? 'bg-orange-500 text-white shadow-sm'
+                                                  : 'bg-red-500 text-white shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                    }`}
+                                      }`}
                                   >
                                     {option.label}
                                   </button>
@@ -1286,28 +1311,28 @@ export const Labour: React.FC = () => {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Gross Wages Earned</span>
-                <h4 className="text-xl font-extrabold text-slate-900 mt-1 font-mono">{formatCurrency(totalGross)}</h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">Regular + Overtime for period</p>
+              <div className="bg-indigo-700 border border-indigo-600 rounded-2xl p-4 shadow-md text-white transition hover:bg-indigo-600">
+                <span className="text-[11px] font-bold text-white uppercase tracking-wider">Total Gross Wages Earned</span>
+                <h4 className="text-2xl font-black text-white mt-1 font-mono">{formatCurrency(totalGross)}</h4>
+                <p className="text-[11px] text-indigo-100 mt-0.5 font-medium">Regular + Overtime for period</p>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Wages Given / Paid</span>
-                <h4 className="text-xl font-extrabold text-emerald-600 mt-1 font-mono">{formatCurrency(totalWagesGiven)}</h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">Disbursed wage payments in period</p>
+              <div className="bg-emerald-600 border border-emerald-500 rounded-2xl p-4 shadow-md text-white transition hover:bg-emerald-500">
+                <span className="text-[11px] font-bold text-white uppercase tracking-wider">Total Wages Given / Paid</span>
+                <h4 className="text-2xl font-black text-white mt-1 font-mono">{formatCurrency(totalWagesGiven)}</h4>
+                <p className="text-[11px] text-emerald-100 mt-0.5 font-medium">Disbursed wage payments in period</p>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Days Worked</span>
-                <h4 className="text-xl font-extrabold text-blue-600 mt-1 font-mono">{totalDaysWorked} Days</h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">Across registered project workers</p>
+              <div className="bg-sky-600 border border-sky-500 rounded-2xl p-4 shadow-md text-white transition hover:bg-sky-500">
+                <span className="text-[11px] font-bold text-white uppercase tracking-wider">Total Days Worked</span>
+                <h4 className="text-2xl font-black text-white mt-1 font-mono">{totalDaysWorked} Days</h4>
+                <p className="text-[11px] text-sky-100 mt-0.5 font-medium">Across registered project workers</p>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Absent Days</span>
-                <h4 className="text-xl font-extrabold text-rose-600 mt-1 font-mono">{totalAbsentDays} Days</h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">Recorded absences in period</p>
+              <div className="bg-rose-600 border border-rose-500 rounded-2xl p-4 shadow-md text-white transition hover:bg-rose-500">
+                <span className="text-[11px] font-bold text-white uppercase tracking-wider">Total Absent Days</span>
+                <h4 className="text-2xl font-black text-white mt-1 font-mono">{totalAbsentDays} Days</h4>
+                <p className="text-[11px] text-rose-100 mt-0.5 font-medium">Recorded absences in period</p>
               </div>
             </div>
 
@@ -1410,11 +1435,10 @@ export const Labour: React.FC = () => {
                           {/* Absent Days */}
                           <td className="py-3 px-3 text-center">
                             <span
-                              className={`font-extrabold px-2.5 py-1 rounded-lg border text-xs inline-block font-mono ${
-                                absentDays > 0
-                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200'
-                              }`}
+                              className={`font-extrabold px-2.5 py-1 rounded-lg border text-xs inline-block font-mono ${absentDays > 0
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-slate-50 text-slate-400 border-slate-200'
+                                }`}
                             >
                               {absentDays} Days
                             </span>
@@ -1454,6 +1478,33 @@ export const Labour: React.FC = () => {
                                 <Eye className="w-3.5 h-3.5 text-amber-600" />
                                 <span>Wage History</span>
                               </button>
+
+                              {wagesGiven > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const wPayments = (m.paymentsList && m.paymentsList.length > 0)
+                                      ? m.paymentsList
+                                      : wagePayments.filter((wp: any) => (wp.workerId || wp.worker?.id) === m.worker?.id);
+                                    const latestPayment = wPayments[wPayments.length - 1] || {
+                                      workerId: m.worker?.id,
+                                      amount: wagesGiven,
+                                      paymentDate: new Date().toISOString(),
+                                      paymentMethod: 'CASH',
+                                      narration: 'Muster roll wage disbursement',
+                                    };
+                                    setSharingWagePayment(latestPayment);
+                                    setSharingWorker(m.worker);
+                                    setSharingWageProject(projects.find((p) => p.id === projectId));
+                                    setSharingTotalEarned(m.grossWageEarned);
+                                  }}
+                                  className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-lg border border-emerald-200 flex items-center space-x-1 transition"
+                                  title="Share wage disbursement statement / WhatsApp update"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                  <span>Share</span>
+                                </button>
+                              )}
 
                               {hasRole('OWNER', 'HR_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER') && (
                                 <button
@@ -1568,151 +1619,151 @@ export const Labour: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {workers.map((w) => {
-            const mRecord = musterRoll.find((m) => m.worker?.id === w.id) || {
-              worker: w,
-              daysWorked: 0,
-              presentDays: 0,
-              halfDays: 0,
-              absentDays: 0,
-              totalRegularWage: 0,
-              totalOtWage: 0,
-              grossWageEarned: 0,
-              wagesGiven: 0,
-              balanceDue: 0,
-              paymentsList: [],
-              attendancesList: [],
-            };
+                const mRecord = musterRoll.find((m) => m.worker?.id === w.id) || {
+                  worker: w,
+                  daysWorked: 0,
+                  presentDays: 0,
+                  halfDays: 0,
+                  absentDays: 0,
+                  totalRegularWage: 0,
+                  totalOtWage: 0,
+                  grossWageEarned: 0,
+                  wagesGiven: 0,
+                  balanceDue: 0,
+                  paymentsList: [],
+                  attendancesList: [],
+                };
 
-            return (
-              <div key={w.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center space-x-3">
-                      {w.photoUrl ? (
-                        <img
-                          src={w.photoUrl}
-                          alt={w.name}
-                          className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm shrink-0"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center shrink-0">
-                          {w.name?.slice(0, 2).toUpperCase()}
+                return (
+                  <div key={w.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                    <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center space-x-3">
+                          {w.photoUrl ? (
+                            <img
+                              src={w.photoUrl}
+                              alt={w.name}
+                              className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center shrink-0">
+                              {w.name?.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 leading-snug">{w.name}</h3>
+                            <div className="flex items-center space-x-2 mt-0.5">
+                              <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                {w.workerCode}
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                {w.skillLevel}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3.5 space-y-1.5 text-xs text-slate-600">
+                        <p className="flex items-center justify-between">
+                          <span className="text-slate-400 font-medium">Trade:</span>
+                          <span className="font-bold text-amber-700">{w.trade}</span>
+                        </p>
+                        <p className="flex items-center justify-between">
+                          <span className="text-slate-400 font-medium">Phone:</span>
+                          <span className="font-semibold text-slate-800">{w.phone || '—'}</span>
+                        </p>
+                        <p className="flex items-center justify-between">
+                          <span className="text-slate-400 font-medium">Payment Method:</span>
+                          <span className="font-semibold text-slate-800">{w.paymentMethod}</span>
+                        </p>
+                      </div>
+
+                      {/* Uploaded Document / ID Proof */}
+                      {w.documentUrl && (
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                          <a
+                            href={w.documentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold transition w-full justify-between"
+                            title="Click to view/download worker document"
+                          >
+                            <div className="flex items-center space-x-1.5 truncate">
+                              <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span className="truncate">{w.documentName || 'Worker ID Proof'}</span>
+                            </div>
+                            <ExternalLink className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          </a>
                         </div>
                       )}
-                      <div>
-                        <h3 className="text-base font-bold text-slate-900 leading-snug">{w.name}</h3>
-                        <div className="flex items-center space-x-2 mt-0.5">
-                          <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                            {w.workerCode}
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            {w.skillLevel}
-                          </span>
-                        </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-100 space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Wage Rates:</span>
+                        <span className="font-mono font-bold text-slate-900">
+                          ₹{w.dailyWageRate}/day • OT ₹{w.overtimeHourlyRate}/hr
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenViewWorker(w)}
+                          className="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-bold rounded-lg border border-blue-200 flex items-center justify-center space-x-1 transition"
+                          title="View Worker Profile"
+                        >
+                          <Eye className="w-3 h-3 text-blue-600" />
+                          <span>View</span>
+                        </button>
+                        {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditWorker(w)}
+                            className="py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold rounded-lg border border-amber-200 flex items-center justify-center space-x-1 transition"
+                            title="Edit Worker"
+                          >
+                            <Edit className="w-3 h-3 text-amber-600" />
+                            <span>Edit</span>
+                          </button>
+                        )}
+                        {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER') && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmWorker(w)}
+                            className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-800 text-[11px] font-bold rounded-lg border border-rose-200 flex items-center justify-center space-x-1 transition"
+                            title="Delete Worker"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setDetailsWorker(mRecord)}
+                          className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 flex items-center justify-center space-x-1 transition"
+                        >
+                          <span>Ledger</span>
+                        </button>
+                        {hasRole('OWNER', 'HR_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER') && (
+                          <button
+                            type="button"
+                            onClick={() => openPayoutModal(w.id)}
+                            className="py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition"
+                          >
+                            Pay
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
-
-                  <div className="mt-3.5 space-y-1.5 text-xs text-slate-600">
-                    <p className="flex items-center justify-between">
-                      <span className="text-slate-400 font-medium">Trade:</span>
-                      <span className="font-bold text-amber-700">{w.trade}</span>
-                    </p>
-                    <p className="flex items-center justify-between">
-                      <span className="text-slate-400 font-medium">Phone:</span>
-                      <span className="font-semibold text-slate-800">{w.phone || '—'}</span>
-                    </p>
-                    <p className="flex items-center justify-between">
-                      <span className="text-slate-400 font-medium">Payment Method:</span>
-                      <span className="font-semibold text-slate-800">{w.paymentMethod}</span>
-                    </p>
-                  </div>
-
-                  {/* Uploaded Document / ID Proof */}
-                  {w.documentUrl && (
-                    <div className="mt-3 pt-3 border-t border-slate-100">
-                      <a
-                        href={w.documentUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold transition w-full justify-between"
-                        title="Click to view/download worker document"
-                      >
-                        <div className="flex items-center space-x-1.5 truncate">
-                          <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span className="truncate">{w.documentName || 'Worker ID Proof'}</span>
-                        </div>
-                        <ExternalLink className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">Wage Rates:</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      ₹{w.dailyWageRate}/day • OT ₹{w.overtimeHourlyRate}/hr
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenViewWorker(w)}
-                      className="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-bold rounded-lg border border-blue-200 flex items-center justify-center space-x-1 transition"
-                      title="View Worker Profile"
-                    >
-                      <Eye className="w-3 h-3 text-blue-600" />
-                      <span>View</span>
-                    </button>
-                    {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER', 'SITE_ENGINEER') && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditWorker(w)}
-                        className="py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold rounded-lg border border-amber-200 flex items-center justify-center space-x-1 transition"
-                        title="Edit Worker"
-                      >
-                        <Edit className="w-3 h-3 text-amber-600" />
-                        <span>Edit</span>
-                      </button>
-                    )}
-                    {hasRole('OWNER', 'HR_MANAGER', 'PROJECT_MANAGER') && (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteConfirmWorker(w)}
-                        className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-800 text-[11px] font-bold rounded-lg border border-rose-200 flex items-center justify-center space-x-1 transition"
-                        title="Delete Worker"
-                      >
-                        <Trash2 className="w-3 h-3 text-rose-600" />
-                        <span>Delete</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setDetailsWorker(mRecord)}
-                      className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-lg border border-slate-200 flex items-center justify-center space-x-1 transition"
-                    >
-                      <span>Ledger</span>
-                    </button>
-                    {hasRole('OWNER', 'HR_MANAGER', 'ACCOUNTS_MANAGER', 'PROJECT_MANAGER') && (
-                      <button
-                        type="button"
-                        onClick={() => openPayoutModal(w.id)}
-                        className="py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition"
-                      >
-                        Pay
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
-    </div>
-  )}
 
       {/* Tab 4: Subcontractors */}
       {activeTab === 'subcontractors' && (
@@ -1926,9 +1977,8 @@ export const Labour: React.FC = () => {
                         setWorkerForm({ ...workerForm, workerCode: e.target.value.toUpperCase() });
                         if (modalError) setModalError(null);
                       }}
-                      className={`w-full text-xs p-2 bg-slate-50 border rounded-lg font-mono font-bold uppercase ${
-                        duplicateWorker ? 'border-rose-400 bg-rose-50/40 text-rose-900' : 'border-slate-200'
-                      }`}
+                      className={`w-full text-xs p-2 bg-slate-50 border rounded-lg font-mono font-bold uppercase ${duplicateWorker ? 'border-rose-400 bg-rose-50/40 text-rose-900' : 'border-slate-200'
+                        }`}
                     />
                     {duplicateWorker && (
                       <p className="text-[10px] text-rose-700 font-bold mt-1 flex items-center gap-1">
@@ -2177,15 +2227,14 @@ export const Labour: React.FC = () => {
                       <div
                         key={w.id}
                         onClick={() => handleToggleSelectExistingWorker(w.id)}
-                        className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition ${
-                          isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
-                        }`}
+                        className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition ${isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50'
+                          }`}
                       >
                         <div className="flex items-center space-x-3 min-w-0">
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => {}}
+                            onChange={() => { }}
                             className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
                           {w.photoUrl ? (
@@ -2262,11 +2311,12 @@ export const Labour: React.FC = () => {
 
       {/* Record Wage Payout Modal */}
       {showPayoutModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 z-10 shrink-0 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
@@ -2274,165 +2324,177 @@ export const Labour: React.FC = () => {
                   <p className="text-[11px] text-slate-500">Disburse daily or bulk wages & auto-post to Accounts</p>
                 </div>
               </div>
-              <button onClick={() => setShowPayoutModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => setShowPayoutModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {payoutModalError && (
-              <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-start gap-2">
+              <div className="mx-6 mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                 <p className="font-semibold">{payoutModalError}</p>
               </div>
             )}
 
-            <form onSubmit={handleRecordPayout} className="mt-4 space-y-4">
-              {/* Payout Type */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const totalDue = musterRoll.reduce(
-                      (sum, m) => sum + (m.balanceDue !== undefined ? m.balanceDue : (m.grossWageEarned || 0) - (m.wagesGiven || 0)),
-                      0
-                    );
-                    setPayoutForm({
-                      ...payoutForm,
-                      payoutType: 'BULK',
-                      workerId: '',
-                      amount: totalDue > 0 ? totalDue.toString() : payoutForm.amount,
-                    });
-                  }}
-                  className={`py-2 text-xs font-bold rounded-lg transition ${
-                    payoutForm.payoutType === 'BULK'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Bulk Payout (All Workers)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayoutForm({ ...payoutForm, payoutType: 'INDIVIDUAL' })}
-                  className={`py-2 text-xs font-bold rounded-lg transition ${
-                    payoutForm.payoutType === 'INDIVIDUAL'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Individual Worker Payout
-                </button>
-              </div>
-
-              {/* Individual Worker Selector */}
-              {payoutForm.payoutType === 'INDIVIDUAL' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Select Worker *</label>
-                  <SearchableSelect
-                    value={payoutForm.workerId}
-                    onChange={(wId) => {
-                      const rec = musterRoll.find((m) => m.worker?.id === wId);
+            <form onSubmit={handleRecordPayout} className="flex flex-col flex-1 overflow-hidden">
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                {/* Payout Type */}
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const totalDue = musterRoll.reduce(
+                        (sum, m) => sum + (m.balanceDue !== undefined ? m.balanceDue : (m.grossWageEarned || 0) - (m.wagesGiven || 0)),
+                        0
+                      );
                       setPayoutForm({
                         ...payoutForm,
-                        workerId: wId,
-                        amount: rec ? rec.grossWageEarned.toString() : payoutForm.amount,
+                        payoutType: 'BULK',
+                        workerId: '',
+                        amount: totalDue > 0 ? totalDue.toString() : payoutForm.amount,
                       });
                     }}
-                    options={workers.map((w) => {
-                      const rec = musterRoll.find((m) => m.worker?.id === w.id);
-                      return {
-                        value: w.id,
-                        label: w.name,
-                        code: w.workerCode,
-                        sublabel: `${w.trade} • ₹${rec ? rec.grossWageEarned : 0} earned`,
-                      };
-                    })}
-                    placeholder="-- Choose Worker --"
-                    searchPlaceholder="Search worker by name, code, or trade..."
-                  />
+                    className={`py-2 text-xs font-bold rounded-lg transition ${payoutForm.payoutType === 'BULK'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    Bulk Payout (All Workers)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayoutForm({ ...payoutForm, payoutType: 'INDIVIDUAL' })}
+                    className={`py-2 text-xs font-bold rounded-lg transition ${payoutForm.payoutType === 'INDIVIDUAL'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    Individual Worker Payout
+                  </button>
                 </div>
-              )}
 
-              {/* Amount and Date */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount to Pay (₹) *</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    placeholder="e.g. 6800"
-                    value={payoutForm.amount}
-                    onChange={(e) => setPayoutForm({ ...payoutForm, amount: e.target.value })}
-                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
-                  />
+                {/* Individual Worker Selector */}
+                {payoutForm.payoutType === 'INDIVIDUAL' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Select Worker *</label>
+                    <SearchableSelect
+                      value={payoutForm.workerId}
+                      onChange={(wId) => {
+                        const rec = musterRoll.find((m) => m.worker?.id === wId);
+                        setPayoutForm({
+                          ...payoutForm,
+                          workerId: wId,
+                          amount: rec ? rec.grossWageEarned.toString() : payoutForm.amount,
+                        });
+                      }}
+                      options={workers.map((w) => {
+                        const rec = musterRoll.find((m) => m.worker?.id === w.id);
+                        return {
+                          value: w.id,
+                          label: w.name,
+                          code: w.workerCode,
+                          sublabel: `${w.trade} • ₹${rec ? rec.grossWageEarned : 0} earned`,
+                        };
+                      })}
+                      placeholder="-- Choose Worker --"
+                      searchPlaceholder="Search worker by name, code, or trade..."
+                    />
+                  </div>
+                )}
+
+                {/* Amount and Date */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Amount to Pay (₹) *</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="e.g. 6800"
+                      value={payoutForm.amount}
+                      onChange={(e) => setPayoutForm({ ...payoutForm, amount: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Payment Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={payoutForm.paymentDate}
+                      onChange={(e) => setPayoutForm({ ...payoutForm, paymentDate: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                    />
+                  </div>
                 </div>
+
+                {/* Payment Account / Source */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Payment Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={payoutForm.paymentDate}
-                    onChange={(e) => setPayoutForm({ ...payoutForm, paymentDate: e.target.value })}
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Paid From (Credit Account) *</label>
+                  <select
+                    value={payoutForm.paymentAccountCode}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      let method = 'CASH';
+                      if (code === '1030' || code === '1040') method = 'BANK_TRANSFER';
+                      else if (code === '1020') method = 'PETTY_CASH';
+                      setPayoutForm({
+                        ...payoutForm,
+                        paymentAccountCode: code,
+                        paymentMethod: method,
+                      });
+                    }}
                     className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                  >
+                    <option value="1010">[1010] Cash in Hand (Main Cash / Daily Wages)</option>
+                    <option value="1020">[1020] Site Petty Cash Float (Site Imprest Cash)</option>
+                    <option value="1030">[1030] HDFC Current Account (Operating Bank Transfer / UPI)</option>
+                    <option value="1040">[1040] SBI Project Escrow Account</option>
+                  </select>
+                </div>
+
+                {/* Memo / Narration / Payment Purpose */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Payment Purpose / Description *
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    placeholder="e.g. Weekly muster wage payout / Advance wage payment / Overtime settlement"
+                    value={payoutForm.narration}
+                    onChange={(e) => setPayoutForm({ ...payoutForm, narration: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Describe what this payment is for to include in the WhatsApp update and print receipt voucher.
+                  </p>
+                </div>
+
+                {/* Accounting Explanatory Box */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+                  <div className="flex items-center space-x-1.5 text-slate-700 font-bold">
+                    <Landmark className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Automatic Double-Entry Journal</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Debit: <strong>[5020] Direct Labour Wages</strong> (₹{payoutForm.amount || '0'})<br />
+                    Credit: <strong>[{payoutForm.paymentAccountCode}] Paid From Account</strong> (₹{payoutForm.amount || '0'})
+                  </p>
                 </div>
               </div>
 
-              {/* Payment Account / Source */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Paid From (Credit Account) *</label>
-                <select
-                  value={payoutForm.paymentAccountCode}
-                  onChange={(e) => {
-                    const code = e.target.value;
-                    let method = 'CASH';
-                    if (code === '1030' || code === '1040') method = 'BANK_TRANSFER';
-                    else if (code === '1020') method = 'PETTY_CASH';
-                    setPayoutForm({
-                      ...payoutForm,
-                      paymentAccountCode: code,
-                      paymentMethod: method,
-                    });
-                  }}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
-                >
-                  <option value="1010">[1010] Cash in Hand (Main Cash / Daily Wages)</option>
-                  <option value="1020">[1020] Site Petty Cash Float (Site Imprest Cash)</option>
-                  <option value="1030">[1030] HDFC Current Account (Operating Bank Transfer / UPI)</option>
-                  <option value="1040">[1040] SBI Project Escrow Account</option>
-                </select>
-              </div>
-
-              {/* Memo / Narration */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Narration / Notes</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Weekly muster roll wage payout for 8 masons & helpers"
-                  value={payoutForm.narration}
-                  onChange={(e) => setPayoutForm({ ...payoutForm, narration: e.target.value })}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
-                />
-              </div>
-
-              {/* Accounting Explanatory Box */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
-                <div className="flex items-center space-x-1.5 text-slate-700 font-bold">
-                  <Landmark className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Automatic Double-Entry Journal</span>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Debit: <strong>[5020] Direct Labour Wages</strong> (₹{payoutForm.amount || '0'})<br />
-                  Credit: <strong>[{payoutForm.paymentAccountCode}] Paid From Account</strong> (₹{payoutForm.amount || '0'})
-                </p>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 border-t border-slate-100 px-6 py-3.5 z-10 shrink-0 flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setShowPayoutModal(false)}
-                  className="px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                  className="px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-200 rounded-lg font-semibold transition"
                 >
                   Cancel
                 </button>
@@ -2552,9 +2614,8 @@ export const Labour: React.FC = () => {
               <div className="bg-amber-50/40 p-3 rounded-xl border border-amber-100">
                 <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Balance Due</span>
                 <span
-                  className={`text-lg font-extrabold font-mono ${
-                    (detailsWorker.balanceDue || 0) > 0 ? 'text-amber-800' : 'text-slate-600'
-                  }`}
+                  className={`text-lg font-extrabold font-mono ${(detailsWorker.balanceDue || 0) > 0 ? 'text-amber-800' : 'text-slate-600'
+                    }`}
                 >
                   {formatCurrency(detailsWorker.balanceDue !== undefined ? detailsWorker.balanceDue : (detailsWorker.grossWageEarned || 0) - (detailsWorker.wagesGiven || 0))}
                 </span>
@@ -2588,6 +2649,7 @@ export const Labour: React.FC = () => {
                           <th className="py-2.5 px-3">Payment Method</th>
                           <th className="py-2.5 px-3">Period / Narration</th>
                           <th className="py-2.5 px-3 text-right">Amount Paid</th>
+                          <th className="py-2.5 px-3 text-center">Receipt</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
@@ -2605,6 +2667,22 @@ export const Labour: React.FC = () => {
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               {formatCurrency(p.amount)}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSharingWagePayment(p);
+                                  setSharingWorker(detailsWorker.worker);
+                                  setSharingWageProject(projects.find((pr) => pr.id === projectId));
+                                  setSharingTotalEarned(detailsWorker.grossWageEarned);
+                                }}
+                                className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-lg border border-emerald-200 inline-flex items-center space-x-1 transition"
+                                title="Share WhatsApp & Print Wage Voucher"
+                              >
+                                <Share2 className="w-3.5 h-3.5" />
+                                <span>Share</span>
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -2651,10 +2729,10 @@ export const Labour: React.FC = () => {
                             a.attendanceStatus === 'PRESENT'
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                               : a.attendanceStatus === 'HALF_DAY'
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
-                              : a.attendanceStatus === 'ABSENT'
-                              ? 'bg-rose-50 text-rose-800 border-rose-200'
-                              : 'bg-slate-50 text-slate-700 border-slate-200';
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : a.attendanceStatus === 'ABSENT'
+                                  ? 'bg-rose-50 text-rose-800 border-rose-200'
+                                  : 'bg-slate-50 text-slate-700 border-slate-200';
 
                           return (
                             <tr key={idx} className="hover:bg-slate-50/80 transition">
@@ -3159,6 +3237,23 @@ export const Labour: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Labour Wage Share Modal (WhatsApp & PDF Voucher) */}
+      {sharingWagePayment && (
+        <LabourWageShareModal
+          isOpen={!!sharingWagePayment}
+          onClose={() => {
+            setSharingWagePayment(null);
+            setSharingWorker(null);
+            setSharingWageProject(null);
+            setSharingTotalEarned(undefined);
+          }}
+          payment={sharingWagePayment}
+          worker={sharingWorker}
+          project={sharingWageProject}
+          allPayments={wagePayments}
+          totalWagesEarned={sharingTotalEarned}
+        />
       )}
     </div>
   );

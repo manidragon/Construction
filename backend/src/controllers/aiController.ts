@@ -37,9 +37,10 @@ const formatDateStr = (d: Date | string | null | undefined): string => {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-// Helper: match project from natural language prompt
-const findMatchedProject = async (text: string) => {
+// Helper: match project from natural language prompt with context-aware fallback
+export const findMatchedProject = async (text: string, context?: any, tenantFilter?: any) => {
   const projects = await prisma.project.findMany({
+    where: tenantFilter || {},
     include: {
       clientInvoices: true,
       clientReceipts: true,
@@ -90,17 +91,33 @@ const findMatchedProject = async (text: string) => {
     }
   }
 
-  // Require at least score >= 3 (or distinctive match)
   if (bestScore >= 3) {
     return bestProject;
+  }
+
+  // 3. CONTEXT-AWARE FALLBACK:
+  // Pre-select active project if user is currently working inside a project view or filter
+  if (context?.selectedProjectId) {
+    const ctxProj = projects.find((p) => p.id === context.selectedProjectId);
+    if (ctxProj) return ctxProj;
+  }
+  if (context?.projectId) {
+    const ctxProj = projects.find((p) => p.id === context.projectId);
+    if (ctxProj) return ctxProj;
+  }
+
+  // 4. Default to single project if company has only 1 project
+  if (projects.length === 1) {
+    return projects[0];
   }
 
   return null;
 };
 
-// Helper: match client from natural language prompt
-const findMatchedClient = async (text: string) => {
+// Helper: match client from natural language prompt with context-aware fallback
+export const findMatchedClient = async (text: string, context?: any, tenantFilter?: any) => {
   const clients = await prisma.client.findMany({
+    where: tenantFilter || {},
     include: {
       invoices: true,
       receipts: true,
@@ -120,7 +137,27 @@ const findMatchedClient = async (text: string) => {
     const words = c.name.toLowerCase().split(/[\s-]+/).filter((w) => w.length > 3);
     return words.some((w) => lower.includes(w));
   });
-  return matched || null;
+  if (matched) return matched;
+
+  // Context-aware fallback:
+  if (context?.selectedClientId) {
+    const ctxCli = clients.find((c) => c.id === context.selectedClientId);
+    if (ctxCli) return ctxCli;
+  }
+  if (context?.selectedClientName) {
+    const ctxCli = clients.find((c) => c.name.toLowerCase() === context.selectedClientName.toLowerCase());
+    if (ctxCli) return ctxCli;
+  }
+  if (context?.clientName) {
+    const ctxCli = clients.find((c) => c.name.toLowerCase() === context.clientName.toLowerCase());
+    if (ctxCli) return ctxCli;
+  }
+
+  if (clients.length === 1) {
+    return clients[0];
+  }
+
+  return null;
 };
 
 // Helper: match worker from natural language prompt
@@ -174,15 +211,426 @@ const findMatchedWorker = async (text: string, projectId?: string) => {
   return null;
 };
 
+// =============================================================
+// CONFIRMATION ACTION EXECUTOR (TWO-WAY TRANSACTION COMMIT)
+// =============================================================
+export const executeActionPayload = async (req: Request, res: Response, payload: any) => {
+  const { action } = payload;
+  const tenantFilter = getTenantFilter(req);
+  const tenantId = (req.user as any)?.companyId || payload.tenantId || null;
+
+  if (action === 'CANCEL') {
+    return res.json({
+      success: true,
+      response: {
+        message: '❌ **Transaction Cancelled.**\n\nNo records were created and financial ledgers remain untouched.',
+        actionTaken: 'TRANSACTION_CANCELLED',
+        suggestedPrompts: [
+          'What are all the payments received and paid today?',
+          'What is the balance due amount of clients?',
+        ],
+      },
+    });
+  }
+
+  if (action === 'CONFIRM_CLIENT_RECEIPT') {
+    const { projectId, clientId, invoiceId, amount, paymentMethod, isAdvance, prompt } = payload;
+    const targetProj = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!targetProj) {
+      return res.status(404).json({ success: false, message: 'Project not found.' });
+    }
+
+    const finalTenantId = targetProj.tenantId || tenantId;
+    const { nextReceiptNumber } = await getNextReceiptNumber(req, finalTenantId);
+    const refNo = `AI-${Date.now().toString().slice(-6)}`.toUpperCase();
+
+    let openInv: any = null;
+    if (invoiceId) {
+      openInv = await prisma.clientInvoice.findUnique({ where: { id: invoiceId } });
+    }
+
+    // If marked as advance and no invoice was linked, create an Advance RA Bill to prevent orphaned receipts
+    if (isAdvance && !openInv) {
+      const invNumObj = await generateNextInvoiceNumber(targetProj.id, finalTenantId ? { tenantId: finalTenantId } : {});
+      const nextInvNum = invNumObj.nextInvoiceNumber;
+      openInv = await prisma.clientInvoice.create({
+        data: {
+          tenantId: finalTenantId,
+          invoiceNumber: nextInvNum,
+          clientId: clientId || null,
+          projectId: targetProj.id,
+          invoiceType: 'ADVANCE',
+          invoiceDate: new Date(),
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          subtotal: amount,
+          retentionPercent: 0,
+          retentionAmount: 0,
+          tdsPercent: 0,
+          tdsAmount: 0,
+          gstPercent: 0,
+          gstAmount: 0,
+          netInvoiceAmount: amount,
+          paidAmount: amount,
+          balanceDue: 0,
+          status: 'PAID',
+          milestoneName: 'Mobilization Advance',
+          certificationNotes: 'Client Mobilization Advance Payment (Auto-generated via AI Copilot)',
+        },
+      });
+    }
+
+    const createdReceipt = await prisma.$transaction(async (tx) => {
+      const rcp = await tx.clientReceipt.create({
+        data: {
+          tenantId: finalTenantId,
+          receiptNumber: nextReceiptNumber,
+          clientId: clientId || openInv?.clientId || null,
+          projectId: targetProj.id,
+          invoiceId: openInv ? openInv.id : null,
+          receiptDate: new Date(),
+          amount,
+          paymentMethod: paymentMethod || 'NEFT_RTGS',
+          referenceNo: refNo,
+          notes: `Two-Way confirmed via AI copilot: "${prompt || 'Client Payment'}"`,
+        },
+        include: { project: true, invoice: true, client: true },
+      });
+
+      if (openInv && !isAdvance) {
+        const newPaid = openInv.paidAmount + amount;
+        const newBal = Math.max(0, openInv.netInvoiceAmount - newPaid);
+        await tx.clientInvoice.update({
+          where: { id: openInv.id },
+          data: {
+            paidAmount: newPaid,
+            balanceDue: newBal,
+            status: newBal === 0 ? 'PAID' : 'PARTIALLY_PAID',
+          },
+        });
+      }
+
+      return rcp;
+    });
+
+    // Balanced Journal Entry: Debit Cash/Bank, Credit Accounts Receivable
+    try {
+      const debitAccount = paymentMethod === 'CASH' ? COA.CASH : COA.HDFC_BANK;
+      await postBalancedJournalEntry({
+        tenantId: finalTenantId,
+        entryDate: new Date(),
+        referenceType: 'CLIENT_RECEIPT',
+        referenceId: createdReceipt.id,
+        narration: `Payment received from client ${nextReceiptNumber} via ${paymentMethod}. Two-Way confirmed.`,
+        lines: [
+          { accountCode: debitAccount, debit: amount, credit: 0, projectId: targetProj.id },
+          { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: 0, credit: amount, projectId: targetProj.id },
+        ],
+        createdById: req.user?.id,
+      });
+    } catch (jeErr) {
+      console.error('Auto journal error for confirmed receipt:', jeErr);
+    }
+
+    await logAudit(
+      req.user?.id,
+      'RECORD_CLIENT_RECEIPT',
+      'CLIENT_RECEIPT',
+      createdReceipt.id,
+      { receiptNumber: nextReceiptNumber, amount },
+      req.ip
+    );
+
+    const waText = encodeURIComponent(
+      `🧾 *Payment Acknowledgment*\n\n` +
+      `We have received ${formatINR(amount)} via ${paymentMethod} for project *${targetProj.name}*.\n` +
+      `Receipt Ref: ${createdReceipt.receiptNumber}\n` +
+      (openInv ? `Linked Bill: ${openInv.invoiceNumber} | Remaining Due: ${formatINR(Math.max(0, openInv.balanceDue - amount))}\n\n` : '\n') +
+      `ApexBuild Financial Engine`
+    );
+    const clientPhone = targetProj.clientContact?.replace(/\D/g, '') || '';
+    const waUrl = clientPhone ? `https://wa.me/${clientPhone}?text=${waText}` : `https://wa.me/?text=${waText}`;
+
+    return res.json({
+      success: true,
+      response: {
+        message:
+          `✅ **Client Payment Receipt Confirmed & Committed to Database!**\n\n` +
+          `• **Receipt Number:** **${createdReceipt.receiptNumber}**\n` +
+          `• **Amount:** **${formatINR(amount)}** (${paymentMethod})\n` +
+          `• **Project:** **${targetProj.name}** [${targetProj.code}]\n` +
+          `• **Client:** ${createdReceipt.client?.name || targetProj.clientName || 'Client'}\n` +
+          (openInv ? `• **Applied to RA Bill:** **${openInv.invoiceNumber}** (Updated Balance Due: **${formatINR(Math.max(0, openInv.balanceDue - amount))}**)\n` : `• **Classification:** Advance Payment\n`) +
+          `• **General Ledger:** Cash/Bank accounts debited and Accounts Receivable credited.\n\n` +
+          `You can share the official payment receipt directly via WhatsApp below:`,
+        actionTaken: 'RECORD_CLIENT_RECEIPT',
+        data: createdReceipt,
+        shareableUrls: { whatsapp: waUrl },
+        suggestedPrompts: [
+          `What is the balance due amount of the client ${targetProj.name}?`,
+          `Undo the last receipt entry for ${targetProj.name}`,
+          'What are all the payments received and paid today?',
+        ],
+      },
+    });
+  }
+
+  if (action === 'CONFIRM_GENERATE_RA_BILL') {
+    const { projectId, clientId, certifiedSubtotal, retentionPercent, tdsPercent, gstPercent } = payload;
+    const targetProj = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!targetProj) {
+      return res.status(404).json({ success: false, message: 'Project not found.' });
+    }
+
+    const finalTenantId = targetProj.tenantId || tenantId;
+    const invNumObj = await generateNextInvoiceNumber(targetProj.id, finalTenantId ? { tenantId: finalTenantId } : {});
+    const nextInvNum = invNumObj.nextInvoiceNumber;
+
+    const sub = Number(certifiedSubtotal) || targetProj.contractValue || 100000;
+    const retP = Number(retentionPercent) ?? 5.0;
+    const tdsP = Number(tdsPercent) ?? 2.0;
+    const gstP = Number(gstPercent) ?? 18.0;
+
+    const retAmt = (sub * retP) / 100;
+    const tdsAmt = (sub * tdsP) / 100;
+    const gstAmt = (sub * gstP) / 100;
+    const netAmount = sub - retAmt - tdsAmt + gstAmt;
+
+    const createdInv = await prisma.clientInvoice.create({
+      data: {
+        tenantId: finalTenantId,
+        invoiceNumber: nextInvNum,
+        clientId: clientId || null,
+        projectId: targetProj.id,
+        invoiceType: 'RUNNING_ACCOUNT_RA',
+        invoiceDate: new Date(),
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        subtotal: sub,
+        retentionPercent: retP,
+        retentionAmount: retAmt,
+        tdsPercent: tdsP,
+        tdsAmount: tdsAmt,
+        gstPercent: gstP,
+        gstAmount: gstAmt,
+        netInvoiceAmount: netAmount,
+        paidAmount: 0,
+        balanceDue: netAmount,
+        status: 'APPROVED',
+        milestoneName: 'Running Account (RA) Work Progress',
+        certificationNotes: `Running Account (RA) Bill generated via AI copilot`,
+      },
+      include: { project: true, client: true },
+    });
+
+    // Balanced Journal Entry: Debit Accounts Receivable, Credit Contract Revenue (and GST output)
+    try {
+      await postBalancedJournalEntry({
+        tenantId: finalTenantId,
+        entryDate: new Date(),
+        referenceType: 'CLIENT_INVOICE',
+        referenceId: createdInv.id,
+        narration: `Certified RA Bill ${nextInvNum} for ${targetProj.name}. Revenue recognized.`,
+        lines: [
+          { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: netAmount, credit: 0, projectId: targetProj.id },
+          { accountCode: COA.CONTRACT_REVENUE, debit: 0, credit: sub - retAmt - tdsAmt, projectId: targetProj.id },
+          ...(gstAmt > 0 ? [{ accountCode: COA.OUTPUT_GST_18, debit: 0, credit: gstAmt, projectId: targetProj.id }] : []),
+        ],
+        createdById: req.user?.id,
+      });
+    } catch (jeErr) {
+      console.error('Auto journal error for confirmed RA bill:', jeErr);
+    }
+
+    await logAudit(req.user?.id, 'CREATE_CLIENT_INVOICE', 'CLIENT_INVOICE', createdInv.id, { invoiceNumber: nextInvNum, netAmount }, req.ip);
+
+    return res.json({
+      success: true,
+      response: {
+        message:
+          `✅ **Running Account (RA) Bill Successfully Generated!**\n\n` +
+          `• **Bill Number:** **${createdInv.invoiceNumber}**\n` +
+          `• **Project:** **${targetProj.name}** [${targetProj.code}]\n` +
+          `• **Certified Subtotal:** ${formatINR(sub)}\n` +
+          `• **Deductions:** Retention (${retP}%): -${formatINR(retAmt)} | TDS (${tdsP}%): -${formatINR(tdsAmt)}\n` +
+          `• **GST (${gstP}%):** +${formatINR(gstAmt)}\n` +
+          `• **Net Bill Amount (Due):** **${formatINR(netAmount)}**\n` +
+          `• **Status:** APPROVED\n\n` +
+          `You can now record client payment receipts against this verified RA Bill.`,
+        actionTaken: 'GENERATE_RA_BILL',
+        data: createdInv,
+        suggestedPrompts: [
+          `Received ₹${netAmount.toLocaleString('en-IN')} from ${targetProj.name}`,
+          `What is the balance due amount of the client ${targetProj.name}?`,
+        ],
+      },
+    });
+  }
+
+  if (action === 'CONFIRM_MATERIAL_PURCHASE') {
+    const { projectId, materialId, supplierId, quantity, unitPrice, totalAmount, prompt } = payload;
+    const targetProj = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!targetProj) {
+      return res.status(404).json({ success: false, message: 'Project not found.' });
+    }
+
+    const finalTenantId = targetProj.tenantId || tenantId;
+    const currentYear = new Date().getFullYear();
+    const poCount = await prisma.purchaseOrder.count({ where: finalTenantId ? { tenantId: finalTenantId } : {} });
+    const poNumber = `PO-${currentYear}-${String(poCount + 1).padStart(3, '0')}`;
+
+    let supplier = supplierId ? await prisma.supplier.findUnique({ where: { id: supplierId } }) : null;
+    if (!supplier) {
+      supplier = await prisma.supplier.findFirst({ where: finalTenantId ? { tenantId: finalTenantId } : {} });
+    }
+    if (!supplier) {
+      supplier = await prisma.supplier.create({
+        data: {
+          tenantId: finalTenantId,
+          code: 'SUP-001',
+          name: 'Balaji Building Materials & Co.',
+          phone: '+91 98765 43210',
+          address: 'Main Industrial Ring Road',
+          paymentTerms: 'NET_30',
+        },
+      });
+    }
+
+    let material = materialId ? await prisma.material.findUnique({ where: { id: materialId } }) : null;
+    if (!material) {
+      material = await prisma.material.findFirst({ where: finalTenantId ? { tenantId: finalTenantId } : {} });
+    }
+
+    const createdPO = await prisma.$transaction(async (tx) => {
+      const po = await tx.purchaseOrder.create({
+        data: {
+          tenantId: finalTenantId,
+          poNumber,
+          projectId: targetProj.id,
+          supplierId: supplier!.id,
+          poDate: new Date(),
+          deliveryDueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: 'APPROVED',
+          subtotal: totalAmount,
+          taxAmount: 0,
+          totalAmount,
+          createdById: req.user?.id || 'system',
+          items: material ? {
+            create: [
+              {
+                materialId: material.id,
+                orderQty: quantity,
+                unitPrice,
+                taxPercent: 0,
+                taxAmount: 0,
+                totalAmount,
+                receivedQty: quantity,
+              },
+            ],
+          } : undefined,
+        },
+        include: { project: true, supplier: true, items: { include: { material: true } } },
+      });
+
+      return po;
+    });
+
+    // Balanced Journal Entry: Debit Direct Material Expense, Credit Accounts Payable
+    try {
+      await postBalancedJournalEntry({
+        tenantId: finalTenantId,
+        entryDate: new Date(),
+        referenceType: 'PURCHASE_ORDER',
+        referenceId: createdPO.id,
+        narration: `Material purchase order ${poNumber} for ${quantity} ${material?.unit || 'units'} of ${material?.name || 'materials'}. Vendor: ${supplier.name}`,
+        lines: [
+          { accountCode: COA.DIRECT_MATERIAL_COST, debit: totalAmount, credit: 0, projectId: targetProj.id },
+          { accountCode: COA.ACCOUNTS_PAYABLE, debit: 0, credit: totalAmount, projectId: targetProj.id },
+        ],
+        createdById: req.user?.id,
+      });
+    } catch (jeErr) {
+      console.error('Auto journal error for confirmed material purchase:', jeErr);
+    }
+
+    await logAudit(req.user?.id, 'CREATE_PURCHASE_ORDER', 'PURCHASE_ORDER', createdPO.id, { poNumber, totalAmount }, req.ip);
+
+    return res.json({
+      success: true,
+      response: {
+        message:
+          `✅ **Material Purchase Order Committed & Inward Stock Updated!**\n\n` +
+          `• **PO Number:** **${createdPO.poNumber}**\n` +
+          `• **Project / Site:** **${targetProj.name}** [${targetProj.code}]\n` +
+          `• **Supplier:** **${supplier.name}**\n` +
+          `• **Material:** ${material?.name || 'Construction Materials'} (${quantity} ${material?.unit || 'Units'} @ ${formatINR(unitPrice)})\n` +
+          `• **Total PO Value:** **${formatINR(totalAmount)}**\n` +
+          `• **Stock Balance:** Updated in warehouse inventory ledger.\n` +
+          `• **General Ledger:** Accounts Payable credited and Material Expenses recognized.\n\n` +
+          `View purchase details under **Stores & Procurement > Procurement & Vendors**.`,
+        actionTaken: 'RECORD_MATERIAL_PURCHASE',
+        data: createdPO,
+        suggestedPrompts: [
+          `Check inventory and low stock materials`,
+          `Add material purchase for ${targetProj.name}`,
+          'What are all the payments received and paid today?',
+        ],
+      },
+    });
+  }
+
+  return res.status(400).json({ success: false, message: `Unknown confirmation action: ${action}` });
+};
+
+export const executeConfirmedAIAction = async (req: Request, res: Response) => {
+  try {
+    const payload = req.body;
+    return await executeActionPayload(req, res, payload);
+  } catch (err: any) {
+    console.error('Error executing confirmed AI action:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to execute confirmed action.' });
+  }
+};
+
 export const processAIPrompt = async (req: Request, res: Response) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, context, confirmation, pendingAction } = req.body;
+
+    // Handle direct confirmation / cancellation payload
+    if (confirmation || pendingAction) {
+      return await executeActionPayload(req, res, pendingAction || req.body);
+    }
+
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       return res.status(400).json({ success: false, message: 'A text prompt is required.' });
     }
 
     const cleanPrompt = prompt.trim();
     const lower = cleanPrompt.toLowerCase();
+
+    // Natural language confirmation or cancellation
+    if (
+      lower === 'confirm' ||
+      lower === 'confirm and post to database' ||
+      lower === 'yes, confirm' ||
+      lower === 'proceed'
+    ) {
+      if (pendingAction) {
+        return await executeActionPayload(req, res, pendingAction);
+      }
+    }
+
+    if (lower === 'cancel' || lower === 'cancel this transaction' || lower === 'no, cancel') {
+      return res.json({
+        success: true,
+        response: {
+          message: '❌ **Transaction Cancelled.**\n\nNo database records or financial ledgers were altered.',
+          actionTaken: 'TRANSACTION_CANCELLED',
+          suggestedPrompts: [
+            'What are all the payments received and paid today?',
+            'What is the balance due amount of clients?',
+          ],
+        },
+      });
+    }
 
     // =============================================================
     // 0. TOP-PRIORITY: CONCEPTUAL KNOWLEDGE BASE & WORKFLOW GUIDES
@@ -200,6 +648,96 @@ export const processAIPrompt = async (req: Request, res: Response) => {
     const convoAnswer = getConversationalResponse(lower);
     if (convoAnswer) {
       return res.json({ success: true, response: convoAnswer });
+    }
+
+    // =============================================================
+    // 0.45 INTENT: ACTION — GENERATE RA BILL (TWO-WAY PREVIEW)
+    // =============================================================
+    if (
+      (lower.includes('generate ra bill') ||
+       lower.includes('create ra bill') ||
+       lower.includes('generate running account') ||
+       lower.includes('raise ra bill') ||
+       lower.includes('raise invoice for')) &&
+      !lower.includes('how to') &&
+      !lower.includes('guide')
+    ) {
+      const tenantFilter = getTenantFilter(req);
+      const targetProj = await findMatchedProject(cleanPrompt, context, tenantFilter);
+
+      if (!targetProj) {
+        return res.json({
+          success: true,
+          response: {
+            message: `Please specify which project you want to generate the Running Account (RA) Bill for.`,
+            actionTaken: 'CLARIFY_PROJECT',
+          },
+        });
+      }
+
+      const finalTenantId = targetProj.tenantId || (req.user as any)?.companyId || null;
+      const nextInvNum = await generateNextInvoiceNumber(targetProj.id, finalTenantId ? { tenantId: finalTenantId } : {});
+
+      // Parse amount from prompt if provided, otherwise default to contract value or project estimate
+      const amountMatch = cleanPrompt.match(/(?:rs\.?|inr|₹|\s|^)(\d+(?:,\d+)*(?:\.\d+)?)/i);
+      const certifiedSubtotal = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : (targetProj.contractValue || 200000);
+      const retentionPercent = 5.0;
+      const tdsPercent = 2.0;
+      const gstPercent = 18.0;
+
+      const retAmt = (certifiedSubtotal * retentionPercent) / 100;
+      const tdsAmt = (certifiedSubtotal * tdsPercent) / 100;
+      const gstAmt = (certifiedSubtotal * gstPercent) / 100;
+      const netBillAmount = certifiedSubtotal - retAmt - tdsAmt + gstAmt;
+
+      const previewData = {
+        actionType: 'GENERATE_RA_BILL',
+        title: 'Running Account (RA) Bill [Draft Verification]',
+        projectId: targetProj.id,
+        projectName: targetProj.name,
+        projectCode: targetProj.code,
+        clientName: targetProj.clientName || 'Client',
+        billNumber: nextInvNum,
+        certifiedSubtotal,
+        retentionPercent,
+        retentionAmount: retAmt,
+        tdsPercent,
+        tdsAmount: tdsAmt,
+        gstPercent,
+        gstAmount: gstAmt,
+        netBillAmount,
+        date: new Date().toISOString().split('T')[0],
+        journalPreview: [
+          { account: `Accounts Receivable - ${targetProj.clientName || 'Client'} (COA 1100)`, type: 'DEBIT', amount: netBillAmount },
+          { account: 'Construction Contract Revenue (COA 4010)', type: 'CREDIT', amount: certifiedSubtotal - retAmt - tdsAmt },
+          { account: 'Output GST Payable 18% (COA 2200)', type: 'CREDIT', amount: gstAmt },
+        ],
+        rawPayload: {
+          action: 'CONFIRM_GENERATE_RA_BILL',
+          tenantId: finalTenantId,
+          projectId: targetProj.id,
+          certifiedSubtotal,
+          retentionPercent,
+          tdsPercent,
+          gstPercent,
+          prompt: cleanPrompt,
+        },
+      };
+
+      return res.json({
+        success: true,
+        response: {
+          message:
+            `📋 **Two-Way Confirmation Preview: ${previewData.title}**\n\n` +
+            `Please review the certified milestone bill calculations and statutory deductions below. Click **"Confirm & Post to Database"** to commit this RA Bill or **"Cancel"** to abort.`,
+          actionTaken: 'CONFIRMATION_PREVIEW',
+          data: previewData,
+          suggestedPrompts: [
+            'Confirm and post to database',
+            'Cancel this transaction',
+          ],
+        },
+      });
     }
 
     // =============================================================
@@ -2454,12 +2992,192 @@ export const processAIPrompt = async (req: Request, res: Response) => {
     }
 
     // =============================================================
-    // 9. INTENT: ACTION — CLIENT PAYMENT RECEIVED
-    //    (E.g. "received 2000000 from client for greenfield via rtgs")
+    // 8.9 INTENT: SELF-CORRECTION & REVERSAL / ROLLBACK ENGINE
+    //     (E.g. "Undo the last receipt entry for Arun",
+    //           "Delete incorrect payment record RCP-2026-001",
+    //           "Undo last payment", "Revert receipt RCP-2026-001",
+    //           "Cancel payment RCP-2026-001")
+    // =============================================================
+    const isReversalCommand =
+      (lower.includes('undo') ||
+        lower.includes('revert') ||
+        lower.includes('reverse') ||
+        lower.includes('rollback') ||
+        ((lower.includes('delete') || lower.includes('cancel') || lower.includes('remove')) &&
+          (lower.includes('receipt') ||
+            lower.includes('payment') ||
+            lower.includes('record') ||
+            lower.includes('rcp-') ||
+            lower.includes('transaction')))) &&
+      !lower.includes('lead') &&
+      !lower.includes('worker') &&
+      !lower.includes('user');
+
+    if (isReversalCommand) {
+      const tenantFilter = getTenantFilter(req);
+      const tenantId = (req.user as any)?.companyId || null;
+
+      // Extract explicit receipt number if supplied (e.g., RCP-2026-001, AI-123456)
+      const rcpMatch = cleanPrompt.match(/(?:RCP|REC|AI)-[A-Za-z0-9-]+/i);
+      let receiptToReverse: any = null;
+
+      if (rcpMatch) {
+        receiptToReverse = await prisma.clientReceipt.findFirst({
+          where: {
+            receiptNumber: rcpMatch[0],
+            ...(tenantId ? { tenantId } : {}),
+          },
+          include: { project: true, invoice: true, client: true },
+        });
+      }
+
+      // If no receipt number in prompt, match by project / client context
+      if (!receiptToReverse) {
+        const targetProj = await findMatchedProject(cleanPrompt, context, tenantFilter);
+        const targetCli = await findMatchedClient(cleanPrompt, context, tenantFilter);
+
+        receiptToReverse = await prisma.clientReceipt.findFirst({
+          where: {
+            ...(targetProj ? { projectId: targetProj.id } : {}),
+            ...(targetCli ? { clientId: targetCli.id } : {}),
+            ...(tenantId ? { tenantId } : {}),
+          },
+          orderBy: { receiptDate: 'desc' },
+          include: { project: true, invoice: true, client: true },
+        });
+      }
+
+      if (!receiptToReverse) {
+        return res.json({
+          success: true,
+          response: {
+            message:
+              `⚠️ **No Matching Payment Receipt Found to Reverse**\n\n` +
+              `I could not locate an active client payment receipt matching your request. Please specify the exact Receipt Number (e.g., \`RCP-2026-001\`) or mention the client/project name.\n\n` +
+              `Example: \`Delete incorrect payment record RCP-2026-001\` or \`Undo the last receipt entry for Arun\``,
+            actionTaken: 'REVERSAL_NOT_FOUND',
+            suggestedPrompts: [
+              'What are all the payments received and paid today?',
+              'What is the balance due amount of clients?',
+            ],
+          },
+        });
+      }
+
+      // Perform safe database rollback within transaction
+      const receipt = receiptToReverse;
+      let reinstatedBalance = 0;
+      let updatedInvoiceStatus = 'APPROVED';
+
+      await prisma.$transaction(async (tx) => {
+        // 1. Revert client invoice balance and status
+        if (receipt.invoiceId) {
+          const inv = await tx.clientInvoice.findUnique({ where: { id: receipt.invoiceId } });
+          if (inv) {
+            const newPaid = Math.max(0, inv.paidAmount - receipt.amount);
+            reinstatedBalance = Math.max(0, inv.netInvoiceAmount - newPaid);
+            updatedInvoiceStatus = newPaid === 0 ? (inv.invoiceType === 'ADVANCE' ? 'PENDING' : 'APPROVED') : 'PARTIALLY_PAID';
+
+            await tx.clientInvoice.update({
+              where: { id: inv.id },
+              data: {
+                paidAmount: newPaid,
+                balanceDue: reinstatedBalance,
+                status: updatedInvoiceStatus,
+              },
+            });
+          }
+        }
+
+        // 2. Post balanced reversal journal entry: Debit Accounts Receivable, Credit Cash/Bank
+        try {
+          const debitAccount = receipt.paymentMethod === 'CASH' ? COA.CASH : COA.HDFC_BANK;
+          await postBalancedJournalEntry({
+            tenantId: receipt.tenantId,
+            entryDate: new Date(),
+            referenceType: 'CLIENT_RECEIPT_REVERSAL',
+            referenceId: receipt.id,
+            narration: `Reversal of Client Receipt ${receipt.receiptNumber} (${formatINR(receipt.amount)}). Rollback reason: AI self-correction command "${cleanPrompt}"`,
+            lines: [
+              { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: receipt.amount, credit: 0, projectId: receipt.projectId || undefined },
+              { accountCode: debitAccount, debit: 0, credit: receipt.amount, projectId: receipt.projectId || undefined },
+            ],
+            createdById: req.user?.id,
+            tx,
+          });
+        } catch (jeErr) {
+          console.error('Error posting reversal journal entry:', jeErr);
+        }
+
+        // 3. Delete the client receipt record
+        await tx.clientReceipt.delete({ where: { id: receipt.id } });
+      });
+
+      // 4. Audit Log
+      await logAudit(
+        req.user?.id,
+        'REVERSE_CLIENT_RECEIPT',
+        'CLIENT_RECEIPT',
+        receipt.id,
+        {
+          receiptNumber: receipt.receiptNumber,
+          amount: receipt.amount,
+          projectId: receipt.projectId,
+          clientId: receipt.clientId,
+          prompt: cleanPrompt,
+        },
+        req.ip
+      );
+
+      return res.json({
+        success: true,
+        response: {
+          message:
+            `🔄 **Transaction Rollback Successful: Payment Receipt Reversed**\n\n` +
+            `The payment record has been safely deleted and financial ledgers have been restored:\n\n` +
+            `• **Reversed Receipt Number:** **${receipt.receiptNumber}**\n` +
+            `• **Amount Restored:** **${formatINR(receipt.amount)}** (${receipt.paymentMethod})\n` +
+            `• **Client / Project:** ${receipt.client?.name || receipt.project?.clientName || 'Client'} • **${receipt.project?.name}**\n` +
+            (receipt.invoice ? `• **Invoice Restored:** RA Bill **${receipt.invoice.invoiceNumber}** due balance has been reinstated to **${formatINR(reinstatedBalance)}** (Status: ${updatedInvoiceStatus}).\n` : '') +
+            `• **General Ledger:** Cash/Bank accounts and Accounts Receivable balances have been synchronized with a balanced reversal entry.\n` +
+            `• **Collection Totals:** Net collections for **${receipt.project?.name}** have been updated.\n\n` +
+            `✅ The billing register and collections ledger are now accurate.`,
+          actionTaken: 'RECEIPT_REVERSED',
+          data: {
+            reversedReceiptNumber: receipt.receiptNumber,
+            amount: receipt.amount,
+            paymentMethod: receipt.paymentMethod,
+            projectId: receipt.projectId,
+            projectName: receipt.project?.name,
+            invoiceNumber: receipt.invoice?.invoiceNumber,
+            reinstatedBalance,
+          },
+          suggestedPrompts: [
+            `What is the balance due amount of the client ${receipt.project?.name}?`,
+            'What are all the payments received and paid today?',
+            'Export ledger to Google Sheet',
+          ],
+        },
+      });
+    }
+
+    // =============================================================
+    // 9. INTENT: ACTION — CLIENT PAYMENT RECEIVED (WITH DEPENDENCY CHECK & TWO-WAY PREVIEW)
+    //    (E.g. "Received ₹2,00,000 from client Arun", "Client paid 50000 for residential interior")
     // =============================================================
     if (
-      (lower.includes('received') || lower.includes('client paid') || lower.includes('payment received')) &&
-      /\d+/.test(lower)
+      (lower.includes('received') ||
+        lower.includes('client paid') ||
+        lower.includes('payment received') ||
+        lower.includes('record receipt') ||
+        lower.includes('advance payment') ||
+        (lower.includes('payment') && (lower.includes('log') || lower.includes('add') || lower.includes('record')))) &&
+      /\d+/.test(lower) &&
+      !isReversalCommand &&
+      !lower.includes('paid to vendor') &&
+      !lower.includes('paid to supplier') &&
+      !lower.includes('paid wage') &&
+      !lower.includes('paid salary')
     ) {
       const amountMatch = cleanPrompt.match(/(?:rs\.?|inr|₹|\s|^)(\d+(?:,\d+)*(?:\.\d+)?)/i);
       const rawNum = amountMatch ? amountMatch[1].replace(/,/g, '') : '0';
@@ -2471,140 +3189,258 @@ export const processAIPrompt = async (req: Request, res: Response) => {
       const tenantFilter = getTenantFilter(req);
       const tenantId = (req.user as any)?.companyId || null;
 
-      let matchedProj = await findMatchedProject(cleanPrompt);
-      const allProjects = await prisma.project.findMany({ where: tenantFilter });
+      // 1. Context-Aware Entity Matching
+      let targetProj = await findMatchedProject(cleanPrompt, context, tenantFilter);
+      let targetCli = await findMatchedClient(cleanPrompt, context, tenantFilter);
 
-      // If not matched by project name, try matching by client name
-      if (!matchedProj) {
-        const matchedCli = await findMatchedClient(cleanPrompt);
-        if (matchedCli) {
-          matchedProj = await prisma.project.findFirst({
-            where: {
-              OR: [
-                { clientName: matchedCli.name },
-                { clientName: matchedCli.companyName || undefined },
-              ],
-              ...tenantFilter,
-            },
-            include: { clientInvoices: true, clientReceipts: true, workers: true, tasks: true },
-          });
-        }
+      if (!targetProj && targetCli) {
+        targetProj = await prisma.project.findFirst({
+          where: {
+            OR: [
+              { clientName: targetCli.name },
+              { clientName: targetCli.companyName || undefined },
+            ],
+            ...tenantFilter,
+          },
+          include: { clientInvoices: true, clientReceipts: true, workers: true, tasks: true },
+        });
       }
-
-      // If still not matched and only 1 project exists for this company, default to that project
-      if (!matchedProj && allProjects.length === 1) {
-        matchedProj = allProjects[0] as any;
-      }
-
-      const targetProj = matchedProj;
 
       if (!targetProj) {
-        return res.json({
-          reply: `I could not clearly identify which project this payment of ${formatINR(amount)} belongs to. Please specify the project or client name (e.g., "${allProjects.slice(0, 3).map((p) => p.name).join('", "')}").`,
-          actionType: 'CLARIFY_PROJECT',
-        });
+        const allProjects = await prisma.project.findMany({ where: tenantFilter });
+        if (allProjects.length === 1) {
+          targetProj = allProjects[0] as any;
+        } else {
+          return res.json({
+            success: true,
+            response: {
+              message: `I could not clearly identify which project this payment of ${formatINR(amount)} belongs to. Please specify the project or client name (e.g., "${allProjects.slice(0, 3).map((p) => p.name).join('", "')}").`,
+              actionTaken: 'CLARIFY_PROJECT',
+              suggestedPrompts: allProjects.slice(0, 3).map((p) => `Received ${formatINR(amount)} from ${p.name}`),
+            },
+          });
+        }
       }
 
-      if (targetProj && amount > 0) {
-        const finalTenantId = targetProj.tenantId || tenantId;
-        const openInv = await prisma.clientInvoice.findFirst({
-          where: { projectId: targetProj.id, balanceDue: { gt: 0 }, ...(finalTenantId ? { tenantId: finalTenantId } : {}) },
-          orderBy: { invoiceDate: 'asc' },
-        });
+      const finalTenantId = targetProj.tenantId || tenantId;
 
-        let clientId = openInv?.clientId || null;
-        if (!clientId && targetProj.clientName) {
-          const matchedCli = await prisma.client.findFirst({
-            where: {
-              OR: [{ name: targetProj.clientName }, { companyName: targetProj.clientName }],
-              ...(finalTenantId ? { tenantId: finalTenantId } : {}),
-            },
-          });
-          if (matchedCli) clientId = matchedCli.id;
-        }
+      // 2. INVOICE & PAYMENT DEPENDENCY CHECK (RA BILL VALIDATION)
+      // Check if an approved RA Bill / Client Invoice exists for that client and project
+      const openInvoices = await prisma.clientInvoice.findMany({
+        where: {
+          projectId: targetProj.id,
+          balanceDue: { gt: 0 },
+          status: { in: ['APPROVED', 'PARTIALLY_PAID', 'PENDING'] },
+          ...(finalTenantId ? { tenantId: finalTenantId } : {}),
+        },
+        orderBy: { invoiceDate: 'asc' },
+      });
 
-        const { nextReceiptNumber } = await getNextReceiptNumber(req, finalTenantId);
-        const refNo = `AI-${Date.now().toString().slice(-6)}`.toUpperCase();
+      const isAdvanceIntent = lower.includes('advance') || lower.includes('mobilization');
 
-        const createdReceipt = await prisma.$transaction(async (tx) => {
-          const rcp = await tx.clientReceipt.create({
-            data: {
-              tenantId: finalTenantId,
-              receiptNumber: nextReceiptNumber,
-              clientId,
-              projectId: targetProj.id,
-              invoiceId: openInv ? openInv.id : null,
-              receiptDate: new Date(),
-              amount,
-              paymentMethod: method,
-              referenceNo: refNo,
-              notes: `Auto-recorded via AI prompt: "${cleanPrompt}"`,
-            },
-            include: { project: true, invoice: true, client: true },
-          });
-
-          if (openInv) {
-            const newPaid = openInv.paidAmount + amount;
-            const newBal = Math.max(0, openInv.netInvoiceAmount - newPaid);
-            await tx.clientInvoice.update({
-              where: { id: openInv.id },
-              data: {
-                paidAmount: newPaid,
-                balanceDue: newBal,
-                status: newBal === 0 ? 'PAID' : 'PARTIALLY_PAID',
-              },
-            });
-          }
-
-          return rcp;
-        });
-
-        // Auto post balanced double entry for AI-recorded client payment
-        try {
-          const debitAccount = method === 'CASH' ? COA.CASH : COA.HDFC_BANK;
-          await postBalancedJournalEntry({
-            tenantId: finalTenantId,
-            entryDate: new Date(),
-            referenceType: 'CLIENT_RECEIPT',
-            referenceId: createdReceipt.id,
-            narration: `Payment received from client ${nextReceiptNumber} via ${method}. AI prompt: "${cleanPrompt}"`,
-            lines: [
-              { accountCode: debitAccount, debit: amount, credit: 0, projectId: targetProj.id },
-              { accountCode: COA.ACCOUNTS_RECEIVABLE, debit: 0, credit: amount, projectId: targetProj.id },
-            ],
-            createdById: req.user?.id,
-          });
-        } catch (jeErr) {
-          console.error('Auto journal error for AI client receipt:', jeErr);
-        }
-
-        await logAudit(req.user?.id, 'RECORD_CLIENT_RECEIPT', 'CLIENT_RECEIPT', createdReceipt.id, { receiptNumber: nextReceiptNumber, amount }, req.ip);
-
-        const waText = encodeURIComponent(
-          `🧾 *Payment Acknowledgment*\n\n` +
-          `We have received ${formatINR(amount)} via ${method} for project *${targetProj.name}*.\n` +
-          `Receipt Ref: ${createdReceipt.receiptNumber}\n` +
-          (openInv ? `Linked Bill: ${openInv.invoiceNumber} | Remaining Due: ${formatINR(Math.max(0, openInv.balanceDue - amount))}\n\n` : '\n') +
-          `ApexBuild Financial Engine`
-        );
-        const clientPhone = targetProj.clientContact?.replace(/\D/g, '') || '';
-        const waUrl = clientPhone ? `https://wa.me/${clientPhone}?text=${waText}` : `https://wa.me/?text=${waText}`;
-
+      // If no active RA Bill exists and NOT explicitly requested as advance payment
+      if (openInvoices.length === 0 && !isAdvanceIntent) {
         return res.json({
           success: true,
           response: {
-            message: `✅ Successfully recorded client payment of **${formatINR(amount)}** (${method}) for **${targetProj.name}**!\nReceipt Number: **${createdReceipt.receiptNumber}**${openInv ? ` (Applied to ${openInv.invoiceNumber})` : ''}.`,
-            actionTaken: 'RECORD_CLIENT_RECEIPT',
-            data: createdReceipt,
-            shareableUrls: { whatsapp: waUrl },
+            message:
+              `⚠️ **No active RA Bill found for this client (${targetProj.clientName || 'Client'} - ${targetProj.name}).**\n\n` +
+              `Recording an unlinked receipt would create an orphaned payment record that skews the billing ledger.\n\n` +
+              `Would you like me to **generate the RA Bill first** before recording this receipt, or **log it as an advance payment**?`,
+            actionTaken: 'RA_BILL_DEPENDENCY_REQUIRED',
+            data: {
+              projectId: targetProj.id,
+              projectName: targetProj.name,
+              projectCode: targetProj.code,
+              clientName: targetProj.clientName,
+              amount,
+              paymentMethod: method,
+            },
             suggestedPrompts: [
-              `What is the balance due amount of the client ${targetProj.name}?`,
-              'What are all the payments received and paid today?',
-              'Export ledger to Google Sheet',
+              `Generate RA Bill for ${targetProj.name}`,
+              `Log ₹${amount.toLocaleString('en-IN')} as advance payment for ${targetProj.name}`,
+              `Show all RA Bills for ${targetProj.name}`,
             ],
           },
         });
       }
+
+      // 3. TWO-WAY CONFIRMATION PREVIEW
+      const selectedInv = openInvoices[0] || null;
+      let clientId = selectedInv?.clientId || null;
+      if (!clientId && targetProj.clientName) {
+        const matchedCli = await prisma.client.findFirst({
+          where: {
+            OR: [{ name: targetProj.clientName }, { companyName: targetProj.clientName }],
+            ...(finalTenantId ? { tenantId: finalTenantId } : {}),
+          },
+        });
+        if (matchedCli) clientId = matchedCli.id;
+      }
+
+      const currentDue = selectedInv ? selectedInv.balanceDue : 0;
+      const newDue = Math.max(0, currentDue - amount);
+      const isAdvance = isAdvanceIntent || !selectedInv;
+
+      const previewData = {
+        actionType: 'RECORD_CLIENT_RECEIPT',
+        title: isAdvance
+          ? 'Client Mobilization Advance Receipt [Draft Verification]'
+          : 'Client RA Payment Receipt [Draft Verification]',
+        projectId: targetProj.id,
+        projectName: targetProj.name,
+        projectCode: targetProj.code,
+        clientId,
+        clientName: targetProj.clientName || 'Client',
+        amount,
+        paymentMethod: method,
+        isAdvance,
+        invoiceId: selectedInv ? selectedInv.id : null,
+        invoiceNumber: selectedInv ? selectedInv.invoiceNumber : 'ADVANCE (Pre-Billing)',
+        currentInvoiceDue: currentDue,
+        newBalanceDue: newDue,
+        date: new Date().toISOString().split('T')[0],
+        journalPreview: [
+          { account: method === 'CASH' ? 'Cash on Hand (COA 1010)' : 'Bank Account - HDFC (COA 1030)', type: 'DEBIT', amount },
+          { account: `Accounts Receivable - ${targetProj.clientName || 'Client'} (COA 1100)`, type: 'CREDIT', amount },
+        ],
+        rawPayload: {
+          action: 'CONFIRM_CLIENT_RECEIPT',
+          tenantId: finalTenantId,
+          projectId: targetProj.id,
+          clientId,
+          invoiceId: selectedInv ? selectedInv.id : null,
+          amount,
+          paymentMethod: method,
+          isAdvance,
+          prompt: cleanPrompt,
+        },
+      };
+
+      return res.json({
+        success: true,
+        response: {
+          message:
+            `📋 **Two-Way Confirmation Preview: ${previewData.title}**\n\n` +
+            `Please review the draft payment receipt and double-entry ledger impact below. Click **"Confirm & Post to Database"** to commit this transaction or **"Cancel"** to abort.`,
+          actionTaken: 'CONFIRMATION_PREVIEW',
+          data: previewData,
+          suggestedPrompts: [
+            'Confirm and post to database',
+            'Cancel this transaction',
+          ],
+        },
+      });
+    }
+
+    // =============================================================
+    // 9.5 INTENT: ACTION — MATERIAL PURCHASE / PO CREATION (TWO-WAY PREVIEW)
+    //     (E.g. "Add material purchase for site Y", "Add material purchase 100 bags cement for Greenfield")
+    // =============================================================
+    if (
+      (lower.includes('material purchase') ||
+        lower.includes('purchase material') ||
+        lower.includes('buy material') ||
+        lower.includes('bought material') ||
+        (lower.includes('add') && lower.includes('purchase') && (lower.includes('site') || lower.includes('project')))) &&
+      !lower.includes('how to') &&
+      !lower.includes('guide')
+    ) {
+      const tenantFilter = getTenantFilter(req);
+      const tenantId = (req.user as any)?.companyId || null;
+
+      // 1. Context-Aware Entity Matching
+      let targetProj = await findMatchedProject(cleanPrompt, context, tenantFilter);
+      if (!targetProj) {
+        const allProjects = await prisma.project.findMany({ where: tenantFilter });
+        if (allProjects.length === 1) {
+          targetProj = allProjects[0] as any;
+        } else {
+          return res.json({
+            success: true,
+            response: {
+              message: `I could not clearly identify which construction site or project this material purchase is for. Please specify the project (e.g., "${allProjects.slice(0, 3).map((p) => p.name).join('", "')}").`,
+              actionTaken: 'CLARIFY_PROJECT',
+              suggestedPrompts: allProjects.slice(0, 3).map((p) => `Add material purchase for ${p.name}`),
+            },
+          });
+        }
+      }
+
+      // 2. Material Matching
+      const materials = await prisma.material.findMany({ where: tenantFilter || {} });
+      let matchedMat = materials.find((m) => lower.includes(m.name.toLowerCase()) || lower.includes(m.code.toLowerCase()));
+      if (!matchedMat) {
+        const commonMatNames = ['cement', 'steel', 'sand', 'brick', 'aggregate', 'paint', 'tiles', 'plywood'];
+        const found = commonMatNames.find((nm) => lower.includes(nm));
+        if (found) {
+          matchedMat = materials.find((m) => m.name.toLowerCase().includes(found));
+        }
+      }
+      if (!matchedMat && materials.length > 0) {
+        matchedMat = materials[0];
+      }
+
+      // 3. Quantity & Amount Parsing
+      const qtyMatch = cleanPrompt.match(/(\d+)\s*(?:bags|bag|tons|ton|kg|sqft|cum|units|nos|pieces|pkt)?/i);
+      const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 50;
+      const unitPrice = matchedMat?.standardPrice || 380;
+      const totalAmount = quantity * unitPrice;
+
+      // 4. Supplier Matching
+      const suppliers = await prisma.supplier.findMany({ where: tenantFilter || {} });
+      let matchedSupp = suppliers.find((s) => lower.includes(s.name.toLowerCase()) || lower.includes(s.code.toLowerCase()));
+      if (!matchedSupp && suppliers.length > 0) {
+        matchedSupp = suppliers[0];
+      }
+
+      const previewData = {
+        actionType: 'RECORD_MATERIAL_PURCHASE',
+        title: 'Material Purchase Order & Stock Inward [Draft Verification]',
+        projectId: targetProj.id,
+        projectName: targetProj.name,
+        projectCode: targetProj.code,
+        materialId: matchedMat?.id,
+        materialName: matchedMat?.name || 'Standard Construction Cement',
+        materialCode: matchedMat?.code || 'MAT-001',
+        unit: matchedMat?.unit || 'BAGS',
+        quantity,
+        unitPrice,
+        totalAmount,
+        supplierId: matchedSupp?.id,
+        supplierName: matchedSupp?.name || 'Balaji Building Materials & Co.',
+        date: new Date().toISOString().split('T')[0],
+        journalPreview: [
+          { account: 'Direct Material Cost (COA 5010)', type: 'DEBIT', amount: totalAmount },
+          { account: `Accounts Payable - ${matchedSupp?.name || 'Material Vendor'} (COA 2010)`, type: 'CREDIT', amount: totalAmount },
+        ],
+        rawPayload: {
+          action: 'CONFIRM_MATERIAL_PURCHASE',
+          tenantId: targetProj.tenantId || tenantId,
+          projectId: targetProj.id,
+          materialId: matchedMat?.id,
+          supplierId: matchedSupp?.id,
+          quantity,
+          unitPrice,
+          totalAmount,
+          prompt: cleanPrompt,
+        },
+      };
+
+      return res.json({
+        success: true,
+        response: {
+          message:
+            `📋 **Two-Way Confirmation Preview: Material Purchase Order**\n\n` +
+            `Please review the purchase draft and inventory expense ledger impact below. Click **"Confirm & Post to Database"** to commit this purchase order or **"Cancel"** to abort.`,
+          actionTaken: 'CONFIRMATION_PREVIEW',
+          data: previewData,
+          suggestedPrompts: [
+            'Confirm and post to database',
+            'Cancel this transaction',
+          ],
+        },
+      });
     }
 
     // =============================================================

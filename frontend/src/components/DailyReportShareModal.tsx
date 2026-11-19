@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import api from '../services/api';
 import {
@@ -38,6 +39,7 @@ export const DailyReportShareModal: React.FC<DailyReportShareModalProps> = ({
   projectId,
   defaultTab = 'owner',
 }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'owner' | 'client'>(defaultTab);
   const [loading, setLoading] = useState<boolean>(true);
   const [reportData, setReportData] = useState<any>(null);
@@ -264,9 +266,12 @@ export const DailyReportShareModal: React.FC<DailyReportShareModalProps> = ({
       </head>
       <body>
         <div class="header">
-          <div class="logo-area">
-            <h1>ApexBuild ERP</h1>
-            <p>CONSTRUCTION MANAGEMENT & FINANCIAL CONTROLS</p>
+          <div class="logo-area" style="display: flex; align-items: center; gap: 14px;">
+            ${user?.company?.logo ? `<img src="${user.company.logo}" style="max-height: 48px; max-width: 120px; object-fit: contain; border-radius: 6px;" />` : ''}
+            <div>
+              <h1>${user?.company?.name || user?.company?.companyName || 'ApexBuild ERP'}</h1>
+              <p>${user?.company?.gstin ? `GSTIN: ${user.company.gstin} • ` : ''}${user?.company?.address || 'CONSTRUCTION MANAGEMENT & FINANCIAL CONTROLS'}</p>
+            </div>
           </div>
           <div class="report-tag">
             <span class="badge">${isOwnerTab ? 'EXECUTIVE DAILY REPORT' : 'CLIENT PROGRESS STATEMENT'}</span>

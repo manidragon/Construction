@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useProject } from '../context/ProjectContext';
 import api from '../services/api';
 import { AIChatResponse } from '../types';
 import {
@@ -20,6 +22,8 @@ import {
   ChevronRight,
   AlertTriangle,
   RotateCcw,
+  Headphones,
+  FileText,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -761,7 +765,309 @@ const RichMessageContent: React.FC<{ text: string }> = ({ text }) => {
   return <div className="space-y-0.5">{elements}</div>;
 };
 
+// -------------------------------------------------------------
+// Interactive Two-Way Confirmation Preview Card
+// -------------------------------------------------------------
+const ConfirmationPreviewCard: React.FC<{
+  data: any;
+  onConfirmed?: (result: any) => void;
+  onCancelled?: () => void;
+}> = ({ data, onConfirmed, onCancelled }) => {
+  const [status, setStatus] = useState<'IDLE' | 'CONFIRMING' | 'COMMITTED' | 'CANCELLED'>('IDLE');
+  const [showJson, setShowJson] = useState(false);
+  const [commitResult, setCommitResult] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    if (status === 'CONFIRMING' || status === 'COMMITTED' || status === 'CANCELLED') return;
+    setStatus('CONFIRMING');
+    setErrorMsg(null);
+    try {
+      const res = await api.confirmAIAction(data?.rawPayload || data);
+      if (res.success) {
+        setStatus('COMMITTED');
+        const resData = res.response || res.data || res;
+        setCommitResult(resData);
+        // Trigger live UI sync events across active modules
+        window.dispatchEvent(new CustomEvent('client-receipt-created', { detail: resData }));
+        window.dispatchEvent(new CustomEvent('refresh-billing'));
+        window.dispatchEvent(new CustomEvent('po-created', { detail: resData }));
+        if (onConfirmed) onConfirmed(res);
+      } else {
+        setStatus('IDLE');
+        setErrorMsg(res.message || 'Failed to post transaction to database.');
+      }
+    } catch (err: any) {
+      setStatus('IDLE');
+      setErrorMsg(err.message || 'Network error while confirming transaction.');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (status === 'COMMITTED') return;
+    setStatus('CANCELLED');
+    try {
+      await api.confirmAIAction({ action: 'CANCEL' });
+    } catch (e) {
+      // Ignored
+    }
+    if (onCancelled) onCancelled();
+  };
+
+  const amount = data?.amount || data?.totalAmount || data?.netInvoiceAmount || 0;
+  const projectName = data?.projectName || data?.project?.name || 'Project';
+  const projectCode = data?.projectCode || data?.project?.code || '';
+  const partyName = data?.clientName || data?.supplierName || data?.partyName || 'Counterparty';
+
+  return (
+    <div
+      className={`mt-3 p-4 rounded-2xl border shadow-xl transition-all duration-200 text-xs ${
+        status === 'COMMITTED'
+          ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100'
+          : status === 'CANCELLED'
+          ? 'bg-slate-900/80 border-slate-700/60 text-slate-400 opacity-75'
+          : 'bg-slate-900/95 border-amber-500/40 text-slate-200 ring-1 ring-amber-500/20'
+      }`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between pb-2.5 border-b border-slate-700/60 mb-3">
+        <div className="flex items-center space-x-2">
+          {status === 'COMMITTED' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : status === 'CANCELLED' ? (
+            <X className="w-4 h-4 text-slate-500 shrink-0" />
+          ) : (
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+          )}
+          <span className="font-bold text-white text-sm">
+            {data?.title || 'Two-Way Confirmation Preview'}
+          </span>
+        </div>
+        <span
+          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+            status === 'COMMITTED'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+              : status === 'CANCELLED'
+              ? 'bg-slate-800 text-slate-400 border border-slate-700'
+              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
+          }`}
+        >
+          {status === 'COMMITTED' ? 'COMMITTED' : status === 'CANCELLED' ? 'CANCELLED' : 'ACTION REQUIRED'}
+        </span>
+      </div>
+
+      {errorMsg && (
+        <div className="mb-3 p-2 bg-rose-950/70 border border-rose-500/40 text-rose-300 rounded-lg text-[11px] flex items-center space-x-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Transaction Details Grid */}
+      <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px]">
+        <div>
+          <span className="text-slate-400 block text-[10px] font-semibold">Project / Site</span>
+          <span className="font-bold text-white truncate block">
+            {projectName} {projectCode ? `[${projectCode}]` : ''}
+          </span>
+        </div>
+        <div>
+          <span className="text-slate-400 block text-[10px] font-semibold">Client / Supplier</span>
+          <span className="font-bold text-white truncate block">{partyName}</span>
+        </div>
+        <div>
+          <span className="text-slate-400 block text-[10px] font-semibold">Transaction Amount</span>
+          <span className="font-bold text-emerald-400 font-mono text-sm block">
+            ₹{amount ? Number(amount).toLocaleString('en-IN') : '0'}
+          </span>
+        </div>
+        <div>
+          <span className="text-slate-400 block text-[10px] font-semibold">Payment Mode / Terms</span>
+          <span className="font-bold text-amber-300 block">{data?.paymentMethod || 'BANK_TRANSFER'}</span>
+        </div>
+        {data?.invoiceNumber && (
+          <div className="col-span-2 pt-1 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+            <span className="text-slate-400">Linked RA Bill:</span>
+            <span className="font-mono font-bold text-indigo-300">{data.invoiceNumber}</span>
+          </div>
+        )}
+        {data?.materialName && (
+          <div className="col-span-2 pt-1 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+            <span className="text-slate-400">Material Item:</span>
+            <span className="font-bold text-white">
+              {data.quantity} {data.materialUnit} {data.materialName} @ ₹{data.unitPrice}
+            </span>
+          </div>
+        )}
+        {data?.currentInvoiceDue !== undefined && data?.currentInvoiceDue !== null && !data?.isAdvance && (
+          <div className="col-span-2 flex items-center justify-between text-[10px] text-slate-400 bg-slate-900/80 px-2 py-1 rounded">
+            <span>Bill Balance: ₹{Number(data.currentInvoiceDue).toLocaleString('en-IN')}</span>
+            <span>➔</span>
+            <span className="font-bold text-emerald-300">
+              Remaining Due: ₹{Number(data.newBalanceDue || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Double-Entry Ledger Impact Preview */}
+      {data?.journalPreview && data.journalPreview.length > 0 && (
+        <div className="mt-2.5 p-2.5 bg-slate-950/40 rounded-xl border border-slate-800 space-y-1">
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1 mb-1">
+            <span>⚖️ Double-Entry Journal Impact</span>
+          </div>
+          {data.journalPreview.map((jp: any, idx: number) => (
+            <div key={idx} className="flex items-center justify-between text-[10px] font-mono">
+              <span
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  jp.type === 'DEBIT' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'
+                }`}
+              >
+                {jp.type}
+              </span>
+              <span className="text-slate-300 truncate mx-2 flex-1">{jp.account}</span>
+              <span className="text-white font-bold">₹{Number(jp.amount).toLocaleString('en-IN')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Collapsible JSON Preview */}
+      <div className="mt-2 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowJson(!showJson)}
+          className="text-[10px] text-slate-400 hover:text-amber-300 font-mono transition flex items-center space-x-1"
+        >
+          <span>{showJson ? '▼ Hide' : '▶ View'} Raw JSON Payload</span>
+        </button>
+        {showJson && (
+          <pre className="mt-1.5 p-2 bg-slate-950 border border-slate-800 rounded-lg text-[10px] font-mono text-amber-200/90 overflow-x-auto max-h-36 custom-scrollbar">
+            {JSON.stringify(data.rawPayload || data, null, 2)}
+          </pre>
+        )}
+      </div>
+
+      {/* Confirmation Actions or Committed Banner */}
+      <div className="mt-3 pt-2.5 border-t border-slate-800">
+        {status === 'IDLE' || status === 'CONFIRMING' ? (
+          <div className="flex items-center justify-end space-x-2">
+            <button
+              type="button"
+              disabled={status === 'CONFIRMING'}
+              onClick={handleCancel}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={status === 'CONFIRMING'}
+              onClick={handleConfirm}
+              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-extrabold transition shadow-md shadow-emerald-500/20 flex items-center space-x-1.5 disabled:opacity-50"
+            >
+              {status === 'CONFIRMING' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Posting to Database...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Confirm & Post to Database</span>
+                </>
+              )}
+            </button>
+          </div>
+        ) : status === 'COMMITTED' ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-emerald-300 font-bold text-xs bg-emerald-950/60 p-2 rounded-xl border border-emerald-500/40">
+              <div className="flex items-center space-x-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  Successfully Posted! Ref: {commitResult?.receiptNumber || commitResult?.poNumber || commitResult?.invoiceNumber || commitResult?.receipt?.receiptNumber || 'Committed'}
+                </span>
+              </div>
+            </div>
+            {commitResult?.shareableUrls?.whatsapp && (
+              <a
+                href={commitResult.shareableUrls.whatsapp}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share Receipt on WhatsApp</span>
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="text-slate-400 text-[11px] italic flex items-center space-x-1">
+            <X className="w-3.5 h-3.5 text-rose-400" />
+            <span>Transaction cancelled. No changes were made to the database.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------
+// Interactive RA Bill Dependency Warning Card
+// -------------------------------------------------------------
+const RABillDependencyCard: React.FC<{
+  data: any;
+  onActionPrompt: (prompt: string) => void;
+}> = ({ data, onActionPrompt }) => {
+  const projectName = data?.projectName || 'Project';
+  const clientName = data?.clientName || 'Client';
+  const amount = data?.amount || 0;
+
+  return (
+    <div className="mt-3 p-4 rounded-2xl border border-amber-500/50 bg-amber-950/30 text-slate-200 shadow-xl space-y-3 animate-in fade-in duration-150">
+      <div className="flex items-center space-x-2 text-amber-400 font-bold border-b border-amber-500/30 pb-2">
+        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+        <span className="text-sm">RA Bill Validation Required</span>
+      </div>
+
+      <div className="text-xs text-amber-100/90 leading-relaxed space-y-1.5">
+        <p>
+          No approved or unpaid Running Account (RA) Bill was found for <strong>{clientName}</strong> on project <strong>{projectName}</strong>.
+        </p>
+        <p className="text-[11px] text-slate-300">
+          Recording an unlinked receipt creates an orphaned payment record that skews billing balances. Please choose how to proceed:
+        </p>
+      </div>
+
+      <div className="pt-2 flex flex-wrap gap-2 border-t border-amber-500/20">
+        <button
+          type="button"
+          onClick={() => onActionPrompt(`Generate RA Bill for ${projectName}`)}
+          className="flex items-center space-x-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs rounded-xl transition shadow-md shadow-amber-500/20"
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>1. Generate RA Bill First</span>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onActionPrompt(
+              `Log ₹${amount ? Number(amount).toLocaleString('en-IN') : ''} as advance payment for ${projectName}`
+            )
+          }
+          className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold text-xs rounded-xl transition"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          <span>2. Log as Advance Payment</span>
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose }) => {
+  const location = useLocation();
+  const { selectedProjectId, selectedProject } = useProject();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -771,6 +1077,58 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
   const [isMinimized, setIsMinimized] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Human Support Escalation State
+  const [showEscalationModal, setShowEscalationModal] = useState(false);
+  const [escalationSubject, setEscalationSubject] = useState('');
+  const [escalationDesc, setEscalationDesc] = useState('');
+  const [isEscalating, setIsEscalating] = useState(false);
+
+  const handleEscalateToHuman = async (customSubject?: string, customDesc?: string) => {
+    try {
+      setIsEscalating(true);
+      const transcriptText = messages
+        .map((m) => `[${m.sender === 'user' ? 'Client' : 'AI Copilot'}]: ${m.text}`)
+        .join('\n\n');
+      const subject =
+        customSubject ||
+        escalationSubject.trim() ||
+        `Support Request: ${messages.filter((m) => m.sender === 'user').pop()?.text?.slice(0, 40) || 'Feature Inquiry'}`;
+      const desc =
+        customDesc ||
+        escalationDesc.trim() ||
+        `Client requested human technical support assistance. Conversation history attached.`;
+
+      const res = await api.createSupportTicket({
+        subject,
+        description: desc,
+        priority: 'HIGH',
+        category: 'TECHNICAL',
+        escalatedFromChat: true,
+        chatTranscript: transcriptText,
+      });
+
+      if (res.success && res.ticket) {
+        setShowEscalationModal(false);
+        setEscalationSubject('');
+        setEscalationDesc('');
+        const botConfirmMsg: ChatMessage = {
+          id: `bot-escalated-${Date.now()}`,
+          sender: 'bot',
+          text: `🎫 **Ticket Escalated to Human Support Successfully!**\n\n• **Ticket Number:** \`#${res.ticket.ticketNumber}\`\n• **Status:** **OPEN** (Assigned to Platform Super Admin)\n• **Archive Sync:** Your conversation transcript has been synced directly to the Super Admin control center.\n\nOur human technical support team is reviewing your inquiry and will address it promptly.`,
+          timestamp: new Date().toISOString(),
+          actionTaken: 'TICKET_ESCALATED',
+        };
+        saveCurrentSessionMessages([...messages, botConfirmMsg]);
+      } else {
+        alert(res.message || 'Failed to create support ticket');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error escalating to support ticket.');
+    } finally {
+      setIsEscalating(false);
+    }
+  };
 
   // 1. Initialize sessions from localStorage
   useEffect(() => {
@@ -913,6 +1271,21 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
     const text = (promptToSend || inputPrompt).trim();
     if (!text || loading) return;
 
+    // Check if user is requesting human support / escalation
+    const lower = text.toLowerCase();
+    if (
+      text === '__ESCALATE_TO_HUMAN__' ||
+      lower.includes('talk to human') ||
+      lower.includes('human support') ||
+      lower.includes('escalate ticket') ||
+      lower.includes('talk to an agent')
+    ) {
+      const lastMsg = messages.filter((m) => m.sender === 'user').pop();
+      setEscalationSubject(`Assistance: ${lastMsg ? lastMsg.text.slice(0, 50) : 'ERP Workflow Guidance'}`);
+      setShowEscalationModal(true);
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
@@ -926,7 +1299,15 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
     setLoading(true);
 
     try {
-      const res = await api.sendAIPrompt(text);
+      const context = {
+        pathname: location.pathname,
+        selectedProjectId: selectedProjectId || selectedProject?.id,
+        selectedProjectName: selectedProject?.name,
+        selectedClientName: selectedProject?.clientName,
+        projectId: selectedProjectId || selectedProject?.id,
+        clientName: selectedProject?.clientName,
+      };
+      const res = await api.sendAIPrompt(text, context);
       if (res.success && res.response) {
         const r: AIChatResponse = res.response;
         const botMsg: ChatMessage = {
@@ -942,6 +1323,10 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
         };
         if (r.actionTaken === 'UPDATE_ATTENDANCE' && r.data) {
           window.dispatchEvent(new CustomEvent('muster-attendance-updated', { detail: r.data }));
+        }
+        if (r.actionTaken === 'REVERSAL_COMPLETED' || r.actionTaken === 'RECEIPT_RECORDED') {
+          window.dispatchEvent(new CustomEvent('client-receipt-reversed', { detail: r.data }));
+          window.dispatchEvent(new CustomEvent('refresh-billing'));
         }
         saveCurrentSessionMessages([...updatedWithUser, botMsg]);
       } else {
@@ -1118,6 +1503,22 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
           className="flex items-center gap-1 sm:gap-1.5 text-slate-400 shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Talk to Human Support / Escalate Ticket */}
+          <button
+            onClick={() => {
+              const lastUserMsg = messages.filter((m) => m.sender === 'user').pop();
+              setEscalationSubject(
+                lastUserMsg ? `Assistance Needed: ${lastUserMsg.text.slice(0, 50)}` : 'Guidance / Support Inquiry'
+              );
+              setShowEscalationModal(true);
+            }}
+            title="Talk to Human Support / Escalate into Ticket"
+            className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold border border-rose-500/30 transition shrink-0"
+          >
+            <Headphones className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Human Support</span>
+          </button>
+
           {/* New Chat Button */}
           <button
             onClick={handleCreateNewChat}
@@ -1319,6 +1720,24 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
                       />
                     )}
 
+                    {/* Interactive Two-Way Confirmation Preview Card */}
+                    {m.actionTaken === 'CONFIRMATION_PREVIEW' && m.data && (
+                      <ConfirmationPreviewCard
+                        data={m.data}
+                        onConfirmed={() => {
+                          window.dispatchEvent(new CustomEvent('refresh-billing'));
+                        }}
+                      />
+                    )}
+
+                    {/* Interactive RA Bill Dependency Validation Warning Card */}
+                    {m.actionTaken === 'RA_BILL_DEPENDENCY_REQUIRED' && m.data && (
+                      <RABillDependencyCard
+                        data={m.data}
+                        onActionPrompt={(prompt) => handleSend(prompt)}
+                      />
+                    )}
+
                     {/* WhatsApp Share Link Button */}
                     {m.shareableUrls?.whatsapp && (
                       <div className="mt-3 pt-2.5 border-t border-slate-700/80 flex items-center space-x-2">
@@ -1395,6 +1814,7 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
             <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center space-x-1.5 overflow-x-auto custom-scrollbar shrink-0">
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider shrink-0">Quick Actions:</span>
               {[
+                { label: '🎧 Talk to Human Support', text: '__ESCALATE_TO_HUMAN__' },
                 { label: '📐 BOQ Variance', text: 'Show BOQ budget and variance for Bakery' },
                 { label: '🔄 Change Orders', text: 'Show scope variations and change orders for Bakery' },
                 { label: '📦 Low Stock Alert', text: 'Check inventory and low stock materials' },
@@ -1411,7 +1831,11 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
                 <button
                   key={idx}
                   onClick={() => handleSend(qp.text)}
-                  className="text-[10px] whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition shrink-0"
+                  className={`text-[10px] whitespace-nowrap px-2.5 py-1 rounded-lg border transition shrink-0 ${
+                    qp.text === '__ESCALATE_TO_HUMAN__'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 hover:bg-rose-500/30 font-bold'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700/60'
+                  }`}
                 >
                   {qp.label}
                 </button>
@@ -1436,6 +1860,78 @@ export const AIChatbotModal: React.FC<AIChatbotModalProps> = ({ isOpen, onClose 
                 title="Send Prompt (Enter)"
               >
                 <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Human Support Escalation Modal Dialog */}
+      {showEscalationModal && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl animate-in zoom-in-95 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-rose-400">
+                <Headphones className="w-5 h-5" />
+                <h3 className="font-bold text-white text-sm">Escalate to Platform Human Support</h3>
+              </div>
+              <button
+                onClick={() => setShowEscalationModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              If the AI copilot could not resolve your query or you need personalized help, submit this ticket.
+              The Super Admin team will receive your inquiry along with the full chat transcript.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Issue Subject / Topic *</label>
+                <input
+                  type="text"
+                  value={escalationSubject}
+                  onChange={(e) => setEscalationSubject(e.target.value)}
+                  placeholder="e.g. Quotation tax computation question"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Additional Notes (Optional)</label>
+                <textarea
+                  rows={3}
+                  value={escalationDesc}
+                  onChange={(e) => setEscalationDesc(e.target.value)}
+                  placeholder="Describe any specifics or requested steps..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white resize-none"
+                />
+              </div>
+
+              <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Full chat history ({messages.length} messages) will be automatically attached.</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowEscalationModal(false)}
+                className="px-3.5 py-1.5 border border-slate-700 rounded-xl text-xs text-slate-300 hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleEscalateToHuman()}
+                disabled={isEscalating}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition"
+              >
+                {isEscalating ? 'Submitting Ticket...' : 'Confirm Escalation'}
               </button>
             </div>
           </div>

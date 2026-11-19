@@ -23,8 +23,10 @@ import {
   Sparkles,
   Filter,
   Search,
+  Share2,
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
+import { VendorPaymentShareModal } from '../components/VendorPaymentShareModal';
 
 export const Procurement: React.FC = () => {
   const { hasRole } = useAuth();
@@ -33,6 +35,7 @@ export const Procurement: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [grns, setGrns] = useState<GoodsReceiptNote[]>([]);
   const [invoices, setInvoices] = useState<SupplierInvoice[]>([]);
+  const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +47,11 @@ export const Procurement: React.FC = () => {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
+
+  // Vendor Payment Sharing State
+  const [sharingVendorPayment, setSharingVendorPayment] = useState<any | null>(null);
+  const [sharingSupplier, setSharingSupplier] = useState<any | null>(null);
+  const [sharingInvoice, setSharingInvoice] = useState<any | null>(null);
 
   // View, Edit, Delete PO state
   const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
@@ -142,13 +150,14 @@ export const Procurement: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [supRes, poRes, grnRes, invRes, matRes, whRes] = await Promise.all([
+      const [supRes, poRes, grnRes, invRes, matRes, whRes, pmtRes] = await Promise.all([
         api.getSuppliers(),
         api.getPurchaseOrders(selectedProjectId ? `projectId=${selectedProjectId}` : ''),
         api.getGRNs(),
         api.getSupplierInvoices(),
         api.getMaterials(),
         api.getWarehouses(),
+        api.getSupplierPayments(),
       ]);
 
       if (supRes.success) setSuppliers(supRes.suppliers || []);
@@ -157,6 +166,7 @@ export const Procurement: React.FC = () => {
       if (invRes.success) setInvoices(invRes.invoices || []);
       if (matRes.success) setMaterials(matRes.materials || []);
       if (whRes.success) setWarehouses(whRes.warehouses || []);
+      if (pmtRes?.success) setSupplierPayments(pmtRes.payments || []);
     } catch (err) {
       console.error('Failed to load procurement:', err);
     } finally {
@@ -368,6 +378,18 @@ export const Procurement: React.FC = () => {
       const res = await api.recordSupplierPayment(paymentForm);
       if (res.success) {
         setShowPaymentModal(false);
+        const currentSup = suppliers.find((s) => s.id === paymentForm.supplierId);
+        const currentInv = invoices.find((i) => i.id === paymentForm.invoiceId);
+        setSharingSupplier(currentSup || null);
+        setSharingInvoice(currentInv || null);
+        setSharingVendorPayment(
+          res.payment || {
+            ...paymentForm,
+            paymentNumber: `PMT-${new Date().getFullYear()}`,
+            amount: Number(paymentForm.amount),
+            paymentDate: paymentForm.paymentDate,
+          }
+        );
         fetchData();
       }
     } catch (err: any) {
@@ -873,6 +895,30 @@ export const Procurement: React.FC = () => {
                                   <Eye className="w-3.5 h-3.5 text-blue-600" />
                                   <span>View</span>
                                 </button>
+                                {Number(inv.paidAmount) > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      const pmt = (inv.payments && inv.payments.length > 0)
+                                        ? inv.payments[0]
+                                        : {
+                                            id: `pmt-${inv.id}`,
+                                            paymentNumber: `PMT-${inv.invoiceNumber}`,
+                                            paymentDate: inv.invoiceDate,
+                                            amount: inv.paidAmount,
+                                            paymentMethod: 'BANK_TRANSFER',
+                                            referenceNo: 'DIRECT-REMITTANCE',
+                                          };
+                                      setSharingSupplier(inv.supplier);
+                                      setSharingInvoice(inv);
+                                      setSharingVendorPayment(pmt);
+                                    }}
+                                    className="px-2.5 py-1 text-xs font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition inline-flex items-center space-x-1 shadow-xs"
+                                    title="Share Payment Advice / WhatsApp Voucher"
+                                  >
+                                    <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Advice</span>
+                                  </button>
+                                )}
                                 {inv.balanceDue > 0 ? (
                                   <button
                                     onClick={() => {
@@ -2360,141 +2406,192 @@ export const Procurement: React.FC = () => {
 
       {/* Pay Vendor Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Record Vendor Payment Voucher</h3>
-              <button onClick={() => setShowPaymentModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden my-auto">
+            {/* Fixed Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-3.5 flex items-center justify-between z-10 shrink-0">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full uppercase">
+                  Vendor Remittance
+                </span>
+                <h3 className="text-sm font-bold text-slate-900 mt-0.5">Record Vendor Payment Voucher</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleRecordPayment} className="mt-4 space-y-3">
-              <div>
-                <SearchableSelect
-                  label="Supplier *"
-                  required
-                  options={suppliers.map((s) => ({
-                    value: s.id,
-                    label: s.name,
-                    code: s.code || 'SUP',
-                    sublabel: `Payable: ${formatCurrency(s.currentBalance)}`,
-                  }))}
-                  value={paymentForm.supplierId}
-                  onChange={(newSupplierId) => {
-                    const suppUnpaidInvoices = invoices.filter(
-                      (inv) => inv.supplierId === newSupplierId && inv.balanceDue > 0
-                    );
-                    const defaultInv = suppUnpaidInvoices[0];
-                    setPaymentForm({
-                      ...paymentForm,
-                      supplierId: newSupplierId,
-                      invoiceId: defaultInv ? defaultInv.id : '',
-                      amount: defaultInv ? String(defaultInv.balanceDue) : '',
-                    });
-                  }}
-                  placeholder="Select Supplier"
-                  searchPlaceholder="Search supplier name or code..."
-                />
-              </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">Link to Unpaid Invoice</label>
-                  {paymentForm.supplierId && (
-                    <span className="text-[10px] text-amber-600 font-semibold">
-                      {invoices.filter((inv) => inv.supplierId === paymentForm.supplierId && inv.balanceDue > 0).length} Unpaid Bill(s) Available
-                    </span>
-                  )}
-                </div>
-                <SearchableSelect
-                  value={paymentForm.invoiceId}
-                  onChange={(invId) => {
-                    const selInv = invoices.find((inv) => inv.id === invId);
-                    setPaymentForm({
-                      ...paymentForm,
-                      invoiceId: invId,
-                      supplierId: selInv?.supplierId || paymentForm.supplierId,
-                      amount: selInv ? String(selInv.balanceDue) : paymentForm.amount,
-                    });
-                  }}
-                  options={[
-                    { value: '', label: 'Auto-Allocate (FIFO across open bills) or On Account' },
-                    ...invoices
-                      .filter(
-                        (inv) => (!paymentForm.supplierId || inv.supplierId === paymentForm.supplierId) && inv.balanceDue > 0
-                      )
-                      .map((inv) => ({
-                        value: inv.id,
-                        label: `Bal: ${formatCurrency(inv.balanceDue)} • Due ${formatDate(inv.dueDate)}`,
-                        code: inv.invoiceNumber,
-                      })),
-                  ]}
-                  placeholder="Auto-Allocate (FIFO across open bills) or On Account"
-                  searchPlaceholder="Search invoice number or date..."
-                />
-                {paymentForm.invoiceId && (
-                  <p className="text-[11px] text-emerald-600 font-semibold mt-1">
-                    ✓ Invoice selected. Paying this will settle the bill and update its status to PAID.
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleRecordPayment} className="flex flex-col flex-1 overflow-hidden">
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Payment Amount (₹) *</label>
-                  <input
-                    type="number"
+                  <SearchableSelect
+                    label="Supplier *"
                     required
-                    placeholder="e.g. 50000"
-                    value={paymentForm.amount}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    options={suppliers.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      code: s.code || 'SUP',
+                      sublabel: `Payable: ${formatCurrency(s.currentBalance)}`,
+                    }))}
+                    value={paymentForm.supplierId}
+                    onChange={(newSupplierId) => {
+                      const suppUnpaidInvoices = invoices.filter(
+                        (inv) => inv.supplierId === newSupplierId && inv.balanceDue > 0
+                      );
+                      const defaultInv = suppUnpaidInvoices[0];
+                      setPaymentForm({
+                        ...paymentForm,
+                        supplierId: newSupplierId,
+                        invoiceId: defaultInv ? defaultInv.id : '',
+                        amount: defaultInv ? String(defaultInv.balanceDue) : '',
+                      });
+                    }}
+                    placeholder="Select Supplier"
+                    searchPlaceholder="Search supplier name or code..."
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Method *</label>
-                  <select
-                    value={paymentForm.paymentMethod}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="BANK_TRANSFER">Bank Transfer (NEFT/RTGS)</option>
-                    <option value="UPI">UPI</option>
-                    <option value="CHEQUE">Cheque</option>
-                    <option value="CASH">Cash</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">Link to Unpaid Invoice</label>
+                    {paymentForm.supplierId && (
+                      <span className="text-[10px] text-amber-600 font-semibold">
+                        {invoices.filter((inv) => inv.supplierId === paymentForm.supplierId && inv.balanceDue > 0).length} Unpaid Bill(s) Available
+                      </span>
+                    )}
+                  </div>
+                  <SearchableSelect
+                    value={paymentForm.invoiceId}
+                    onChange={(invId) => {
+                      const selInv = invoices.find((inv) => inv.id === invId);
+                      setPaymentForm({
+                        ...paymentForm,
+                        invoiceId: invId,
+                        supplierId: selInv?.supplierId || paymentForm.supplierId,
+                        amount: selInv ? String(selInv.balanceDue) : paymentForm.amount,
+                      });
+                    }}
+                    options={[
+                      { value: '', label: 'Auto-Allocate (FIFO across open bills) or On Account' },
+                      ...invoices
+                        .filter(
+                          (inv) => (!paymentForm.supplierId || inv.supplierId === paymentForm.supplierId) && inv.balanceDue > 0
+                        )
+                        .map((inv) => ({
+                          value: inv.id,
+                          label: `Bal: ${formatCurrency(inv.balanceDue)} • Due ${formatDate(inv.dueDate)}`,
+                          code: inv.invoiceNumber,
+                        })),
+                    ]}
+                    placeholder="Auto-Allocate (FIFO across open bills) or On Account"
+                    searchPlaceholder="Search invoice number or date..."
+                  />
+                  {paymentForm.invoiceId && (
+                    <p className="text-[11px] text-emerald-600 font-semibold mt-1">
+                      ✓ Invoice selected. Paying this will settle the bill and update its status to PAID.
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Payment Amount (₹) *</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      placeholder="e.g. 50000"
+                      value={paymentForm.amount}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-emerald-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Payment Method *</label>
+                    <select
+                      value={paymentForm.paymentMethod}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg font-semibold"
+                    >
+                      <option value="BANK_TRANSFER">Bank Transfer (NEFT/RTGS)</option>
+                      <option value="UPI">UPI</option>
+                      <option value="CHEQUE">Cheque</option>
+                      <option value="CASH">Cash</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Bank Reference / UTR # / Cheque #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HDFCR52024101900124 or Cheque #004521"
+                    value={paymentForm.referenceNo}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, referenceNo: e.target.value.toUpperCase() })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Payment Purpose / What this payment is for *
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Advance payment for Steel bars, 2nd installment for Cement supply..."
+                    value={paymentForm.notes}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Bank Reference / UTR #</label>
-                <input
-                  type="text"
-                  placeholder="e.g. HDFCR52024101900124"
-                  value={paymentForm.referenceNo}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, referenceNo: e.target.value.toUpperCase() })}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono uppercase"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentModal(false)}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
-                >
-                  Disburse & Post
-                </button>
+              {/* Fixed Footer */}
+              <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-5 py-3 flex items-center justify-between z-10 shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Auto-generates remittance voucher
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentModal(false)}
+                    className="px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl font-semibold border border-slate-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition flex items-center space-x-1.5"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Disburse & Share</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* VENDOR PAYMENT SHARE & PDF VOUCHER MODAL */}
+      {sharingVendorPayment && (
+        <VendorPaymentShareModal
+          isOpen={!!sharingVendorPayment}
+          onClose={() => {
+            setSharingVendorPayment(null);
+            setSharingSupplier(null);
+            setSharingInvoice(null);
+          }}
+          payment={sharingVendorPayment}
+          supplier={sharingSupplier}
+          invoice={sharingInvoice}
+          allPayments={supplierPayments}
+        />
       )}
 
       {/* Add Supplier Modal */}

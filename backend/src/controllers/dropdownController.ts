@@ -307,6 +307,95 @@ export const createDropdownOption = async (req: Request, res: Response) => {
 };
 
 /**
+ * PUT /api/dropdowns/:id
+ * Update / rename an existing dropdown option (or create tenant override for system defaults)
+ */
+export const updateDropdownOption = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const tenantId = await resolveTenantId(req);
+    const { label, value, category } = req.body;
+
+    if (!label || !String(label).trim()) {
+      return sendError(res, {
+        message: 'Option label is required to update.',
+        entity: 'Dropdown',
+        statusCode: 400,
+      });
+    }
+
+    const cleanLabel = String(label).trim();
+
+    // Check if there is an existing option by id or tenantId + id
+    const existing = await prisma.dropdownOption.findFirst({
+      where: {
+        OR: [
+          { id },
+          { id, tenantId },
+          { value: id, tenantId },
+        ],
+      },
+    });
+
+    if (existing) {
+      const updated = await prisma.dropdownOption.update({
+        where: { id: existing.id },
+        data: {
+          label: cleanLabel,
+          ...(value ? { value: String(value).trim() } : {}),
+        },
+      });
+
+      return sendSuccess(res, {
+        message: `Option updated to "${cleanLabel}" successfully.`,
+        entity: 'Dropdown',
+        data: updated,
+      });
+    }
+
+    // If it was a system default (id starts with 'sys-' or matches a default value),
+    // create a custom override in the database for this tenant so it persists!
+    const cleanCategory = String(category || 'ServiceType').trim();
+    const cleanValue = (value ? String(value).trim() : id.replace(`sys-${cleanCategory}-`, '')).trim();
+
+    const createdOverride = await prisma.dropdownOption.upsert({
+      where: {
+        tenantId_category_value: {
+          tenantId,
+          category: cleanCategory,
+          value: cleanValue,
+        },
+      },
+      update: {
+        label: cleanLabel,
+        isActive: true,
+      },
+      create: {
+        tenantId,
+        category: cleanCategory,
+        label: cleanLabel,
+        value: cleanValue,
+        isCustom: true,
+        isActive: true,
+      },
+    });
+
+    return sendSuccess(res, {
+      message: `Option updated to "${cleanLabel}" successfully.`,
+      entity: 'Dropdown',
+      data: createdOverride,
+    });
+  } catch (error: any) {
+    return sendError(res, {
+      message: 'Failed to update dropdown option',
+      entity: 'Dropdown',
+      errors: [error.message],
+      statusCode: 500,
+    });
+  }
+};
+
+/**
  * DELETE /api/dropdowns/:id
  * Remove or deactivate a custom dropdown option
  */

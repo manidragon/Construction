@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Building2,
   Image as ImageIcon,
@@ -15,6 +15,8 @@ import {
   MapPin,
   FileCheck,
   Check,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import api from '../services/api';
 import { WhatsAppLog } from '../types';
@@ -23,7 +25,9 @@ export const CompanySettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'BRANDING' | 'WHATSAPP' | 'LOGS'>('BRANDING');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
   const [form, setForm] = useState({
@@ -35,7 +39,6 @@ export const CompanySettings: React.FC = () => {
     state: '',
     pincode: '',
     gstin: '',
-    pan: '',
     currencySymbol: '₹',
     logoUrl: '',
     businessAddress: '',
@@ -70,7 +73,6 @@ export const CompanySettings: React.FC = () => {
           state: s.state || '',
           pincode: s.pincode || '',
           gstin: s.gstin || '',
-          pan: s.pan || '',
           currencySymbol: s.currencySymbol || '₹',
           logoUrl: s.logoUrl || '',
           businessAddress: s.businessAddress || s.address || '',
@@ -129,6 +131,58 @@ export const CompanySettings: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate image format: PNG, JPEG/JPG, WebP, SVG
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (PNG, JPEG, WebP, or SVG).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size exceeds 5MB limit. Please select a smaller logo.');
+      return;
+    }
+
+    // 1. Instant Data URL preview so Client Invoice Live Preview updates immediately
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setForm((prev) => ({ ...prev, logoUrl: dataUrl }));
+    };
+    reader.readAsDataURL(file);
+
+    // 2. Upload file to server assets storage
+    try {
+      setLogoUploading(true);
+      const res = await api.uploadCompanyLogo(file);
+      if (res.success && res.logoUrl) {
+        setForm((prev) => ({ ...prev, logoUrl: res.logoUrl }));
+        const saved = localStorage.getItem('erp_user');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.company) {
+            parsed.company.logoUrl = res.logoUrl;
+            parsed.company.logo = res.logoUrl;
+            localStorage.setItem('erp_user', JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('Backend file upload fallback to Data URL preview:', err);
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setForm((prev) => ({ ...prev, logoUrl: '' }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleTestWhatsApp = async () => {
@@ -242,19 +296,83 @@ export const CompanySettings: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Company Logo URL (PNG/SVG/WebP)
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Company Brand Logo</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Supports PNG, JPEG, WebP (Max 5MB)</span>
               </label>
+
+              {form.logoUrl ? (
+                <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl">
+                  <div className="w-20 h-20 rounded-xl bg-white border border-slate-200 p-1.5 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                    <img
+                      src={form.logoUrl}
+                      alt="Company Logo Preview"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Logo Active & Embedded</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      Automatically synced across all Quotations, Tax Invoices, and Payment Receipts.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={logoUploading}
+                        className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-bold rounded-lg text-xs transition flex items-center gap-1"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{logoUploading ? 'Uploading...' : 'Replace Logo'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="px-3 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 font-semibold rounded-lg text-xs transition flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 rounded-2xl p-6 text-center cursor-pointer transition group"
+                >
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                    <Upload className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Click to browse or drag and drop your company logo
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    PNG, JPG, JPEG, or WebP up to 5MB (Transparent background recommended)
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-3 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition inline-flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Browse Logo File</span>
+                  </button>
+                </div>
+              )}
+
               <input
-                type="url"
-                placeholder="https://example.com/logo.png"
-                value={form.logoUrl}
-                onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 font-mono text-[11px]"
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                onChange={handleLogoFileChange}
+                className="hidden"
               />
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                This logo will appear on all exported PDF Quotations, Milestone Invoices, and WhatsApp summary headers.
-              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -295,29 +413,21 @@ export const CompanySettings: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">GSTIN</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  GSTIN (Optional)
+                </label>
                 <input
                   type="text"
                   value={form.gstin}
-                  onChange={(e) => setForm({ ...form, gstin: e.target.value })}
+                  onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
                   placeholder="29AABCU9603R1ZM"
                   className="w-full px-3 py-2 text-xs font-mono uppercase rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">PAN</label>
-                <input
-                  type="text"
-                  value={form.pan}
-                  onChange={(e) => setForm({ ...form, pan: e.target.value })}
-                  placeholder="AABCU9603R"
-                  className="w-full px-3 py-2 text-xs font-mono uppercase rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Currency</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Currency Symbol</label>
                 <input
                   type="text"
                   value={form.currencySymbol}

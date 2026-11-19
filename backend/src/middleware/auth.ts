@@ -126,11 +126,17 @@ export const checkTrialStatus = async (req: Request, res: Response, next: NextFu
     }
 
     if (company.status === 'SUSPENDED') {
-      return res.status(403).json({
-        success: false,
-        accountSuspended: true,
-        message: 'Your company account has been suspended by the platform administrator. Please contact support.',
-      });
+      const exemptPaths = ['/auth/me', '/company/current-status', '/support/tickets'];
+      const isExempt = exemptPaths.some((p) => req.path.includes(p) || req.path.endsWith(p));
+      if (!isExempt) {
+        return res.status(403).json({
+          success: false,
+          accountSuspended: true,
+          companyName: company.companyName || company.name,
+          suspendedReason: (company as any).suspendedReason || 'Account suspended by Platform Administration.',
+          message: 'Your company account has been suspended by the platform administrator. Please contact support.',
+        });
+      }
     }
 
     // Check trial expiration
@@ -147,8 +153,8 @@ export const checkTrialStatus = async (req: Request, res: Response, next: NextFu
       }
 
       // Check if it's an exempt path like checking tenant status or profile
-      const exemptPaths = ['/auth/me', '/company/status', '/company/upgrade'];
-      const isExempt = exemptPaths.some((p) => req.path.endsWith(p));
+      const exemptPaths = ['/auth/me', '/company/status', '/company/upgrade', '/company/current-status', '/company/onboarding', '/support/tickets'];
+      const isExempt = exemptPaths.some((p) => req.path.includes(p) || req.path.endsWith(p));
 
       if (!isExempt) {
         return res.status(403).json({

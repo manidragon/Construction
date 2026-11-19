@@ -16,7 +16,45 @@ export const getSuperAdminStats = async (req: Request, res: Response) => {
     const expiredTenants = await prisma.company.count({ where: { status: 'EXPIRED' } });
     const suspendedTenants = await prisma.company.count({ where: { status: 'SUSPENDED' } });
 
-    const totalUsers = await prisma.user.count();
+    // Paid active breakdown: Lifetime vs Monthly vs Yearly
+    const lifetimeCount = await prisma.company.count({
+      where: {
+        status: 'ACTIVE',
+        OR: [
+          { subscriptionModel: 'LIFETIME' },
+          { planType: { contains: 'LIFETIME' } },
+        ],
+      },
+    });
+    const monthlyCount = await prisma.company.count({
+      where: {
+        status: 'ACTIVE',
+        OR: [
+          { subscriptionModel: 'MONTHLY' },
+          { planType: { contains: 'MONTHLY' } },
+        ],
+      },
+    });
+    const yearlyCount = await prisma.company.count({
+      where: {
+        status: 'ACTIVE',
+        OR: [
+          { subscriptionModel: 'YEARLY' },
+          { planType: { contains: 'YEARLY' } },
+          { planType: 'ENTERPRISE' },
+          { planType: 'PRO' },
+        ],
+      },
+    });
+
+    // Usage metrics: staff accounts & active device sessions
+    const totalStaffAccounts = await prisma.user.count({
+      where: { role: { not: 'SUPER_ADMIN' } },
+    });
+    const totalActiveDevices = await (prisma as any).activeDeviceSession?.count({
+      where: { isActive: true },
+    }).catch(() => 0) || Math.max(totalStaffAccounts, 1);
+
     const totalProjects = await prisma.project.count();
     const totalLeads = await prisma.lead.count();
     const totalInvoices = await prisma.clientInvoice.count();
@@ -28,8 +66,21 @@ export const getSuperAdminStats = async (req: Request, res: Response) => {
       },
     });
 
+    // SaaS Financial Ledger Inflows
+    const saasSums = await (prisma as any).saasTransaction?.aggregate({
+      where: { status: 'PAID' },
+      _sum: { amount: true },
+    }).catch(() => null);
+
+    const totalSaaSInflows = saasSums?._sum?.amount || 0;
     const totalSaaSBilling = invoiceSums._sum.netInvoiceAmount || 0;
     const totalSaaSCollections = invoiceSums._sum.paidAmount || 0;
+
+    // Support tickets
+    const openTicketsCount = await (prisma as any).supportTicket?.count({
+      where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+    }).catch(() => 0) || 0;
+    const totalTicketsCount = await (prisma as any).supportTicket?.count().catch(() => 0) || 0;
 
     return res.json({
       success: true,
@@ -39,12 +90,20 @@ export const getSuperAdminStats = async (req: Request, res: Response) => {
         trialTenants,
         expiredTenants,
         suspendedTenants,
-        totalUsers,
+        lifetimeCount,
+        monthlyCount,
+        yearlyCount,
+        totalStaffAccounts,
+        totalActiveDevices,
+        totalUsers: totalStaffAccounts,
         totalProjects,
         totalLeads,
         totalInvoices,
         totalSaaSBilling,
         totalSaaSCollections,
+        totalSaaSInflows,
+        openTicketsCount,
+        totalTicketsCount,
       },
     });
   } catch (error: any) {
@@ -88,7 +147,14 @@ export const getAllTenants = async (req: Request, res: Response) => {
             quotations: true,
             invoices: true,
             whatsappLogs: true,
+            supportTickets: true,
+            saasTransactions: true,
+            deviceSessions: true,
           },
+        },
+        saasTransactions: {
+          where: { status: 'PAID' },
+          select: { amount: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -103,6 +169,8 @@ export const getAllTenants = async (req: Request, res: Response) => {
         daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
       }
 
+      const totalPaidToDate = (c.saasTransactions || []).reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
+
       return {
         id: c.id,
         name: c.companyName || c.name,
@@ -115,10 +183,19 @@ export const getAllTenants = async (req: Request, res: Response) => {
         phone: c.phone,
         status: c.status,
         planType: c.planType,
+        subscriptionModel: c.subscriptionModel || (c.status === 'ACTIVE' ? 'LIFETIME' : 'TRIAL'),
+        onboardingCompleted: Boolean(c.onboardingCompleted),
+        suspendedReason: c.suspendedReason,
+        activeDevicesCount: c._count.deviceSessions > 0 ? c._count.deviceSessions : (c.activeDevicesCount || 1),
+        staffAccountsCount: c._count.users,
+        supportTicketsCount: c._count.supportTickets,
+        saasTransactionsCount: c._count.saasTransactions,
+        totalPaidToDate,
         trialStartDate: c.trialStartDate,
         trialEndDate: c.trialEndDate,
         daysRemaining,
         isTrialExpired: c.status === 'EXPIRED' || (c.status === 'TRIAL' && daysRemaining === 0),
+        isSuspended: c.status === 'SUSPENDED',
         whatsappConfigured: !!(c.whatsappApiKey || c.whatsappPhoneNumberId),
         useSharedGateway: c.useSharedGateway,
         logoUrl: c.logoUrl,
@@ -369,7 +446,7 @@ export const extendTrial = async (req: Request, res: Response) => {
 export const updateTenantStatus = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const { status, planType } = req.body;
+    const { status, planType, suspendedReason, subscriptionModel } = req.body;
 
     const validStatuses = ['ACTIVE', 'TRIAL', 'EXPIRED', 'SUSPENDED'];
     if (!validStatuses.includes(status)) {
@@ -389,12 +466,17 @@ export const updateTenantStatus = async (req: Request, res: Response) => {
       data: {
         status,
         ...(planType && { planType }),
+        ...(subscriptionModel && { subscriptionModel }),
+        suspendedReason: status === 'SUSPENDED'
+          ? (suspendedReason || 'Account paused/suspended by Platform Administrator.')
+          : null,
       },
     });
 
     await logAudit(req.user?.id, 'UPDATE_TENANT_STATUS', 'COMPANY', company.id, {
       oldStatus: company.status,
       newStatus: status,
+      suspendedReason: updated.suspendedReason,
     }, req.ip);
 
     return res.json({
@@ -427,11 +509,23 @@ export const getTenantCurrentStatus = async (req: Request, res: Response) => {
         code: true,
         status: true,
         planType: true,
+        subscriptionModel: true,
+        onboardingCompleted: true,
+        suspendedReason: true,
         trialStartDate: true,
         trialEndDate: true,
         ownerEmail: true,
         logoUrl: true,
         businessAddress: true,
+        address: true,
+        city: true,
+        state: true,
+        pincode: true,
+        phone: true,
+        email: true,
+        gstin: true,
+        pan: true,
+        currencySymbol: true,
       },
     });
 
@@ -446,6 +540,7 @@ export const getTenantCurrentStatus = async (req: Request, res: Response) => {
       daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
     }
 
+    const isSuspended = company.status === 'SUSPENDED';
     const isTrialExpired = company.status === 'EXPIRED' ||
       (company.status === 'TRIAL' && company.trialEndDate && new Date(company.trialEndDate) < now);
 
@@ -455,6 +550,7 @@ export const getTenantCurrentStatus = async (req: Request, res: Response) => {
         ...company,
         daysRemaining,
         isTrialExpired,
+        isSuspended,
       },
     });
   } catch (error: any) {
@@ -645,6 +741,399 @@ export const resetDemoTenantData = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error resetting demo tenant data:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// -------------------------------------------------------------
+// SaaS Financial Ledger & Inflows
+// -------------------------------------------------------------
+
+/**
+ * GET /api/superadmin/saas-transactions
+ * List all financial inflows, one-time lifetime purchases & subscription renewals
+ */
+export const getSaaSTransactions = async (req: Request, res: Response) => {
+  try {
+    const { companyId, planType, status } = req.query;
+    const where: any = {};
+    if (companyId && typeof companyId === 'string') where.companyId = companyId;
+    if (planType && typeof planType === 'string') where.planType = planType;
+    if (status && typeof status === 'string') where.status = status;
+
+    const transactions = await (prisma as any).saasTransaction.findMany({
+      where,
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            companyName: true,
+            code: true,
+            status: true,
+            ownerEmail: true,
+            phone: true,
+            subscriptionModel: true,
+          },
+        },
+      },
+      orderBy: { transactionDate: 'desc' },
+    });
+
+    return res.json({ success: true, transactions, total: transactions.length });
+  } catch (error: any) {
+    console.error('Error fetching SaaS transactions:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/superadmin/saas-transactions
+ * Record new financial inflow, lifetime fee, subscription renewal, or plan upgrade
+ */
+export const recordSaaSTransaction = async (req: Request, res: Response) => {
+  try {
+    const {
+      companyId,
+      planType = 'MONTHLY_SUBSCRIPTION',
+      billingCycle = 'MONTHLY',
+      amount,
+      paymentMode = 'BANK_RTGS_NEFT',
+      paymentRef,
+      invoiceNumber,
+      notes,
+      periodStartDate,
+      periodEndDate,
+    } = req.body;
+
+    if (!companyId || !amount) {
+      return res.status(400).json({ success: false, message: 'Company and transaction amount are required.' });
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Tenant company not found.' });
+    }
+
+    const invNo = invoiceNumber || `INV-SAAS-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const transaction = await (prisma as any).saasTransaction.create({
+      data: {
+        companyId,
+        invoiceNumber: invNo,
+        transactionDate: new Date(),
+        planType,
+        billingCycle,
+        amount: Number(amount),
+        currency: 'INR',
+        paymentMode,
+        paymentRef: paymentRef || null,
+        status: 'PAID',
+        periodStartDate: periodStartDate ? new Date(periodStartDate) : new Date(),
+        periodEndDate: periodEndDate ? new Date(periodEndDate) : (
+          billingCycle === 'ONE_TIME' || planType.includes('LIFETIME')
+            ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000)
+            : billingCycle === 'YEARLY'
+              ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        ),
+        notes: notes || `SaaS subscription inflow for ${company.name}`,
+      },
+    });
+
+    let subModel = 'MONTHLY';
+    if (billingCycle === 'ONE_TIME' || planType.includes('LIFETIME')) subModel = 'LIFETIME';
+    else if (billingCycle === 'YEARLY' || planType.includes('YEARLY')) subModel = 'YEARLY';
+
+    await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        status: 'ACTIVE',
+        subscriptionModel: subModel,
+        planType,
+        suspendedReason: null,
+      },
+    });
+
+    await logAudit(req.user?.id, 'RECORD_SAAS_TRANSACTION', 'COMPANY', companyId, {
+      amount,
+      planType,
+      invoiceNumber: invNo,
+      paymentMode,
+    }, req.ip);
+
+    return res.status(201).json({
+      success: true,
+      message: `SaaS payment of ₹${Number(amount).toLocaleString('en-IN')} successfully recorded for "${company.name}". Account is ACTIVE!`,
+      transaction,
+    });
+  } catch (error: any) {
+    console.error('Error recording SaaS transaction:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// -------------------------------------------------------------
+// Support & Chat Archive Inbox
+// -------------------------------------------------------------
+
+/**
+ * GET /api/support/tickets
+ * Retrieve support tickets & chat archives (Super Admin gets all, tenant gets own)
+ */
+export const getSupportTickets = async (req: Request, res: Response) => {
+  try {
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const where: any = {};
+
+    if (!isSuperAdmin) {
+      where.companyId = req.user?.companyId;
+    } else {
+      if (req.query.companyId) where.companyId = req.query.companyId as string;
+    }
+
+    if (req.query.status && req.query.status !== 'ALL') where.status = req.query.status as string;
+
+    const tickets = await (prisma as any).supportTicket.findMany({
+      where,
+      include: {
+        company: {
+          select: { id: true, name: true, companyName: true, code: true, phone: true, ownerEmail: true },
+        },
+        user: {
+          select: { id: true, name: true, email: true, role: true, phone: true },
+        },
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json({ success: true, tickets, total: tickets.length });
+  } catch (error: any) {
+    console.error('Error fetching support tickets:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/support/tickets
+ * Create a new support ticket or escalate an in-app AI chat conversation to human support
+ */
+export const createSupportTicket = async (req: Request, res: Response) => {
+  try {
+    const callerCompanyId = req.user?.companyId || req.body.companyId;
+    const userId = req.user?.id;
+    const {
+      subject,
+      category = 'FEATURE_GUIDANCE',
+      priority = 'MEDIUM',
+      message,
+      escalatedFromChat = false,
+      chatTranscript,
+      userEmail,
+      userPhone,
+      userName,
+    } = req.body;
+
+    if (!callerCompanyId) {
+      return res.status(400).json({ success: false, message: 'Company tenant identifier is required.' });
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: callerCompanyId } });
+    const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null;
+
+    const ticketCount = await (prisma as any).supportTicket.count();
+    const ticketNumber = `TKT-${new Date().getFullYear()}-${String(ticketCount + 1).padStart(4, '0')}`;
+
+    const finalSubject = subject || (escalatedFromChat ? 'AI Copilot Escalation: User Requested Human Support' : 'Support Request');
+
+    const ticket = await (prisma as any).supportTicket.create({
+      data: {
+        ticketNumber,
+        companyId: callerCompanyId,
+        userId: userId || null,
+        userName: userName || user?.name || company?.name || 'Client User',
+        userEmail: userEmail || user?.email || company?.ownerEmail || 'support@client.com',
+        userPhone: userPhone || user?.phone || company?.phone,
+        subject: finalSubject,
+        category,
+        priority,
+        status: 'OPEN',
+        escalatedFromChat: Boolean(escalatedFromChat),
+        chatTranscript: typeof chatTranscript === 'string' ? chatTranscript : (chatTranscript ? JSON.stringify(chatTranscript) : null),
+        messages: {
+          create: {
+            senderType: escalatedFromChat ? 'AI_BOT' : 'USER',
+            senderName: userName || user?.name || 'Client User',
+            message: message || (escalatedFromChat ? `In-app chat conversation escalated to Human Support. Question/Issue: ${finalSubject}` : finalSubject),
+          },
+        },
+      },
+      include: {
+        company: true,
+        messages: true,
+      },
+    });
+
+    await logAudit(userId, 'CREATE_SUPPORT_TICKET', 'SUPPORT_TICKET', ticket.id, {
+      ticketNumber,
+      subject: finalSubject,
+      escalatedFromChat,
+    }, req.ip);
+
+    return res.status(201).json({
+      success: true,
+      message: `Support ticket ${ticketNumber} raised successfully! Transferred to Super Admin Support Inbox.`,
+      ticket,
+    });
+  } catch (error: any) {
+    console.error('Error creating support ticket:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/support/tickets/:id/messages
+ * Reply to a support ticket
+ */
+export const replySupportTicket = async (req: Request, res: Response) => {
+  try {
+    const ticketId = String(req.params.id);
+    const { message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ success: false, message: 'Message content is required.' });
+    }
+
+    const ticket = await (prisma as any).supportTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    }
+
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const senderName = isSuperAdmin ? 'Platform Support Team' : (req.user?.name || 'Client User');
+
+    const createdMsg = await (prisma as any).supportTicketMessage.create({
+      data: {
+        ticketId,
+        senderType: isSuperAdmin ? 'SUPER_ADMIN' : 'USER',
+        senderName,
+        message,
+      },
+    });
+
+    if (isSuperAdmin && ticket.status === 'OPEN') {
+      await (prisma as any).supportTicket.update({
+        where: { id: ticketId },
+        data: { status: 'IN_PROGRESS' },
+      });
+    }
+
+    return res.json({ success: true, message: 'Reply sent successfully.', ticketMessage: createdMsg });
+  } catch (error: any) {
+    console.error('Error replying to support ticket:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * PATCH /api/support/tickets/:id/status
+ * Resolve, close, or re-open a support ticket
+ */
+export const updateSupportTicketStatus = async (req: Request, res: Response) => {
+  try {
+    const ticketId = String(req.params.id);
+    const { status, resolutionNotes } = req.body;
+
+    const ticket = await (prisma as any).supportTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    }
+
+    const updated = await (prisma as any).supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        status,
+        ...(resolutionNotes && { resolutionNotes }),
+        ...(status === 'RESOLVED' || status === 'CLOSED' ? { resolvedAt: new Date() } : {}),
+      },
+    });
+
+    return res.json({ success: true, message: `Ticket status updated to ${status}.`, ticket: updated });
+  } catch (error: any) {
+    console.error('Error updating ticket status:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// -------------------------------------------------------------
+// Client Onboarding & Dynamic Company Branding
+// -------------------------------------------------------------
+
+/**
+ * POST /api/company/onboarding
+ * Mandatory Initial Company Profile Setup Wizard completion
+ */
+export const completeCompanyOnboarding = async (req: Request, res: Response) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    const {
+      companyName,
+      name,
+      logoUrl,
+      address,
+      businessAddress,
+      city,
+      state,
+      pincode,
+      phone,
+      email,
+      gstin,
+      invoiceFooterNotes,
+    } = req.body;
+
+    const finalName = companyName || name;
+    if (!finalName) {
+      return res.status(400).json({ success: false, message: 'Company Name is required.' });
+    }
+
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        name: finalName.trim(),
+        companyName: finalName.trim(),
+        ...(logoUrl !== undefined && { logoUrl }),
+        ...(address && { address }),
+        ...(businessAddress && { businessAddress }),
+        ...(city && { city }),
+        ...(state && { state }),
+        ...(pincode && { pincode }),
+        ...(phone && { phone }),
+        ...(email && { email }),
+        ...(gstin !== undefined && { gstin }),
+        ...(invoiceFooterNotes !== undefined && { invoiceFooterNotes }),
+        onboardingCompleted: true,
+      },
+    });
+
+    await logAudit(req.user?.id, 'COMPLETE_ONBOARDING', 'COMPANY', companyId, {
+      companyName: updated.name,
+      gstin: updated.gstin,
+    }, req.ip);
+
+    return res.json({
+      success: true,
+      message: `Company profile for "${updated.name}" successfully configured and branding activated across all tenant documents!`,
+      company: updated,
+    });
+  } catch (error: any) {
+    console.error('Error completing onboarding:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

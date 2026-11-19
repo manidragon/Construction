@@ -46,7 +46,6 @@ export const getCompanySettings = async (req: Request, res: Response) => {
         state: company.state,
         pincode: company.pincode,
         gstin: company.gstin,
-        pan: company.pan,
         currencySymbol: company.currencySymbol,
         status: company.status,
         planType: company.planType,
@@ -90,7 +89,6 @@ export const updateCompanySettings = async (req: Request, res: Response) => {
       state,
       pincode,
       gstin,
-      pan,
       currencySymbol,
       // Branding
       logoUrl,
@@ -120,7 +118,6 @@ export const updateCompanySettings = async (req: Request, res: Response) => {
     if (state !== undefined) updateData.state = state;
     if (pincode !== undefined) updateData.pincode = pincode;
     if (gstin !== undefined) updateData.gstin = gstin;
-    if (pan !== undefined) updateData.pan = pan;
     if (currencySymbol !== undefined) updateData.currencySymbol = currencySymbol;
 
     // PDF Invoice & Branding
@@ -254,3 +251,46 @@ export const getWhatsAppLogs = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * POST /api/company/upload-logo
+ * Upload company logo image (PNG, JPEG, WebP) directly to server storage
+ */
+export const uploadCompanyLogo = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file uploaded.' });
+    }
+
+    const relativePath = `/uploads/${req.file.filename}`;
+
+    const updated = await prisma.company.update({
+      where: { id: req.user.companyId },
+      data: { logoUrl: relativePath },
+    });
+
+    await logAudit(
+      req.user.id,
+      'UPLOAD_LOGO',
+      'COMPANY',
+      req.user.companyId,
+      { filename: req.file.filename, logoUrl: relativePath },
+      req.ip
+    );
+
+    return res.json({
+      success: true,
+      message: 'Company logo uploaded successfully!',
+      logoUrl: relativePath,
+      company: updated,
+    });
+  } catch (error: any) {
+    console.error('Error uploading company logo:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
