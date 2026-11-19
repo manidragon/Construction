@@ -140,17 +140,27 @@ export const SuperAdmin: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, tenantsRes, txRes, ticketsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         api.getSuperAdminStats(),
         api.getAllTenants(),
         api.getSaaSTransactions(),
         api.getSupportTickets(),
       ]);
 
-      if (statsRes.success) setStats(statsRes.stats);
-      if (tenantsRes.success) setTenants(tenantsRes.tenants);
-      if (txRes.success) setSaaSTransactions(txRes.transactions || []);
-      if (ticketsRes.success) setSupportTickets(ticketsRes.tickets || []);
+      const [statsResult, tenantsResult, txResult, ticketsResult] = results;
+
+      if (statsResult.status === 'fulfilled' && statsResult.value?.success) {
+        setStats(statsResult.value.stats);
+      }
+      if (tenantsResult.status === 'fulfilled' && tenantsResult.value?.success) {
+        setTenants(tenantsResult.value.tenants || []);
+      }
+      if (txResult.status === 'fulfilled' && txResult.value?.success) {
+        setSaaSTransactions(txResult.value.transactions || []);
+      }
+      if (ticketsResult.status === 'fulfilled' && ticketsResult.value?.success) {
+        setSupportTickets(ticketsResult.value.tickets || []);
+      }
     } catch (err) {
       console.error('Failed to load Super Admin data:', err);
     } finally {
