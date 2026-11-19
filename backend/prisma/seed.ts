@@ -107,7 +107,25 @@ async function main() {
     });
     userMap[u.role] = user;
   }
-  console.log(`✓ 8 Users seeded with role-based access profiles`);
+
+  // Seed Platform Super Admin
+  const superAdminHash = await bcrypt.hash('SuperAdmin@123', 10);
+  await prisma.user.upsert({
+    where: { email: 'superadmin@nearlook.com' },
+    update: { role: 'SUPER_ADMIN', isActive: true },
+    create: {
+      companyId: company.id,
+      name: 'Nearlook Platform Admin',
+      email: 'superadmin@nearlook.com',
+      passwordHash: superAdminHash,
+      role: 'SUPER_ADMIN',
+      designation: 'Platform Super Administrator',
+      phone: '+91 98450 00000',
+      isActive: true,
+    },
+  });
+
+  console.log(`✓ 8 Users + Super Admin seeded with role-based access profiles`);
 
   // 3. Chart of Accounts
   const coaAccounts = [
