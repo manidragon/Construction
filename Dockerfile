@@ -9,9 +9,10 @@ ENV NODE_ENV=development
 # Install required system libraries for Prisma engine on Alpine
 RUN apk add --no-cache openssl libc6-compat
 
-# Copy package definitions
+# Copy package definitions & Prisma schema (needed by backend postinstall)
 COPY package.json ./
 COPY backend/package*.json ./backend/
+COPY backend/prisma/schema.prisma ./backend/prisma/schema.prisma
 COPY frontend/package*.json ./frontend/
 
 # Force install of all dependencies including devDependencies
@@ -42,13 +43,13 @@ ENV PORT=6000
 ENV DATABASE_URL="file:/app/data/prod.db"
 ENV UPLOAD_DIR="/app/data/uploads"
 
-# Install production dependencies for backend
+# Install production dependencies for backend (copy prisma schema first for postinstall)
 COPY backend/package*.json ./backend/
+COPY --from=builder /app/backend/prisma ./backend/prisma
 RUN npm --prefix backend install --omit=dev
 
 # Copy compiled backend, prisma artifacts, and frontend build
 COPY --from=builder /app/backend/dist ./backend/dist
-COPY --from=builder /app/backend/prisma ./backend/prisma
 COPY --from=builder /app/backend/node_modules/.prisma ./backend/node_modules/.prisma
 COPY --from=builder /app/backend/node_modules/@prisma ./backend/node_modules/@prisma
 COPY --from=builder /app/frontend/dist ./frontend/dist
