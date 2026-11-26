@@ -91,9 +91,11 @@ export const SuperAdmin: React.FC = () => {
     state: 'Karnataka',
     address: 'Prestige Trade Tower, High Grounds',
     gstin: '',
+    realEstateEnabled: false,
   });
   const [submittingRegister, setSubmittingRegister] = useState(false);
   const [registerSuccessData, setRegisterSuccessData] = useState<any | null>(null);
+  const [togglingRealEstateId, setTogglingRealEstateId] = useState<string | null>(null);
 
   // Extend Trial Modal state
   const [extendModalTenant, setExtendModalTenant] = useState<Tenant | null>(null);
@@ -275,6 +277,27 @@ export const SuperAdmin: React.FC = () => {
     }
   };
 
+  const handleToggleRealEstate = async (tenant: Tenant) => {
+    const nextValue = !tenant.realEstateEnabled;
+    try {
+      setTogglingRealEstateId(tenant.id);
+      const res = await api.updateTenantFeatures(tenant.id, { realEstateEnabled: nextValue });
+      if (res.success) {
+        setTenants((prev) =>
+          prev.map((item) =>
+            item.id === tenant.id ? { ...item, realEstateEnabled: nextValue } : item
+          )
+        );
+      } else {
+        alert(res.message || 'Failed to update Real Estate CRM access.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating Real Estate CRM access.');
+    } finally {
+      setTogglingRealEstateId(null);
+    }
+  };
+
   const handleResetDemoSubmit = async () => {
     if (!resetDemoModalTenant) return;
     try {
@@ -396,13 +419,17 @@ export const SuperAdmin: React.FC = () => {
       matchesFilter = (t.status === 'EXPIRED' || (t.status === 'TRIAL' && t.isTrialExpired)) && !isSusp;
     } else if (filterStatus === 'SUSPENDED') {
       matchesFilter = isSusp;
+    } else if (filterStatus === 'REAL_ESTATE') {
+      matchesFilter = Boolean(t.realEstateEnabled);
     }
 
+    const q = searchTerm.toLowerCase();
     const matchesSearch =
-      t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.ownerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.phone.toLowerCase().includes(searchTerm.toLowerCase());
+      t.companyName.toLowerCase().includes(q) ||
+      (t.ownerName || '').toLowerCase().includes(q) ||
+      t.code.toLowerCase().includes(q) ||
+      t.ownerEmail.toLowerCase().includes(q) ||
+      t.phone.toLowerCase().includes(q);
 
     return matchesFilter && matchesSearch;
   });
@@ -665,6 +692,7 @@ export const SuperAdmin: React.FC = () => {
                 { label: 'SUBSCRIPTIONS', value: 'SUBSCRIPTION' },
                 { label: 'EXPIRED', value: 'EXPIRED' },
                 { label: 'SUSPENDED', value: 'SUSPENDED' },
+                { label: 'REAL ESTATE CRM', value: 'REAL_ESTATE' },
               ].map((f) => (
                 <button
                   key={f.value}
@@ -684,7 +712,7 @@ export const SuperAdmin: React.FC = () => {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search company, code, email, phone..."
+                placeholder="Search company, owner name, code, email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 text-xs rounded-xl border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -703,6 +731,7 @@ export const SuperAdmin: React.FC = () => {
                     <th className="py-3 px-4">Subscription Model</th>
                     <th className="py-3 px-4">Status & Countdown</th>
                     <th className="py-3 px-4 text-center">Staff & Devices</th>
+                    <th className="py-3 px-4 text-center">Real Estate CRM</th>
                     <th className="py-3 px-4 text-center">Total Paid</th>
                     <th className="py-3 px-4 text-right">Account Controls</th>
                   </tr>
@@ -710,7 +739,7 @@ export const SuperAdmin: React.FC = () => {
                 <tbody className="divide-y divide-slate-800 font-medium">
                   {filteredTenants.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-10 text-slate-500">
+                      <td colSpan={8} className="text-center py-10 text-slate-500">
                         No client companies match the selected filter.
                       </td>
                     </tr>
@@ -726,6 +755,11 @@ export const SuperAdmin: React.FC = () => {
                         >
                           <td className="py-3 px-4">
                             <div className="font-bold text-white text-sm">{t.companyName}</div>
+                            {t.ownerName && (
+                              <div className="text-[11px] text-emerald-300 font-semibold mt-0.5">
+                                Owner: {t.ownerName}
+                              </div>
+                            )}
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="font-mono text-indigo-400 font-semibold">{t.code}</span>
                               <span className="text-slate-500">•</span>
@@ -875,6 +909,44 @@ export const SuperAdmin: React.FC = () => {
                                 {(t as any).activeDevicesCount ?? 1}
                               </span>
                             </div>
+                          </td>
+
+                          {/* Real Estate CRM Module Access Toggle */}
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              type="button"
+                              disabled={togglingRealEstateId === t.id}
+                              onClick={() => handleToggleRealEstate(t)}
+                              title={
+                                t.realEstateEnabled
+                                  ? 'Click to disable Real Estate CRM for this tenant'
+                                  : 'Click to enable Real Estate CRM for this tenant'
+                              }
+                              className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition disabled:opacity-50 ${
+                                t.realEstateEnabled
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                                  : 'bg-slate-950 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-slate-200'
+                              }`}
+                            >
+                              <span
+                                className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+                                  t.realEstateEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                                    t.realEstateEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                                  }`}
+                                />
+                              </span>
+                              <span>
+                                {togglingRealEstateId === t.id
+                                  ? 'Saving...'
+                                  : t.realEstateEnabled
+                                  ? 'Enabled'
+                                  : 'Disabled'}
+                              </span>
+                            </button>
                           </td>
 
                           {/* Total Paid */}
@@ -1799,6 +1871,21 @@ export const SuperAdmin: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-emerald-500/40 transition">
+                <div>
+                  <span className="text-slate-200 font-bold block">Enable Real Estate CRM (Land & Plots)</span>
+                  <span className="text-[10px] text-slate-400">
+                    Allows this tenant to manage plotted land layouts, plot availability, and bookings.
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={registerForm.realEstateEnabled}
+                  onChange={(e) => setRegisterForm({ ...registerForm, realEstateEnabled: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500"
+                />
+              </label>
 
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
                 <button

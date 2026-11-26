@@ -83,6 +83,24 @@ export const DynamicSelect: React.FC<DynamicSelectProps> = ({
 
   useEffect(() => {
     loadOptions();
+
+    const handleOptionsChanged = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const changedCat = customEvent.detail?.category;
+      if (
+        !changedCat ||
+        changedCat === category ||
+        ((category === 'ServiceType' || category === 'ProjectType') &&
+          (changedCat === 'ServiceType' || changedCat === 'ProjectType'))
+      ) {
+        loadOptions();
+      }
+    };
+
+    window.addEventListener('dropdown_options_changed', handleOptionsChanged);
+    return () => {
+      window.removeEventListener('dropdown_options_changed', handleOptionsChanged);
+    };
   }, [category]);
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -145,6 +163,10 @@ export const DynamicSelect: React.FC<DynamicSelectProps> = ({
         setNewValueCode('');
         setSuccessMsg(`"${createdItem.label}" added and selected!`);
 
+        window.dispatchEvent(
+          new CustomEvent('dropdown_options_changed', { detail: { category } })
+        );
+
         setTimeout(() => {
           setShowModal(false);
           setSuccessMsg(null);
@@ -205,6 +227,10 @@ export const DynamicSelect: React.FC<DynamicSelectProps> = ({
         setEditingLabel('');
         setSuccessMsg(`Updated option to "${editingLabel.trim()}"`);
         setTimeout(() => setSuccessMsg(null), 2000);
+
+        window.dispatchEvent(
+          new CustomEvent('dropdown_options_changed', { detail: { category } })
+        );
       } else {
         setErrorMsg(res.message || 'Failed to update option');
       }
@@ -231,6 +257,9 @@ export const DynamicSelect: React.FC<DynamicSelectProps> = ({
         if (value === opt.value) {
           onChange('');
         }
+        window.dispatchEvent(
+          new CustomEvent('dropdown_options_changed', { detail: { category } })
+        );
       }
     } catch (err: any) {
       alert(err.message || 'Failed to delete option');
@@ -238,7 +267,7 @@ export const DynamicSelect: React.FC<DynamicSelectProps> = ({
   };
 
   const categoryTitle =
-    category === 'ServiceType'
+    category === 'ServiceType' || category === 'ProjectType'
       ? 'Project Types'
       : category === 'LeadSource'
       ? 'Lead Sources'

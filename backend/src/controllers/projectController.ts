@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit, getTenantFilter } from '../middleware/auth';
+import { logAudit, getTenantFilter, isRealEstateEnabledForUser } from '../middleware/auth';
 import { moveToRecycleBin } from './recycleBinController';
 import { getNextReceiptNumber } from './billingController';
 
@@ -64,6 +64,7 @@ export const getProjects = async (req: Request, res: Response) => {
             dailyReports: true,
             clientInvoices: true,
             expenses: true,
+            plots: true,
           },
         },
       },
@@ -84,17 +85,22 @@ export const getProjects = async (req: Request, res: Response) => {
       const expensesCost = (p.expenses || []).reduce((sum: number, e: any) => sum + (e.totalAmount || 0), 0);
       const materialsCost = (p.purchaseOrders || []).reduce((sum: number, po: any) => sum + (po.totalAmount || 0), 0);
       const labourCost = (p.labourAttendances || []).reduce((sum: number, att: any) => sum + (att.totalWageEarned || 0), 0);
-      const actualCost = expensesCost + materialsCost + labourCost;
+
+      const taxRate = p.taxRatePercent !== undefined && p.taxRatePercent !== null ? Number(p.taxRatePercent) : (p.projectType === 'REAL_ESTATE' ? 0 : 18.0);
+      const computedGstMode = (taxRate === 0) ? 'NO_GST' : (p.gstMode || (p.gstAmount > 0 ? 'EXCLUSIVE' : 'EXCLUSIVE'));
+      const computedGstAmount = (computedGstMode === 'NO_GST' || taxRate === 0)
+        ? 0
+        : (p.gstAmount > 0 ? p.gstAmount : (p.contractValue > p.approvedBudget ? (p.contractValue - p.approvedBudget) : Math.round((p.approvedBudget * taxRate) / 100)));
+
+      // When GST > 0, include tax liability in overall project expenses. If No GST / 0%, tax is 0.
+      const taxExpense = (computedGstMode === 'NO_GST' || taxRate === 0) ? 0 : computedGstAmount;
+      const actualCost = expensesCost + materialsCost + labourCost + taxExpense;
       const balanceCash = totalReceived - actualCost;
       const remainingContract = Math.max(0, p.contractValue - actualCost);
       const remainingBudget = Math.max(0, p.approvedBudget - actualCost);
       // Realised net profit is calculated from approved budget (net scope excl. GST) minus overall actual expenses
       const netProfit = p.approvedBudget - actualCost;
       const netProfitMargin = p.approvedBudget > 0 ? (netProfit / p.approvedBudget) * 100 : 0;
-      const computedGstAmount = (p as any).gstAmount > 0
-        ? (p as any).gstAmount
-        : (p.contractValue > p.approvedBudget ? (p.contractValue - p.approvedBudget) : 0);
-      const computedGstMode = (p as any).gstMode || (computedGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
 
       return {
         ...p,
@@ -109,6 +115,8 @@ export const getProjects = async (req: Request, res: Response) => {
           expensesCost,
           materialsCost,
           labourCost,
+          taxExpense,
+          gstTaxAmount: computedGstAmount,
           actualCost,
           balanceCash,
           remainingContract,
@@ -178,6 +186,19 @@ export const getProjectById = async (req: Request, res: Response) => {
         changeOrders: {
           orderBy: { createdAt: 'desc' },
         },
+        plots: {
+          include: {
+            batch: { select: { id: true, groupName: true, sizeCents: true } },
+            bookingHistory: { orderBy: { actionDate: 'desc' } },
+          },
+          orderBy: { plotNumber: 'asc' },
+        },
+        plotBatches: {
+          include: {
+            _count: { select: { plots: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         documents: {
           orderBy: { createdAt: 'desc' },
         },
@@ -203,20 +224,21 @@ export const getProjectById = async (req: Request, res: Response) => {
     const expensesCost = (project.expenses as any[]).reduce((sum, e) => sum + (e.totalAmount || 0), 0);
     const boqActualCost = (project.boqItems as any[]).reduce((sum, b) => sum + (b.actualExpenditure || 0), 0);
 
-    // Only real monetary outflows are added to Total Incurred Cost: Site Expenses + Labour Wages (+ Material POs).
-    // BOQ is strictly for tracking / reference estimate and must NOT be added into incurred cost.
-    const actualCost = materialsCost + labourCost + expensesCost;
+    const taxRate = project.taxRatePercent !== undefined && project.taxRatePercent !== null ? Number(project.taxRatePercent) : (project.projectType === 'REAL_ESTATE' ? 0 : 18.0);
+    const computedGstMode = (taxRate === 0) ? 'NO_GST' : (project.gstMode || (project.gstAmount > 0 ? 'EXCLUSIVE' : 'EXCLUSIVE'));
+    const computedGstAmount = (computedGstMode === 'NO_GST' || taxRate === 0)
+      ? 0
+      : (project.gstAmount > 0 ? project.gstAmount : (project.contractValue > project.approvedBudget ? (project.contractValue - project.approvedBudget) : Math.round((project.approvedBudget * taxRate) / 100)));
+
+    // When GST > 0, include tax liability in overall project expenses. If No GST / 0%, tax is 0.
+    const taxExpense = (computedGstMode === 'NO_GST' || taxRate === 0) ? 0 : computedGstAmount;
+    const actualCost = materialsCost + labourCost + expensesCost + taxExpense;
     const remainingBudget = Math.max(0, project.approvedBudget - actualCost);
     const budgetBurnPercent = project.approvedBudget > 0 ? (actualCost / project.approvedBudget) * 100 : 0;
 
     // Profitability: Realised net profit is strictly calculated from approved budget (net scope excl. GST) minus overall actual expenses
-    // GST is excluded because it is statutory liability payable to the government
     const netProfit = project.approvedBudget - actualCost;
     const netProfitMargin = project.approvedBudget > 0 ? (netProfit / project.approvedBudget) * 100 : 0;
-    const computedGstAmount = (project as any).gstAmount > 0
-      ? (project as any).gstAmount
-      : (project.contractValue > project.approvedBudget ? (project.contractValue - project.approvedBudget) : 0);
-    const computedGstMode = (project as any).gstMode || (computedGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
 
     // Site Workforce (Labours who worked on this project)
     const workerMap = new Map();
@@ -285,6 +307,8 @@ export const getProjectById = async (req: Request, res: Response) => {
           materialsCost,
           labourCost,
           expensesCost,
+          taxExpense,
+          gstTaxAmount: computedGstAmount,
           boqActualCost,
           actualCost,
           remainingBudget,
@@ -363,6 +387,10 @@ export const createProject = async (req: Request, res: Response) => {
       paymentTerms,
       taxRatePercent,
       quotationId, // Optional: if converted from a Client Quotation
+      totalLandArea,
+      landAreaUnit,
+      surveyNumber,
+      layoutApprovalNumber,
     } = req.body;
 
     let finalCode = code ? String(code).trim() : '';
@@ -396,11 +424,40 @@ export const createProject = async (req: Request, res: Response) => {
     const finalClientEmail = clientEmail || quotation?.clientEmail || null;
     const finalBillingAddr = clientBillingAddr || quotation?.siteAddress || null;
     const finalPaymentTerms = paymentTerms || (quotation?.milestoneTerms ? 'Milestone terms per quotation' : null);
+    const isRealEstate = (projectType === 'REAL_ESTATE');
+    if (isRealEstate && !isRealEstateEnabledForUser(req)) {
+      return res.status(403).json({
+        success: false,
+        featureLocked: true,
+        module: 'REAL_ESTATE',
+        message: 'Real Estate Management CRM is not enabled for your company account. Please contact your Platform Administrator.',
+      });
+    }
     const finalContractValue = Number(contractValue) || (quotation ? quotation.totalAmount : 0);
     const finalBudget = Number(approvedBudget) || (quotation ? quotation.subtotal : finalContractValue);
-    const finalGstAmount = quotation ? (quotation.gstAmount || 0) : Math.max(0, finalContractValue - finalBudget);
-    const finalGstMode = quotation ? (quotation.gstMode || 'EXCLUSIVE') : (finalGstAmount > 0 ? 'EXCLUSIVE' : 'NO_GST');
-    const finalTaxRate = Number(taxRatePercent) || quotation?.gstPercent || (finalGstAmount > 0 ? 18.0 : 0);
+
+    let finalTaxRate = 0;
+    if (taxRatePercent !== undefined && taxRatePercent !== '') {
+      finalTaxRate = Number(taxRatePercent);
+    } else if (quotation?.gstPercent !== undefined) {
+      finalTaxRate = quotation.gstPercent;
+    } else if (isRealEstate) {
+      finalTaxRate = 0;
+    } else {
+      finalTaxRate = 18.0;
+    }
+
+    const finalGstMode = (finalTaxRate === 0) ? 'NO_GST' : (req.body.gstMode || quotation?.gstMode || 'EXCLUSIVE');
+    let finalGstAmount = 0;
+    if (finalTaxRate > 0) {
+      if (req.body.gstAmount !== undefined && Number(req.body.gstAmount) > 0) {
+        finalGstAmount = Number(req.body.gstAmount);
+      } else if (quotation?.gstAmount) {
+        finalGstAmount = quotation.gstAmount;
+      } else {
+        finalGstAmount = Math.round((finalBudget * finalTaxRate) / 100);
+      }
+    }
 
     const project = await prisma.project.create({
       data: {
@@ -428,6 +485,10 @@ export const createProject = async (req: Request, res: Response) => {
         paymentTerms: finalPaymentTerms,
         taxRatePercent: finalTaxRate,
         convertedFromLeadId: quotation?.leadId || null,
+        totalLandArea: totalLandArea !== undefined && totalLandArea !== '' ? Number(totalLandArea) : null,
+        landAreaUnit: landAreaUnit || 'CENTS',
+        surveyNumber: surveyNumber ? String(surveyNumber).trim() : null,
+        layoutApprovalNumber: layoutApprovalNumber ? String(layoutApprovalNumber).trim() : null,
       },
     });
 
@@ -589,6 +650,13 @@ export const updateProject = async (req: Request, res: Response) => {
       clientBillingAddr,
       clientGstin,
       siteAddress,
+      city,
+      state,
+      projectType,
+      totalLandArea,
+      landAreaUnit,
+      surveyNumber,
+      layoutApprovalNumber,
     } = req.body;
 
     const data: any = {};
@@ -623,6 +691,36 @@ export const updateProject = async (req: Request, res: Response) => {
     if (clientBillingAddr !== undefined) data.clientBillingAddr = clientBillingAddr;
     if (clientGstin !== undefined) data.clientGstin = clientGstin;
     if (siteAddress !== undefined) data.siteAddress = siteAddress;
+    if (city !== undefined) data.city = city;
+    if (state !== undefined) data.state = state;
+    if (projectType) {
+      if (projectType === 'REAL_ESTATE' && !isRealEstateEnabledForUser(req)) {
+        return res.status(403).json({
+          success: false,
+          featureLocked: true,
+          module: 'REAL_ESTATE',
+          message: 'Real Estate Management CRM is not enabled for your company account. Please contact your Platform Administrator.',
+        });
+      }
+      data.projectType = projectType;
+    }
+    if (totalLandArea !== undefined) data.totalLandArea = totalLandArea !== '' ? Number(totalLandArea) : null;
+    if (landAreaUnit !== undefined) data.landAreaUnit = landAreaUnit;
+    if (surveyNumber !== undefined) data.surveyNumber = surveyNumber ? String(surveyNumber).trim() : null;
+    if (layoutApprovalNumber !== undefined) data.layoutApprovalNumber = layoutApprovalNumber ? String(layoutApprovalNumber).trim() : null;
+    if (req.body.taxRatePercent !== undefined && req.body.taxRatePercent !== '') {
+      const tr = Number(req.body.taxRatePercent);
+      data.taxRatePercent = tr;
+      if (tr === 0) {
+        data.gstMode = 'NO_GST';
+        data.gstAmount = 0;
+      } else {
+        data.gstMode = req.body.gstMode || 'EXCLUSIVE';
+        data.gstAmount = req.body.gstAmount !== undefined
+          ? Number(req.body.gstAmount)
+          : Math.round(((Number(contractValue || existing.contractValue) || 0) * tr) / 100);
+      }
+    }
 
     const updated = await prisma.project.update({
       where: { id },

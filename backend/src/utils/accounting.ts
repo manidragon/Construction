@@ -19,6 +19,9 @@ export async function postBalancedJournalEntry({
   narration,
   lines,
   createdById,
+  chequeNumber,
+  chequeBank,
+  chequeDate,
   tx,
 }: {
   tenantId?: string | null;
@@ -28,6 +31,9 @@ export async function postBalancedJournalEntry({
   narration: string;
   lines: JournalLineInput[];
   createdById?: string;
+  chequeNumber?: string;
+  chequeBank?: string;
+  chequeDate?: Date;
   tx?: any;
 }) {
   // Validate total debits equal total credits within 0.01 tolerance
@@ -55,6 +61,9 @@ export async function postBalancedJournalEntry({
         referenceId,
         narration,
         isPosted: true,
+        chequeNumber: chequeNumber || null,
+        chequeBank: chequeBank || null,
+        chequeDate: chequeDate || null,
         createdById,
       },
     });

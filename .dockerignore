@@ -9,6 +9,7 @@ frontend/dist
 *.db-wal
 *.db-shm
 backend/prisma/*.db
+backend/prisma/tenants
 backend/dev.db
 backend/uploads
 uploads

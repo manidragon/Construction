@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { logAudit, getTenantFilter } from '../middleware/auth';
+import { logAudit, getTenantFilter, isRealEstateEnabledForUser } from '../middleware/auth';
 import { moveToRecycleBin } from './recycleBinController';
 import { getNextProjectCode } from './projectController';
 import { getNextReceiptNumber } from './billingController';
@@ -252,6 +252,19 @@ export const createLead = async (req: Request, res: Response) => {
       });
     }
 
+    const isRealEstateLead =
+      req.body.interestCategory === 'REAL_ESTATE_PLOT' ||
+      projectType === 'REAL_ESTATE' ||
+      projectType === 'REAL_ESTATE_PLOT';
+    if (isRealEstateLead && !isRealEstateEnabledForUser(req)) {
+      return res.status(403).json({
+        success: false,
+        featureLocked: true,
+        module: 'REAL_ESTATE',
+        message: 'Real Estate Management CRM is not enabled for your company account.',
+      });
+    }
+
     const tenantId = (req as any).user?.companyId || null;
 
     // Check for existing active lead with the same contact phone & client name under this tenant
@@ -306,6 +319,10 @@ export const createLead = async (req: Request, res: Response) => {
         siteVisitDate: siteVisitDate ? new Date(siteVisitDate) : null,
         siteVisitNotes: siteVisitNotes || null,
         clientBudgetDiscussion: clientBudgetDiscussion || null,
+        interestCategory: req.body.interestCategory || (projectType === 'REAL_ESTATE_PLOT' ? 'REAL_ESTATE_PLOT' : 'CONSTRUCTION'),
+        targetLandProjectId: req.body.targetLandProjectId || null,
+        preferredPlotSize: req.body.preferredPlotSize ? Number(req.body.preferredPlotSize) : null,
+        preferredFacing: req.body.preferredFacing || null,
       },
       include: {
         assignedProjectManager: {
@@ -340,6 +357,19 @@ export const updateLead = async (req: Request, res: Response) => {
 
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Lead not found.' });
+    }
+
+    const isRealEstateUpdate =
+      req.body.interestCategory === 'REAL_ESTATE_PLOT' ||
+      req.body.projectType === 'REAL_ESTATE' ||
+      req.body.projectType === 'REAL_ESTATE_PLOT';
+    if (isRealEstateUpdate && !isRealEstateEnabledForUser(req)) {
+      return res.status(403).json({
+        success: false,
+        featureLocked: true,
+        module: 'REAL_ESTATE',
+        message: 'Real Estate Management CRM is not enabled for your company account.',
+      });
     }
 
     const isAllowedConfidential = canAccessConfidentialNotes(req.user, existing);
@@ -378,6 +408,10 @@ export const updateLead = async (req: Request, res: Response) => {
     if (assignedTeam !== undefined) dataToUpdate.assignedTeam = assignedTeam;
     if (assignedProjectManagerId !== undefined) dataToUpdate.assignedProjectManagerId = assignedProjectManagerId || null;
     if (siteVisitDate !== undefined) dataToUpdate.siteVisitDate = siteVisitDate ? new Date(siteVisitDate) : null;
+    if (req.body.interestCategory !== undefined) dataToUpdate.interestCategory = req.body.interestCategory;
+    if (req.body.targetLandProjectId !== undefined) dataToUpdate.targetLandProjectId = req.body.targetLandProjectId || null;
+    if (req.body.preferredPlotSize !== undefined) dataToUpdate.preferredPlotSize = req.body.preferredPlotSize ? Number(req.body.preferredPlotSize) : null;
+    if (req.body.preferredFacing !== undefined) dataToUpdate.preferredFacing = req.body.preferredFacing || null;
 
     // Only update confidential fields if authorized
     if (isAllowedConfidential) {

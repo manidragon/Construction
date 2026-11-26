@@ -11,6 +11,7 @@ interface AuthContextType {
   switchRole: (role: UserRole) => Promise<void>;
   logout: () => void;
   hasRole: (...roles: UserRole[]) => boolean;
+  hasFeature: (feature: 'REAL_ESTATE') => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -93,6 +94,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return roles.includes(user.role);
   };
 
+  const hasFeature = (feature: 'REAL_ESTATE') => {
+    if (!user) return false;
+    if (user.role === 'SUPER_ADMIN') return true;
+    if (feature === 'REAL_ESTATE') {
+      return Boolean(user.company?.realEstateEnabled);
+    }
+    return false;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -104,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchRole,
         logout,
         hasRole,
+        hasFeature,
       }}
     >
       {children}

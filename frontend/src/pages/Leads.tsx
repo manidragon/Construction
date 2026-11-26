@@ -45,6 +45,7 @@ import {
   Edit,
   Trash2,
   X,
+  Landmark,
 } from 'lucide-react';
 import DynamicSelect from '../components/common/DynamicSelect';
 import SearchableSelect from '../components/common/SearchableSelect';
@@ -124,7 +125,8 @@ const formatProjectType = (type?: string) => {
 
 export const Leads: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasFeature } = useAuth();
+  const realEstateAllowed = hasFeature('REAL_ESTATE');
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +137,7 @@ export const Leads: React.FC = () => {
 
   // Available Project Managers for assignment
   const [pmUsers, setPmUsers] = useState<User[]>([]);
+  const [landProjects, setLandProjects] = useState<any[]>([]);
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -160,6 +163,10 @@ export const Leads: React.FC = () => {
     siteVisitDate: '',
     siteVisitNotes: '',
     clientBudgetDiscussion: '',
+    interestCategory: 'CONSTRUCTION' as 'CONSTRUCTION' | 'INTERIOR' | 'REAL_ESTATE_PLOT',
+    targetLandProjectId: '',
+    preferredPlotSize: '',
+    preferredFacing: 'EAST',
   });
 
   // Convert Modal State (Module 3 Kickoff Gate)
@@ -200,6 +207,10 @@ export const Leads: React.FC = () => {
     siteVisitDate: '',
     siteVisitNotes: '',
     clientBudgetDiscussion: '',
+    interestCategory: 'CONSTRUCTION' as 'CONSTRUCTION' | 'INTERIOR' | 'REAL_ESTATE_PLOT',
+    targetLandProjectId: '',
+    preferredPlotSize: '',
+    preferredFacing: 'EAST',
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
@@ -243,11 +254,25 @@ export const Leads: React.FC = () => {
     }
   };
 
+  const fetchLandProjects = async () => {
+    try {
+      const res = await api.getProjects();
+      if (res.success && Array.isArray(res.projects)) {
+        setLandProjects(res.projects.filter((p: any) => p.projectType === 'REAL_ESTATE'));
+      }
+    } catch (err) {
+      console.error('Failed to load land projects for leads:', err);
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
     fetchUsers();
+    if (realEstateAllowed) {
+      fetchLandProjects();
+    }
     loadNextNumber();
-  }, []);
+  }, [realEstateAllowed]);
 
   const handleCreateLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,6 +299,10 @@ export const Leads: React.FC = () => {
           siteVisitDate: '',
           siteVisitNotes: '',
           clientBudgetDiscussion: '',
+          interestCategory: 'CONSTRUCTION',
+          targetLandProjectId: '',
+          preferredPlotSize: '',
+          preferredFacing: 'EAST',
         });
         await fetchLeads();
         await loadNextNumber();
@@ -301,6 +330,10 @@ export const Leads: React.FC = () => {
       siteVisitDate: lead.siteVisitDate ? new Date(lead.siteVisitDate).toISOString().split('T')[0] : '',
       siteVisitNotes: lead.siteVisitNotes || '',
       clientBudgetDiscussion: lead.clientBudgetDiscussion || '',
+      interestCategory: (lead as any).interestCategory || 'CONSTRUCTION',
+      targetLandProjectId: (lead as any).targetLandProjectId || '',
+      preferredPlotSize: (lead as any).preferredPlotSize || '',
+      preferredFacing: (lead as any).preferredFacing || 'EAST',
     });
   };
 
@@ -731,6 +764,22 @@ export const Leads: React.FC = () => {
                               <MapPin className="w-3 h-3 mr-1 text-slate-400 shrink-0" />
                               <span className="truncate">{lead.siteAddress}</span>
                             </p>
+
+                            {/* Real Estate Plotted Land Layout Enquiry Badge */}
+                            {(lead as any).interestCategory === 'REAL_ESTATE_PLOT' && (
+                              <div className="mt-1 p-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-900 font-semibold space-y-0.5">
+                                <div className="flex items-center gap-1 font-bold text-emerald-800">
+                                  <span>🌾 Plot Enquiry</span>
+                                  {(lead as any).preferredPlotSize && <span>• {(lead as any).preferredPlotSize}</span>}
+                                  {(lead as any).preferredFacing && <span>({(lead as any).preferredFacing})</span>}
+                                </div>
+                                {(lead as any).targetLandProjectId && (
+                                  <div className="text-[9px] text-emerald-700 truncate">
+                                    Layout: {landProjects.find((lp) => lp.id === (lead as any).targetLandProjectId)?.name || 'Land Project'}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* Budget & Team Assignment */}
@@ -917,6 +966,11 @@ export const Leads: React.FC = () => {
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
                         {PROJECT_TYPE_LABELS[lead.projectType] || formatProjectType(lead.projectType)}
                       </span>
+                      {(lead as any).interestCategory === 'REAL_ESTATE_PLOT' && (
+                        <span className="block mt-1 px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-bold">
+                          🌾 Plot: {(lead as any).preferredPlotSize || ''} {(lead as any).preferredFacing ? `(${(lead as any).preferredFacing})` : ''}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 font-bold text-emerald-700">
                       {BUDGET_RANGE_LABELS[lead.budgetRange] || formatBudget(lead.budgetRange)}
@@ -1110,6 +1164,118 @@ export const Leads: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Interest Category Switcher */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Client Interest Category *</label>
+                <div className={`grid gap-2 ${realEstateAllowed ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        interestCategory: 'CONSTRUCTION',
+                        projectType: 'FULL_VILLA_CONSTRUCTION' as any,
+                      })
+                    }
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                      formData.interestCategory === 'CONSTRUCTION'
+                        ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>🏗️ Construction</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        interestCategory: 'INTERIOR',
+                        projectType: 'RESIDENTIAL_INTERIOR' as any,
+                      })
+                    }
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                      formData.interestCategory === 'INTERIOR'
+                        ? 'bg-purple-50 border-purple-500 text-purple-900 shadow-xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>🛋️ Interior</span>
+                  </button>
+                  {realEstateAllowed && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          interestCategory: 'REAL_ESTATE_PLOT',
+                          projectType: 'REAL_ESTATE' as any,
+                          targetLandProjectId: formData.targetLandProjectId || (landProjects[0]?.id || ''),
+                        })
+                      }
+                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        formData.interestCategory === 'REAL_ESTATE_PLOT'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-900 shadow-xs'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>🌾 Real Estate Plot</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Real Estate Specific Layout & Plot Specifications */}
+              {realEstateAllowed && formData.interestCategory === 'REAL_ESTATE_PLOT' && (
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-3">
+                  <div className="flex items-center space-x-1.5 text-emerald-900 font-bold text-xs">
+                    <Landmark className="w-4 h-4 text-emerald-600" />
+                    <span>Target Land Layout & Preferred Plot Specifications</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Target Land Layout *</label>
+                      <select
+                        value={formData.targetLandProjectId}
+                        onChange={(e) => setFormData({ ...formData, targetLandProjectId: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                      >
+                        <option value="">-- Select Land Layout --</option>
+                        {landProjects.map((lp) => (
+                          <option key={lp.id} value={lp.id}>
+                            {lp.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Preferred Plot Size</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 5 Cents (or 2.5, 3 Cents)"
+                        value={formData.preferredPlotSize}
+                        onChange={(e) => setFormData({ ...formData, preferredPlotSize: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Preferred Facing</label>
+                      <select
+                        value={formData.preferredFacing}
+                        onChange={(e) => setFormData({ ...formData, preferredFacing: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold"
+                      >
+                        <option value="EAST">East</option>
+                        <option value="NORTH">North</option>
+                        <option value="WEST">West</option>
+                        <option value="SOUTH">South</option>
+                        <option value="CORNER">Corner (Dual)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Row 4: Project Type & Budget Range */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1363,6 +1529,118 @@ export const Leads: React.FC = () => {
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   />
                 </div>
+
+                {/* Interest Category Switcher in Edit */}
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Interest Category</label>
+                  <div className={`grid gap-2 ${realEstateAllowed ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditFormData({
+                          ...editFormData,
+                          interestCategory: 'CONSTRUCTION',
+                          projectType: 'FULL_VILLA_CONSTRUCTION' as any,
+                        })
+                      }
+                      className={`py-1.5 px-3 rounded-lg border text-xs font-bold transition ${
+                        editFormData.interestCategory === 'CONSTRUCTION'
+                          ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs'
+                          : 'border-slate-200 text-slate-600'
+                      }`}
+                    >
+                      🏗️ Construction
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditFormData({
+                          ...editFormData,
+                          interestCategory: 'INTERIOR',
+                          projectType: 'RESIDENTIAL_INTERIOR' as any,
+                        })
+                      }
+                      className={`py-1.5 px-3 rounded-lg border text-xs font-bold transition ${
+                        editFormData.interestCategory === 'INTERIOR'
+                          ? 'bg-purple-50 border-purple-500 text-purple-900 shadow-xs'
+                          : 'border-slate-200 text-slate-600'
+                      }`}
+                    >
+                      🛋️ Interior
+                    </button>
+                    {realEstateAllowed && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditFormData({
+                            ...editFormData,
+                            interestCategory: 'REAL_ESTATE_PLOT',
+                            projectType: 'REAL_ESTATE' as any,
+                            targetLandProjectId: editFormData.targetLandProjectId || (landProjects[0]?.id || ''),
+                          })
+                        }
+                        className={`py-1.5 px-3 rounded-lg border text-xs font-bold transition ${
+                          editFormData.interestCategory === 'REAL_ESTATE_PLOT'
+                            ? 'bg-emerald-50 border-emerald-500 text-emerald-900 shadow-xs'
+                            : 'border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        🌾 Real Estate Plot
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Real Estate Specific Layout & Plot Specifications in Edit */}
+                {realEstateAllowed && editFormData.interestCategory === 'REAL_ESTATE_PLOT' && (
+                  <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                    <div className="flex items-center space-x-1.5 text-emerald-900 font-bold text-xs">
+                      <Landmark className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Target Land Layout & Preferred Plot Specifications</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-slate-700 font-semibold mb-1">Target Land Layout</label>
+                        <select
+                          value={editFormData.targetLandProjectId}
+                          onChange={(e) => setEditFormData({ ...editFormData, targetLandProjectId: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                        >
+                          <option value="">-- Select Land Layout --</option>
+                          {landProjects.map((lp) => (
+                            <option key={lp.id} value={lp.id}>
+                              {lp.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-700 font-semibold mb-1">Preferred Plot Size</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 5 Cents"
+                          value={editFormData.preferredPlotSize}
+                          onChange={(e) => setEditFormData({ ...editFormData, preferredPlotSize: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-700 font-semibold mb-1">Preferred Facing</label>
+                        <select
+                          value={editFormData.preferredFacing}
+                          onChange={(e) => setEditFormData({ ...editFormData, preferredFacing: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                        >
+                          <option value="EAST">East</option>
+                          <option value="NORTH">North</option>
+                          <option value="WEST">West</option>
+                          <option value="SOUTH">South</option>
+                          <option value="CORNER">Corner (Dual)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Row 3: Project Type, Budget & Lead Source */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

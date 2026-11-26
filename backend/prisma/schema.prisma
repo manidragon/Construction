@@ -44,6 +44,7 @@ model Company {
   fiscalYearStart           Int      @default(4) // April
   subscriptionModel         String   @default("TRIAL") // TRIAL, LIFETIME, MONTHLY, YEARLY
   onboardingCompleted       Boolean  @default(false)
+  realEstateEnabled         Boolean  @default(false)
   suspendedReason           String?
   activeDevicesCount        Int      @default(1)
   createdAt                 DateTime @default(now())
@@ -84,6 +85,8 @@ model Company {
   saasTransactions          SaaSTransaction[]
   supportTickets            SupportTicket[]
   deviceSessions            ActiveDeviceSession[]
+  plots                     Plot[]
+  plotBatches               PlotBatch[]
 }
 
 model User {
@@ -220,6 +223,12 @@ model Project {
   quotations          Quotation[]
   tenantId            String?
   tenant              Company?  @relation(fields: [tenantId], references: [id])
+  totalLandArea       Float?
+  landAreaUnit        String?   @default("CENTS")
+  surveyNumber        String?
+  layoutApprovalNumber String?
+  plots               Plot[]
+  plotBatches         PlotBatch[]
 
   @@unique([tenantId, code])
 }
@@ -980,6 +989,7 @@ model Client {
 
   invoices       ClientInvoice[]
   receipts       ClientReceipt[]
+  plots          Plot[]
 
   @@unique([tenantId, code])
 }
@@ -1096,6 +1106,9 @@ model JournalEntry {
   narration     String
   isPosted      Boolean       @default(true)
   createdById   String?
+  chequeNumber  String?
+  chequeBank    String?
+  chequeDate    DateTime?
   createdAt     DateTime      @default(now())
 
   lines         JournalLine[]
@@ -1193,9 +1206,12 @@ model DocumentAttachment {
   fileType        String?
   projectId       String?
   project         Project? @relation(fields: [projectId], references: [id])
+  plotId          String?
+  plot            Plot?    @relation(fields: [plotId], references: [id], onDelete: Cascade)
   siteId          String?
   referenceEntity String?  // Project, Task, PO, Expense, DPR
   referenceId     String?
+  description     String?
   uploadedById    String?
   createdAt       DateTime @default(now())
 
@@ -1336,6 +1352,10 @@ model Lead {
   siteVisitDate            DateTime?
   siteVisitNotes           String?     // Confidential: restricted to Admin/OWNER & assigned PM
   clientBudgetDiscussion   String?     // Confidential: restricted to Admin/OWNER & assigned PM
+  interestCategory         String?     // CONSTRUCTION, INTERIOR, REAL_ESTATE_PLOT
+  targetLandProjectId      String?
+  preferredPlotSize        Float?
+  preferredFacing          String?
 
   convertedProjectId       String?     @unique
   convertedProject         Project?    @relation("LeadProject")
@@ -1566,3 +1586,112 @@ model ActiveDeviceSession {
   @@index([companyId])
   @@index([userId])
 }
+
+// -------------------------------------------------------------
+// Real Estate: Land & Plot Layout Extension
+// -------------------------------------------------------------
+
+model PlotBatch {
+  id             String    @id @default(uuid())
+  tenantId       String?
+  tenant         Company?  @relation(fields: [tenantId], references: [id])
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  groupName      String    // e.g. "5 Cents - Phase 1 East"
+  numberOfPlots  Int
+  sizeCents      Float
+  sizeSqFt       Float     @default(0)
+  ratePerCent    Float     @default(0)
+  plotPrice      Float     @default(0)
+  facing         String?
+  prefix         String?   @default("PLOT-")
+  startNumber    Int       @default(1)
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  plots          Plot[]
+
+  @@index([tenantId])
+  @@index([projectId])
+}
+
+model Plot {
+  id                   String               @id @default(uuid())
+  tenantId             String?
+  tenant               Company?             @relation(fields: [tenantId], references: [id])
+  projectId            String
+  project              Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  batchId              String?
+  batch                PlotBatch?           @relation(fields: [batchId], references: [id])
+  plotNumber           String
+  sizeCents            Float
+  sizeSqFt             Float                @default(0)
+  ratePerCent          Float?               @default(0)
+  price                Float                @default(0)
+  facing               String?              @default("EAST") // EAST, WEST, NORTH, SOUTH, NORTH_EAST, NORTH_WEST, SOUTH_EAST, SOUTH_WEST, CORNER
+  dimensions           String?              // e.g. "30 x 40"
+  notes                String?
+  status               String               @default("AVAILABLE") // AVAILABLE, BOOKED, TOKEN_PAID, REGISTERED, TOKEN_LAPSED_NO_SHOW, BLOCKED
+  buyerName            String?
+  buyerPhone           String?
+  buyerEmail           String?
+  buyerAadhaar         String?
+  buyerAddress         String?
+  clientId             String?
+  client               Client?              @relation(fields: [clientId], references: [id])
+  paymentType          String?              // TOKEN_ADVANCE, ADVANCE_PAYMENT, FULL_PAYMENT
+  tokenAmount          Float                @default(0)
+  totalReceived        Float                @default(0)
+  balanceDue           Float                @default(0)
+  bookingDate          DateTime?
+  tokenDate            DateTime?
+  tokenLapsedDate      DateTime?
+  lapsedReason         String?
+  registrationDate     DateTime?
+  registrationDocUrl   String?
+  registrationNotes    String?
+  subRegistrarOffice   String?
+  deedNumber           String?
+  paymentMethod        String?              // CASH, BANK_TRANSFER, UPI, CHEQUE
+  paymentReference     String?
+  chequeNumber         String?
+  chequeBank           String?
+  chequeDate           DateTime?
+  receiptAttachmentUrl String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  bookingHistory       PlotBookingHistory[]
+  documents            DocumentAttachment[]
+
+  @@unique([projectId, plotNumber])
+  @@index([tenantId])
+  @@index([projectId, status])
+}
+
+model PlotBookingHistory {
+  id               String    @id @default(uuid())
+  plotId           String
+  plot             Plot      @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  projectId        String
+  buyerName        String
+  buyerPhone       String?
+  buyerEmail       String?
+  action           String    // BOOKED, TOKEN_PAID, TOKEN_LAPSED_NO_SHOW, RELEASED, REASSIGNED, REGISTERED, CANCELLED
+  tokenAmount      Float     @default(0)
+  totalReceived    Float     @default(0)
+  balanceDue       Float     @default(0)
+  paymentMethod    String?
+  paymentReference String?
+  chequeNumber     String?
+  chequeBank       String?
+  notes            String?
+  actionDate       DateTime  @default(now())
+  createdById      String?
+  tenantId         String?
+  createdAt        DateTime  @default(now())
+
+  @@index([plotId])
+  @@index([projectId])
+}
+

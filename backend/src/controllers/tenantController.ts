@@ -344,6 +344,7 @@ export const getAllTenants = async (req: Request, res: Response) => {
         { companyName: { contains: search } },
         { code: { contains: search } },
         { ownerEmail: { contains: search } },
+        { users: { some: { name: { contains: search } } } },
       ];
     }
 
@@ -352,6 +353,11 @@ export const getAllTenants = async (req: Request, res: Response) => {
       companies = await prisma.company.findMany({
         where,
         include: {
+          users: {
+            where: { role: { in: ['TENANT_ADMIN', 'OWNER', 'SUPER_ADMIN'] } },
+            select: { name: true, email: true, role: true },
+            take: 3,
+          },
           _count: {
             select: {
               users: true,
@@ -413,11 +419,19 @@ export const getAllTenants = async (req: Request, res: Response) => {
         ? c.saasTransactions.reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0)
         : 0;
 
+      const ownerUser =
+        (Array.isArray(c.users) &&
+          (c.users.find((u: any) => u.email?.toLowerCase() === (c.ownerEmail || c.email || '').toLowerCase()) ||
+            c.users.find((u: any) => u.role === 'TENANT_ADMIN' || u.role === 'OWNER') ||
+            c.users[0])) ||
+        null;
+
       return {
         id: c.id,
         name: c.companyName || c.name,
         companyName: c.companyName || c.name,
         code: c.code,
+        ownerName: ownerUser?.name || '',
         ownerEmail: c.ownerEmail || c.email,
         adminPassword: c.adminPassword,
         databasePath: c.databasePath,
@@ -427,6 +441,7 @@ export const getAllTenants = async (req: Request, res: Response) => {
         planType: c.planType,
         subscriptionModel: c.subscriptionModel || (c.status === 'ACTIVE' ? 'LIFETIME' : 'TRIAL'),
         onboardingCompleted: Boolean(c.onboardingCompleted),
+        realEstateEnabled: Boolean(c.realEstateEnabled),
         suspendedReason: c.suspendedReason,
         activeDevicesCount: c._count?.deviceSessions > 0 ? c._count.deviceSessions : (c.activeDevicesCount || 1),
         staffAccountsCount: c._count?.users || 0,
@@ -478,6 +493,7 @@ export const createTenant = async (req: Request, res: Response) => {
       state = 'Karnataka',
       pincode = '560001',
       gstin,
+      realEstateEnabled = false,
     } = req.body;
 
     if (!companyName || !ownerEmail) {
@@ -530,6 +546,7 @@ export const createTenant = async (req: Request, res: Response) => {
         email: String(ownerEmail).trim().toLowerCase(),
         gstin: gstin || null,
         useSharedGateway: true,
+        realEstateEnabled: Boolean(realEstateEnabled),
       },
     });
 
@@ -733,6 +750,50 @@ export const updateTenantStatus = async (req: Request, res: Response) => {
 };
 
 /**
+ * PATCH /api/superadmin/tenants/:id/features
+ * Enable or disable add-on feature modules (e.g. Real Estate CRM) for a specific tenant
+ */
+export const updateTenantFeatures = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { realEstateEnabled } = req.body;
+
+    if (typeof realEstateEnabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'realEstateEnabled boolean flag is required.',
+      });
+    }
+
+    const company = await prisma.company.findUnique({ where: { id } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Tenant company not found.' });
+    }
+
+    const updated = await prisma.company.update({
+      where: { id },
+      data: {
+        realEstateEnabled,
+      },
+    });
+
+    await logAudit(req.user?.id, 'UPDATE_TENANT_FEATURES', 'COMPANY', company.id, {
+      companyName: company.name,
+      realEstateEnabled,
+    }, req.ip);
+
+    return res.json({
+      success: true,
+      message: `Real Estate CRM ${realEstateEnabled ? 'enabled' : 'disabled'} for "${company.companyName || company.name}".`,
+      tenant: updated,
+    });
+  } catch (error: any) {
+    console.error('Error updating tenant features:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * GET /api/company/current-status
  * Check trial status, days remaining, and plan info for the logged-in user's tenant
  */
@@ -753,6 +814,7 @@ export const getTenantCurrentStatus = async (req: Request, res: Response) => {
         planType: true,
         subscriptionModel: true,
         onboardingCompleted: true,
+        realEstateEnabled: true,
         suspendedReason: true,
         trialStartDate: true,
         trialEndDate: true,

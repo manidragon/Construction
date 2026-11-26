@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { formatCurrency, formatDate, formatPercent } from '../utils/formatters';
 import api from '../services/api';
+import { ProjectPlotsTab } from '../components/realestate/ProjectPlotsTab';
 import {
   ArrowLeft,
   Building2,
@@ -31,14 +32,17 @@ import {
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
 
 export const ProjectDetails: React.FC = () => {
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, hasFeature } = useAuth();
+  const realEstateAllowed = hasFeature('REAL_ESTATE');
   const { setSelectedProjectId } = useProject();
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'boq' | 'tasks' | 'dpr' | 'expenses' | 'billing' | 'changeOrders' | 'documents'
-  >('overview');
+    'overview' | 'plots' | 'boq' | 'tasks' | 'dpr' | 'expenses' | 'billing' | 'changeOrders' | 'documents'
+  >(initialTab === 'plots' && realEstateAllowed ? 'plots' : 'overview');
 
   // Daily Report Sharing modal state
   const [showShareModal, setShowShareModal] = useState(false);
@@ -140,11 +144,19 @@ export const ProjectDetails: React.FC = () => {
   }
 
   const f = project.financials || {};
+  const taxRate = project.taxRatePercent !== undefined && project.taxRatePercent !== null
+    ? Number(project.taxRatePercent)
+    : (project.projectType === 'REAL_ESTATE' || project.gstMode === 'NO_GST' ? 0 : 18);
   const effectiveGst = (project.gstAmount !== undefined && project.gstAmount > 0)
     ? project.gstAmount
-    : (project.contractValue > project.approvedBudget ? (project.contractValue - project.approvedBudget) : 0);
-  const effectiveGstMode = project.gstMode || (effectiveGst > 0 ? 'EXCLUSIVE' : 'NO_GST');
-  const actualCost = f.actualCost || 0;
+    : (taxRate > 0 && project.contractValue > project.approvedBudget ? (project.contractValue - project.approvedBudget) : 0);
+  const effectiveGstMode = project.gstMode || (taxRate === 0 || effectiveGst === 0 ? 'NO_GST' : 'EXCLUSIVE');
+
+  // If taxRate > 0, include GST govt tax in overall site expenses
+  const taxExpense = taxRate > 0 ? (f.taxExpense !== undefined ? f.taxExpense : effectiveGst) : 0;
+  const baseActualCost = (f.expensesCost || 0) + (f.materialsCost || 0) + (f.labourCost || 0);
+  const actualCost = f.actualCost !== undefined ? f.actualCost : (baseActualCost + taxExpense);
+
   // Realized Net Profit = Approved Budget (net scope) - Overall Actual Expenses
   const computedNetProfit = f.netProfit !== undefined ? f.netProfit : (project.approvedBudget - actualCost);
   const computedNetProfitMargin = f.netProfitMargin !== undefined
@@ -244,10 +256,10 @@ export const ProjectDetails: React.FC = () => {
             <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-right">
               <span className="text-[10px] text-amber-700 block font-bold">GST (Govt Tax)</span>
               <strong className="text-xs sm:text-sm text-amber-900 block">
-                {effectiveGst > 0 ? formatCurrency(effectiveGst, true) : '₹0'}
+                {taxRate > 0 && effectiveGst > 0 ? formatCurrency(effectiveGst, true) : '₹0'}
               </strong>
               <span className="text-[9px] text-amber-600 block font-semibold">
-                {effectiveGstMode === 'NO_GST' || effectiveGst === 0 ? 'No GST (0%)' : effectiveGstMode === 'INCLUSIVE' ? '18% Inclusive' : '+18% GST'}
+                {taxRate === 0 || effectiveGstMode === 'NO_GST' || effectiveGst === 0 ? 'No GST (0%)' : `${taxRate}% GST`}
               </span>
             </div>
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-right">
@@ -311,6 +323,7 @@ export const ProjectDetails: React.FC = () => {
         <div className="flex items-center space-x-1 mt-6 pt-4 border-t border-slate-100 overflow-x-auto custom-scrollbar">
           {[
             { id: 'overview', label: 'Project Overview' },
+            ...(realEstateAllowed ? [{ id: 'plots', label: `🌾 Plots & Layout (${project.plots?.length || 0})` }] : []),
             { id: 'boq', label: `BOQ (${project.boqItems?.length || 0})` },
             { id: 'tasks', label: `Tasks (${project.tasks?.length || 0})` },
             { id: 'billing', label: `Client RA Bills (${project.clientInvoices?.length || 0})` },
@@ -343,6 +356,11 @@ export const ProjectDetails: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {/* Tab Content: Real Estate Plots & Layout */}
+      {realEstateAllowed && activeTab === 'plots' && (
+        <ProjectPlotsTab project={project} onRefreshProject={fetchProject} />
+      )}
 
       {/* Tab Content 1: Overview */}
       {activeTab === 'overview' && (
@@ -454,7 +472,7 @@ export const ProjectDetails: React.FC = () => {
               {/* Cost Breakdown Details */}
               <div className="pt-3 border-t border-slate-800">
                 <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2">Cost Breakdown Details</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
                   <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
                     <span className="text-slate-400 flex items-center">
                       <Truck className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
@@ -483,6 +501,15 @@ export const ProjectDetails: React.FC = () => {
                       Site Expenses
                     </span>
                     <strong className="font-mono text-slate-200">{formatCurrency(f.expensesCost || 0)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    <span className="text-slate-400 flex items-center">
+                      <FileText className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
+                      Govt GST Tax
+                    </span>
+                    <strong className={`font-mono ${taxExpense > 0 ? "text-amber-300 font-bold" : "text-slate-400"}`}>
+                      {taxExpense > 0 ? formatCurrency(taxExpense) : "₹0 (0% / Exempt)"}
+                    </strong>
                   </div>
                 </div>
               </div>

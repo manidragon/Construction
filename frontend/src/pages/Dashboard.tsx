@@ -26,6 +26,7 @@ import {
   Wallet,
   ShieldCheck,
   ClipboardList,
+  MapPin,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -42,7 +43,8 @@ import {
 import { Link } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, hasFeature } = useAuth();
+  const realEstateAllowed = hasFeature('REAL_ESTATE');
   const { selectedProjectId } = useProject();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -1463,6 +1465,74 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Real Estate & Land Layout Overview Widget */}
+        {realEstateAllowed && (s.realEstateSummary || s.realEstate) && (() => {
+          const re = s.realEstateSummary || s.realEstate;
+          return (
+            <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 p-4 sm:p-5 rounded-xl border border-emerald-800/60 shadow-lg sm:col-span-2 lg:col-span-4 min-w-0 text-white">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-start sm:items-center space-x-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0 font-black">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-extrabold text-sm sm:text-base text-white tracking-tight">
+                        Real Estate Land & Plot Layout Inventory
+                      </h3>
+                      <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
+                        Land Sales CRM
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Plot batches, live booking status, token collections, and receivable balances.
+                    </p>
+                  </div>
+                </div>
+
+                <Link
+                  to="/projects?typeFilter=REAL_ESTATE"
+                  className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 shrink-0 self-start lg:self-auto"
+                >
+                  <span>Manage Land Layouts & Plots</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4 pt-3 border-t border-slate-800">
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Total Plots</span>
+                  <span className="text-lg font-black text-white">{re.totalPlots || 0}</span>
+                </div>
+                <div className="p-2.5 bg-emerald-950/60 rounded-xl border border-emerald-700/50">
+                  <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Available</span>
+                  <span className="text-lg font-black text-emerald-300">{re.availablePlots || 0}</span>
+                </div>
+                <div className="p-2.5 bg-blue-950/60 rounded-xl border border-blue-700/50">
+                  <span className="text-[10px] text-blue-400 uppercase font-semibold block">Booked / Token Paid</span>
+                  <span className="text-lg font-black text-blue-300">{re.bookedPlots || 0}</span>
+                </div>
+                <div className="p-2.5 bg-amber-950/60 rounded-xl border border-amber-700/50">
+                  <span className="text-[10px] text-amber-400 uppercase font-semibold block">Token Lapsed</span>
+                  <span className="text-lg font-black text-amber-300">{re.lapsedPlots || re.tokenLapsedPlots || 0}</span>
+                </div>
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Token Collected</span>
+                  <span className="text-base sm:text-lg font-black text-emerald-400 truncate block">
+                    {formatCurrency(re.advanceReceived || re.totalTokenReceived || 0)}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Layout Valuation</span>
+                  <span className="text-base sm:text-lg font-black text-amber-300 truncate block">
+                    {formatCurrency(re.totalValuation || 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Lead Pipeline & BOQ Quotations Summary Cards */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm sm:col-span-2 min-w-0">

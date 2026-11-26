@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { sendSuccess, sendError } from '../utils/responseHelper';
+import { isRealEstateEnabledForUser } from '../middleware/auth';
 
 /**
  * Standard System Default Dropdown Categories & Options
@@ -22,6 +23,11 @@ export const DEFAULT_DROPDOWN_OPTIONS: Record<string, Array<{ label: string; val
     { label: 'Other Channel', value: 'OTHER' },
   ],
   ServiceType: [
+    { label: 'Real Estate (Land / Plot Layout)', value: 'REAL_ESTATE' },
+    { label: 'Residential Highrise', value: 'RESIDENTIAL' },
+    { label: 'Commercial Office', value: 'COMMERCIAL' },
+    { label: 'Infrastructure & Metro', value: 'INFRASTRUCTURE' },
+    { label: 'Industrial Warehousing', value: 'INDUSTRIAL' },
     { label: 'Full Villa Construction', value: 'FULL_VILLA_CONSTRUCTION' },
     { label: 'Residential Interior', value: 'RESIDENTIAL_INTERIOR' },
     { label: 'Commercial Fitout', value: 'COMMERCIAL_FITOUT' },
@@ -106,6 +112,15 @@ export const DEFAULT_DROPDOWN_OPTIONS: Record<string, Array<{ label: string; val
   ],
 };
 
+// Unify ProjectType and ServiceType to share the exact same dynamic dropdown catalog
+DEFAULT_DROPDOWN_OPTIONS.ProjectType = DEFAULT_DROPDOWN_OPTIONS.ServiceType;
+
+export const isProjectTypeCategory = (cat?: string): boolean => {
+  if (!cat) return false;
+  const lower = String(cat).trim().toLowerCase();
+  return lower === 'servicetype' || lower === 'projecttype';
+};
+
 /**
  * Get company ID for the active session
  */
@@ -123,10 +138,15 @@ export const getDropdownOptions = async (req: Request, res: Response) => {
   try {
     const tenantId = await resolveTenantId(req);
     const category = req.query.category as string | undefined;
+    const isProjType = isProjectTypeCategory(category);
 
     const where: any = { tenantId, isActive: true };
     if (category) {
-      where.category = category;
+      if (isProjType) {
+        where.category = { in: ['ServiceType', 'ProjectType', 'servicetype', 'projecttype'] };
+      } else {
+        where.category = category;
+      }
     }
 
     const customOptions = await prisma.dropdownOption.findMany({
@@ -136,7 +156,8 @@ export const getDropdownOptions = async (req: Request, res: Response) => {
 
     if (category) {
       // Merge system defaults for this category with custom options from DB
-      const systemDefaults = (DEFAULT_DROPDOWN_OPTIONS[category] || []).map((opt, idx) => ({
+      const defaultsList = isProjType ? DEFAULT_DROPDOWN_OPTIONS.ServiceType : (DEFAULT_DROPDOWN_OPTIONS[category] || []);
+      const systemDefaults = defaultsList.map((opt, idx) => ({
         id: `sys-${category}-${opt.value}`,
         tenantId,
         category,
@@ -149,10 +170,15 @@ export const getDropdownOptions = async (req: Request, res: Response) => {
 
       // Find DB overrides or new custom options
       const customValues = new Set(customOptions.map((o) => o.value.toUpperCase()));
+      const realEstateAllowed = isRealEstateEnabledForUser(req);
       const merged = [
         ...systemDefaults.filter((sys) => !customValues.has(sys.value.toUpperCase())),
         ...customOptions,
-      ];
+      ].filter((opt) => {
+        if (realEstateAllowed || !isProjType) return true;
+        const val = String(opt.value || '').toUpperCase();
+        return val !== 'REAL_ESTATE' && val !== 'REAL_ESTATE_PLOT';
+      });
 
       return sendSuccess(res, {
         message: `Fetched ${merged.length} options for category "${category}"`,
@@ -185,10 +211,15 @@ export const getDropdownOptions = async (req: Request, res: Response) => {
 
       const catCustom = customOptions.filter((o) => o.category === cat);
       const customSet = new Set(catCustom.map((c) => c.value.toUpperCase()));
+      const realEstateAllowed = isRealEstateEnabledForUser(req);
       grouped[cat] = [
         ...defaults.filter((d) => !customSet.has(d.value.toUpperCase())),
         ...catCustom,
-      ];
+      ].filter((opt) => {
+        if (realEstateAllowed || !isProjectTypeCategory(cat)) return true;
+        const val = String(opt.value || '').toUpperCase();
+        return val !== 'REAL_ESTATE' && val !== 'REAL_ESTATE_PLOT';
+      });
     }
 
     return sendSuccess(res, {
@@ -226,7 +257,10 @@ export const createDropdownOption = async (req: Request, res: Response) => {
     }
 
     const cleanLabel = String(label).trim();
-    const cleanCategory = String(category).trim();
+    let cleanCategory = String(category).trim();
+    if (isProjectTypeCategory(cleanCategory)) {
+      cleanCategory = 'ServiceType';
+    }
     // Default value if not specified: uppercase with underscores
     const cleanValue = (value ? String(value).trim() : cleanLabel.toUpperCase().replace(/[^A-Z0-9]/g, '_')) || 'CUSTOM_OPTION';
 
@@ -234,7 +268,9 @@ export const createDropdownOption = async (req: Request, res: Response) => {
     const existing = await prisma.dropdownOption.findFirst({
       where: {
         tenantId,
-        category: cleanCategory,
+        category: isProjectTypeCategory(cleanCategory)
+          ? { in: ['ServiceType', 'ProjectType', 'servicetype', 'projecttype'] }
+          : cleanCategory,
         value: cleanValue,
       },
     });
@@ -355,8 +391,11 @@ export const updateDropdownOption = async (req: Request, res: Response) => {
 
     // If it was a system default (id starts with 'sys-' or matches a default value),
     // create a custom override in the database for this tenant so it persists!
-    const cleanCategory = String(category || 'ServiceType').trim();
-    const cleanValue = (value ? String(value).trim() : id.replace(`sys-${cleanCategory}-`, '')).trim();
+    let cleanCategory = String(category || 'ServiceType').trim();
+    if (isProjectTypeCategory(cleanCategory)) {
+      cleanCategory = 'ServiceType';
+    }
+    const cleanValue = (value ? String(value).trim() : id.replace(new RegExp(`^sys-(?:ServiceType|ProjectType|${cleanCategory})-`), '')).trim();
 
     const createdOverride = await prisma.dropdownOption.upsert({
       where: {

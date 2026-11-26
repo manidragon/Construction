@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { getTenantFilter } from '../middleware/auth';
+import { getTenantFilter, isRealEstateEnabledForUser } from '../middleware/auth';
 
 export const getExecutiveMetrics = async (req: Request, res: Response) => {
   try {
@@ -140,6 +140,45 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
     const actualExpenditureToDate = totalExpenses + totalLabourCost + totalMaterialsCost;
 
     // 3. Operational Counts & Alerts
+    const realEstateAllowed = isRealEstateEnabledForUser(req);
+    let realEstateSummary: {
+      totalPlots: number;
+      availablePlots: number;
+      bookedPlots: number;
+      tokenLapsedPlots: number;
+      registeredPlots: number;
+      totalValuation: number;
+      totalTokenReceived: number;
+      totalBalanceDue: number;
+    } | null = null;
+
+    if (realEstateAllowed) {
+      const plots = await prisma.plot.findMany({
+        where: {
+          ...(projectId ? { projectId: String(projectId) } : { project: { ...tenantFilter } }),
+        },
+        select: {
+          id: true,
+          status: true,
+          price: true,
+          tokenAmount: true,
+          totalReceived: true,
+          balanceDue: true,
+        },
+      });
+
+      realEstateSummary = {
+        totalPlots: plots.length,
+        availablePlots: plots.filter((p) => p.status === 'AVAILABLE').length,
+        bookedPlots: plots.filter((p) => p.status === 'BOOKED' || p.status === 'TOKEN_PAID').length,
+        tokenLapsedPlots: plots.filter((p) => p.status === 'TOKEN_LAPSED_NO_SHOW').length,
+        registeredPlots: plots.filter((p) => p.status === 'REGISTERED').length,
+        totalValuation: plots.reduce((sum, p) => sum + (p.price || 0), 0),
+        totalTokenReceived: plots.reduce((sum, p) => sum + (p.totalReceived || p.tokenAmount || 0), 0),
+        totalBalanceDue: plots.filter((p) => p.status !== 'AVAILABLE').reduce((sum, p) => sum + (p.balanceDue || 0), 0),
+      };
+    }
+
     const pendingRequisitions = await prisma.materialRequisition.count({
       where: { ...tenantFilter, status: 'PENDING' },
     });
@@ -379,6 +418,14 @@ export const getExecutiveMetrics = async (req: Request, res: Response) => {
           leadsLost,
           boqSharedLeads,
         },
+        realEstate: realEstateSummary,
+        realEstateSummary: realEstateSummary
+          ? {
+              ...realEstateSummary,
+              lapsedPlots: realEstateSummary.tokenLapsedPlots,
+              advanceReceived: realEstateSummary.totalTokenReceived,
+            }
+          : null,
         quotationsSummary: {
           totalQuotations,
           totalValue: totalQuotationValue,

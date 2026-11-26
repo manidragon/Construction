@@ -54,6 +54,7 @@ export const getDocuments = async (req: Request, res: Response) => {
       const q = search.trim();
       where.OR = [
         { title: { contains: q } },
+        { description: { contains: q } },
         { category: { contains: q } },
         { referenceEntity: { contains: q } },
         { referenceId: { contains: q } },
@@ -78,7 +79,7 @@ export const getDocuments = async (req: Request, res: Response) => {
 
 export const createDocument = async (req: Request, res: Response) => {
   try {
-    const { title, category, fileUrl, fileSize, fileType, projectId, siteId, referenceEntity, referenceId, customDate } = req.body;
+    const { title, description, category, fileUrl, fileSize, fileType, projectId, siteId, referenceEntity, referenceId, customDate } = req.body;
 
     const docUrl = req.file ? `/uploads/${req.file.filename}` : fileUrl;
 
@@ -92,6 +93,7 @@ export const createDocument = async (req: Request, res: Response) => {
       data: {
         tenantId,
         title,
+        description: description || null,
         category: category || 'DRAWING',
         fileUrl: docUrl,
         fileSize: req.file ? req.file.size : Number(fileSize) || 1024,

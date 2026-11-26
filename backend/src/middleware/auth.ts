@@ -8,6 +8,7 @@ export interface AuthenticatedUser {
   email: string;
   role: string;
   companyId: string;
+  realEstateEnabled: boolean;
 }
 
 declare global {
@@ -34,7 +35,19 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     // Verify user exists and is active
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, name: true, email: true, role: true, companyId: true, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        companyId: true,
+        isActive: true,
+        company: {
+          select: {
+            realEstateEnabled: true,
+          },
+        },
+      },
     });
 
     if (!user || !user.isActive) {
@@ -42,6 +55,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
 
     const effectiveRole = (decoded.role && decoded.role !== 'TENANT_ADMIN') ? decoded.role : (user.role === 'TENANT_ADMIN' ? 'OWNER' : user.role);
+    const realEstateEnabled = effectiveRole === 'SUPER_ADMIN' ? true : Boolean(user.company?.realEstateEnabled);
 
     req.user = {
       id: user.id,
@@ -49,6 +63,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       email: user.email,
       role: effectiveRole,
       companyId: user.companyId,
+      realEstateEnabled,
     };
 
     next();
@@ -77,6 +92,35 @@ export const requireRole = (...allowedRoles: string[]) => {
 
     next();
   };
+};
+
+/**
+ * Helper to verify whether the current user/tenant has Real Estate CRM enabled.
+ */
+export const isRealEstateEnabledForUser = (req: Request): boolean => {
+  if (!req.user) return false;
+  if (req.user.role === 'SUPER_ADMIN') return true;
+  return Boolean(req.user.realEstateEnabled);
+};
+
+/**
+ * Middleware: Block access to Real Estate Management CRM routes unless enabled by Platform Super Admin.
+ */
+export const requireRealEstateFeature = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required.' });
+  }
+
+  if (isRealEstateEnabledForUser(req)) {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    featureLocked: true,
+    module: 'REAL_ESTATE',
+    message: 'Real Estate Management CRM is not enabled for your company account. Please contact your Platform Administrator.',
+  });
 };
 
 /**

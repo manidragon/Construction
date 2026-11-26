@@ -177,7 +177,7 @@ export const getChartOfAccounts = async (req: Request, res: Response) => {
 
 export const getJournalEntries = async (req: Request, res: Response) => {
   try {
-    const { referenceType, voucherType, projectId, startDate, endDate, search, limit } = req.query;
+    const { referenceType, voucherType, projectId, startDate, endDate, search, limit, liquidityType } = req.query;
 
     const where: any = { ...getTenantFilter(req) };
 
@@ -208,6 +208,25 @@ export const getJournalEntries = async (req: Request, res: Response) => {
       };
     }
 
+    // Filter by separate Cash-in-Hand or Bank Liquidity view
+    if (liquidityType === 'CASH') {
+      where.lines = {
+        ...(where.lines || {}),
+        some: {
+          account: { code: { in: ['1010', '1020'] } },
+          ...(projectId && projectId !== 'ALL' ? { projectId } : {}),
+        },
+      };
+    } else if (liquidityType === 'BANK') {
+      where.lines = {
+        ...(where.lines || {}),
+        some: {
+          account: { code: { in: ['1030', '1040'] } },
+          ...(projectId && projectId !== 'ALL' ? { projectId } : {}),
+        },
+      };
+    }
+
     // Filter by date range
     if (startDate || endDate) {
       where.entryDate = {};
@@ -227,6 +246,8 @@ export const getJournalEntries = async (req: Request, res: Response) => {
         {
           OR: [
             { entryNumber: { contains: q } },
+            { chequeNumber: { contains: q } },
+            { chequeBank: { contains: q } },
             { narration: { contains: q } },
             { referenceId: { contains: q } },
             { lines: { some: { account: { name: { contains: q } } } } },
@@ -283,7 +304,7 @@ export const getJournalEntries = async (req: Request, res: Response) => {
 
 export const createManualJournal = async (req: Request, res: Response) => {
   try {
-    const { entryDate, narration, lines } = req.body;
+    const { entryDate, narration, lines, chequeNumber, chequeBank, chequeDate } = req.body;
 
     if (!narration || !lines || !Array.isArray(lines) || lines.length < 2) {
       return res.status(400).json({ success: false, message: 'Narration and at least 2 balanced journal lines are required.' });
@@ -297,6 +318,9 @@ export const createManualJournal = async (req: Request, res: Response) => {
       narration,
       lines: lines as JournalLineInput[],
       createdById: req.user?.id,
+      chequeNumber: chequeNumber || undefined,
+      chequeBank: chequeBank || undefined,
+      chequeDate: chequeDate ? new Date(chequeDate) : undefined,
     });
 
     await logAudit(req.user?.id, 'CREATE_MANUAL_JOURNAL', 'JOURNAL_ENTRY', journal.id, { narration }, req.ip);

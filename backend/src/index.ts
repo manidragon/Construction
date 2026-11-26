@@ -9,8 +9,11 @@ import apiRouter from './routes/api';
 
 dotenv.config();
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', (err: any) => {
   console.error('Uncaught Exception logged:', err);
+  if (err?.code === 'EADDRINUSE') {
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -18,7 +21,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 6000;
 
 // Security & Utility Middleware
 app.use(helmet({
@@ -73,12 +76,23 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`🏗️  ApexBuild ERP Backend Server running on port ${PORT}`);
   console.log(`   Health check: http://localhost:${PORT}/health`);
   console.log(`   Environment:  ${process.env.NODE_ENV || 'development'}`);
   console.log(`=======================================================`);
+});
+
+// Keep process active and prevent premature termination
+setInterval(() => {}, 60000);
+
+process.on('SIGINT', () => {
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+  server.close(() => process.exit(0));
 });
 
 export default app;

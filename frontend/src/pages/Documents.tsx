@@ -39,6 +39,7 @@ import { formatDate } from '../utils/formatters';
 interface DocumentItem {
   id: string;
   title: string;
+  description?: string;
   category: 'DRAWING' | 'CONTRACT' | 'PERMIT' | 'INVOICE' | 'PHOTO' | 'SAFETY' | 'RECEIPT' | 'OTHER';
   fileUrl: string;
   fileSize: number;
@@ -132,6 +133,7 @@ export const Documents: React.FC = () => {
 
   // Form states
   const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadDescription, setUploadDescription] = useState('');
   const [uploadCategory, setUploadCategory] = useState('RECEIPT');
   const [uploadProjectId, setUploadProjectId] = useState('');
   const [uploadDate, setUploadDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -215,6 +217,9 @@ export const Documents: React.FC = () => {
       setIsSubmitting(true);
       const formData = new FormData();
       formData.append('title', uploadTitle.trim());
+      if (uploadDescription.trim()) {
+        formData.append('description', uploadDescription.trim());
+      }
       formData.append('category', uploadCategory);
       const targetProj = uploadProjectId || selectedProjectIdLocal || selectedProjectId || '';
       if (targetProj) {
@@ -236,6 +241,7 @@ export const Documents: React.FC = () => {
       await api.uploadDocument(formData);
       setShowUploadModal(false);
       setUploadTitle('');
+      setUploadDescription('');
       setUploadFile(null);
       fetchDocuments();
     } catch (err: any) {
@@ -276,6 +282,7 @@ export const Documents: React.FC = () => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         doc.title.toLowerCase().includes(q) ||
+        (doc.description && doc.description.toLowerCase().includes(q)) ||
         (doc.project?.name && doc.project.name.toLowerCase().includes(q)) ||
         (doc.project?.code && doc.project.code.toLowerCase().includes(q)) ||
         doc.category.toLowerCase().includes(q) ||
@@ -779,6 +786,11 @@ export const Documents: React.FC = () => {
                     <h3 className="font-bold text-slate-900 text-xs sm:text-sm leading-snug line-clamp-2 group-hover:text-blue-600 transition break-words">
                       {doc.title}
                     </h3>
+                    {doc.description && (
+                      <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 italic">
+                        {doc.description}
+                      </p>
+                    )}
                     <div className="text-[10px] sm:text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 truncate">
                       <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" />
                       <span className="truncate">{doc.project?.name ? `[${doc.project.code}] ${doc.project.name}` : 'Enterprise Master Vault'}</span>
@@ -853,6 +865,9 @@ export const Documents: React.FC = () => {
                   <tr key={doc.id} className="hover:bg-slate-50/80 transition">
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900 text-xs">{doc.title}</div>
+                      {doc.description && (
+                        <div className="text-[11px] text-slate-500 italic truncate max-w-xs">{doc.description}</div>
+                      )}
                       {doc.referenceEntity && (
                         <div className="text-[10px] font-mono text-slate-400">Ref: {doc.referenceEntity}</div>
                       )}
@@ -920,8 +935,9 @@ export const Documents: React.FC = () => {
       {/* MODAL: Upload Document / Receipt */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto my-auto shadow-2xl text-slate-900">
-            <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg max-h-[92vh] flex flex-col my-auto shadow-2xl text-slate-900 overflow-hidden">
+            {/* Fixed Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
                 {uploadCategory === 'RECEIPT' ? (
                   <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
@@ -932,16 +948,17 @@ export const Documents: React.FC = () => {
               </h3>
               <button
                 onClick={() => setShowUploadModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUpload} className="p-4 sm:p-5 space-y-3.5 sm:space-y-4 text-xs">
+            {/* Scrollable Form Body */}
+            <form id="vault-upload-form" onSubmit={handleUpload} className="p-4 sm:p-5 space-y-3.5 sm:space-y-4 text-xs overflow-y-auto flex-1">
               <div>
                 <label className="text-slate-700 font-bold block mb-1">
-                  Receipt / Document Description *
+                  Receipt / Document Title *
                 </label>
                 <input
                   type="text"
@@ -950,6 +967,19 @@ export const Documents: React.FC = () => {
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">
+                  Description / Notes (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Paid to Apex Transporters for 12mm rebar dispatch from warehouse to site"
+                  value={uploadDescription}
+                  onChange={(e) => setUploadDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white resize-none"
                 />
               </div>
 
@@ -1029,24 +1059,26 @@ export const Documents: React.FC = () => {
                   </label>
                 </div>
               </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition text-center"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50 text-center"
-                >
-                  {isSubmitting ? 'Uploading...' : 'Save & Archive'}
-                </button>
-              </div>
             </form>
+
+            {/* Fixed/Sticky Footer */}
+            <div className="flex items-center justify-end gap-2.5 p-4 sm:p-5 border-t border-slate-100 bg-slate-50 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition text-center"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="vault-upload-form"
+                disabled={isSubmitting}
+                className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50 text-center"
+              >
+                {isSubmitting ? 'Uploading...' : 'Save & Archive'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1111,6 +1143,12 @@ export const Documents: React.FC = () => {
                     })}
                   </span>
                 </div>
+                {previewDoc.description && (
+                  <div className="col-span-2 pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Description / Notes</span>
+                    <p className="text-slate-700 italic mt-0.5">{previewDoc.description}</p>
+                  </div>
+                )}
                 {previewDoc.referenceEntity && (
                   <div className="col-span-2 pt-1 border-t border-slate-200/60">
                     <span className="text-slate-500 block text-[10px] uppercase font-bold">System Linkage</span>

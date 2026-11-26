@@ -38,7 +38,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl libc6-compat
 
 ENV NODE_ENV=production
-ENV PORT=5000
+ENV PORT=6000
 ENV DATABASE_URL="file:/app/data/prod.db"
 ENV UPLOAD_DIR="/app/data/uploads"
 
@@ -62,6 +62,6 @@ RUN tr -d '\r' < docker-entrypoint.sh > /tmp/entrypoint.sh && \
     mv /tmp/entrypoint.sh ./docker-entrypoint.sh && \
     chmod +x ./docker-entrypoint.sh
 
-EXPOSE 5000
+EXPOSE 6000
 
 CMD ["./docker-entrypoint.sh"]

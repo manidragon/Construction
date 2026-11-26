@@ -77,6 +77,23 @@ class ApiService {
   deleteChangeOrder = (projectId: string, changeOrderId: string) => this.request<any>(`/projects/${projectId}/change-orders/${changeOrderId}`, { method: 'DELETE' });
   seedInteriorPhases = (projectId: string) => this.request<any>(`/projects/${projectId}/seed-interior-phases`, { method: 'POST' });
 
+  // Real Estate & Plot Inventory
+  getProjectPlots = (projectId: string, params: string = '') => this.request<any>(`/projects/${projectId}/plots${params ? `?${params}` : ''}`);
+  createPlot = (projectId: string, data: any) => this.request<any>(`/projects/${projectId}/plots`, { method: 'POST', body: JSON.stringify(data) });
+  createPlotBatch = (projectId: string, data: any) => this.request<any>(`/projects/${projectId}/plots/batch`, { method: 'POST', body: JSON.stringify(data) });
+  updatePlot = (projectId: string, id: string, data: any) => this.request<any>(`/projects/${projectId}/plots/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  deletePlot = (projectId: string, id: string) => this.request<any>(`/projects/${projectId}/plots/${id}`, { method: 'DELETE' });
+  bookPlot = (projectId: string, id: string, data: any) => this.request<any>(`/projects/${projectId}/plots/${id}/book`, { method: 'POST', body: JSON.stringify(data) });
+  recordPlotPayment = (projectId: string, id: string, data: any) => this.request<any>(`/projects/${projectId}/plots/${id}/payment`, { method: 'POST', body: JSON.stringify(data) });
+  completePlotRegistration = (projectId: string, id: string, data: any) => this.request<any>(`/projects/${projectId}/plots/${id}/register`, { method: 'POST', body: JSON.stringify(data) });
+  uploadPlotDocument = (projectId: string, id: string, data: any) => this.request<any>(`/projects/${projectId}/plots/${id}/documents`, { method: 'POST', body: JSON.stringify(data) });
+  getPlotDocuments = (projectId: string, id: string) => this.request<any>(`/projects/${projectId}/plots/${id}/documents`);
+  markPlotLapsed = (projectId: string, id: string, data: any = {}) => this.request<any>(`/projects/${projectId}/plots/${id}/mark-lapsed`, { method: 'POST', body: JSON.stringify(data) });
+  releaseOrReassignPlot = (projectId: string, id: string, data: any = {}) => this.request<any>(`/projects/${projectId}/plots/${id}/release`, { method: 'POST', body: JSON.stringify(data) });
+  getPlotHistory = (projectId: string, id: string) => this.request<any>(`/projects/${projectId}/plots/${id}/history`);
+  getAllPlotsSummary = () => this.request<any>('/plots/summary');
+  getAllRealEstatePlots = (params: string = '') => this.request<any>(`/plots/all${params ? `?${params}` : ''}`);
+
   // BOQ
   getBOQ = (projectId: string) => this.request<any>(`/boq/${projectId}`);
   createBOQItem = (projectId: string, data: any) => this.request<any>(`/boq/${projectId}/items`, { method: 'POST', body: JSON.stringify(data) });
@@ -255,6 +272,7 @@ class ApiService {
   // Documents & Direct File Uploads
   getDocuments = (params: string = '') => this.request<any>(`/documents${params ? `?${params}` : ''}`);
   uploadDocument = (formData: FormData) => this.request<any>('/documents', { method: 'POST', body: formData });
+  createDocument = (formData: FormData) => this.request<any>('/documents', { method: 'POST', body: formData });
   deleteDocument = (id: string) => this.request<any>(`/documents/${id}`, { method: 'DELETE' });
   uploadFile = (formData: FormData) => this.request<any>('/upload', { method: 'POST', body: formData });
 
@@ -342,6 +360,8 @@ class ApiService {
     this.request<any>(`/superadmin/tenants/${id}/extend-trial`, { method: 'PATCH', body: JSON.stringify(data) });
   updateTenantStatus = (id: string, data: any) =>
     this.request<any>(`/superadmin/tenants/${id}/status`, { method: 'PATCH', body: JSON.stringify(data) });
+  updateTenantFeatures = (id: string, data: { realEstateEnabled: boolean }) =>
+    this.request<any>(`/superadmin/tenants/${id}/features`, { method: 'PATCH', body: JSON.stringify(data) });
   resetDemoTenant = (id: string) =>
     this.request<any>(`/superadmin/tenants/${id}/reset-demo`, { method: 'POST' });
   resetMyDemoCompany = () =>

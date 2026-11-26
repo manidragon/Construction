@@ -25,12 +25,14 @@ import {
   Sparkles,
   Check,
   ArrowUpRight,
+  Landmark,
 } from 'lucide-react';
 import { DailyReportShareModal } from '../components/DailyReportShareModal';
 import SearchableSelect from '../components/common/SearchableSelect';
 
 export const Projects: React.FC = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, hasFeature } = useAuth();
+  const realEstateAllowed = hasFeature('REAL_ESTATE');
   const { refreshProjects, selectedProjectId, setSelectedProjectId } = useProject();
   const [searchParams, setSearchParams] = useSearchParams();
   const convertQuotationId = searchParams.get('convertQuotationId');
@@ -114,6 +116,151 @@ export const Projects: React.FC = () => {
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Real Estate Hub & Dedicated Land Project State
+  const initialTypeFilter = searchParams.get('typeFilter');
+  const [hubTab, setHubTab] = useState<'PROJECTS' | 'REAL_ESTATE_HUB'>(
+    initialTypeFilter === 'REAL_ESTATE' && realEstateAllowed ? 'REAL_ESTATE_HUB' : 'PROJECTS'
+  );
+  const [showRealEstateCreateModal, setShowRealEstateCreateModal] = useState(false);
+  const [allPlots, setAllPlots] = useState<any[]>([]);
+  const [plotsSummary, setPlotsSummary] = useState<any>(null);
+  const [landProjects, setLandProjects] = useState<any[]>([]);
+  const [hubLoading, setHubLoading] = useState(false);
+  const [hubFilterProject, setHubFilterProject] = useState<string>('ALL');
+  const [hubFilterStatus, setHubFilterStatus] = useState<string>('ALL');
+  const [hubFilterSize, setHubFilterSize] = useState<string>('ALL');
+  const [hubSearch, setHubSearch] = useState<string>('');
+
+  const [realEstateForm, setRealEstateForm] = useState({
+    code: '',
+    name: '',
+    description: '',
+    clientName: 'Direct Plot Buyers (Public Layout Sale)',
+    siteAddress: '',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    totalLandArea: '5',
+    landAreaUnit: 'ACRES',
+    surveyNumber: '',
+    layoutApprovalNumber: '',
+    contractValue: '75000000',
+    approvedBudget: '60000000',
+    plannedStartDate: new Date().toISOString().split('T')[0],
+    plannedEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    taxRatePercent: '0',
+    generateBatch: true,
+    numberOfPlots: '50',
+    sizeCents: '5',
+    ratePerCent: '150000',
+    plotPrice: '750000',
+    facing: 'EAST',
+    prefix: 'PLOT-',
+  });
+
+  const fetchRealEstatePlots = async () => {
+    try {
+      setHubLoading(true);
+      const params = new URLSearchParams();
+      if (hubFilterProject !== 'ALL') params.append('projectId', hubFilterProject);
+      if (hubFilterStatus !== 'ALL') params.append('status', hubFilterStatus);
+      if (hubFilterSize !== 'ALL') params.append('sizeCents', hubFilterSize);
+      if (hubSearch.trim()) params.append('search', hubSearch.trim());
+
+      const res = await api.getAllRealEstatePlots(params.toString());
+      if (res.success) {
+        setAllPlots(res.plots || []);
+        setPlotsSummary(res.summary || null);
+        setLandProjects(res.projects || []);
+      }
+    } catch (err) {
+      console.error('Failed to load real estate plots:', err);
+    } finally {
+      setHubLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!realEstateAllowed && hubTab === 'REAL_ESTATE_HUB') {
+      setHubTab('PROJECTS');
+      return;
+    }
+    if (realEstateAllowed && hubTab === 'REAL_ESTATE_HUB') {
+      fetchRealEstatePlots();
+    }
+  }, [realEstateAllowed, hubTab, hubFilterProject, hubFilterStatus, hubFilterSize, hubSearch]);
+
+  const openCreateRealEstateModal = async () => {
+    try {
+      const res = await api.getNextProjectCode();
+      const code = res.nextProjectCode
+        ? res.nextProjectCode.replace('PRJ-', 'PRJ-RE-')
+        : `PRJ-RE-${Date.now().toString().slice(-3)}`;
+      setRealEstateForm((prev) => ({
+        ...prev,
+        code,
+      }));
+    } catch (err) {}
+    setShowRealEstateCreateModal(true);
+  };
+
+  const handleCreateRealEstateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        code: realEstateForm.code,
+        name: realEstateForm.name,
+        description:
+          realEstateForm.description ||
+          `Real Estate Plotted Land Development - ${realEstateForm.totalLandArea} ${realEstateForm.landAreaUnit}`,
+        clientName: realEstateForm.clientName || 'Direct Plot Buyers',
+        siteAddress: realEstateForm.siteAddress,
+        city: realEstateForm.city,
+        state: realEstateForm.state,
+        projectType: 'REAL_ESTATE',
+        contractType: 'ITEM_RATE',
+        contractValue: realEstateForm.contractValue,
+        approvedBudget: realEstateForm.approvedBudget || realEstateForm.contractValue,
+        plannedStartDate: realEstateForm.plannedStartDate,
+        plannedEndDate: realEstateForm.plannedEndDate,
+        paymentTerms: 'Token Advance, Agreement Advance, Full Payment & Sub-Registrar Legal Registration.',
+        taxRatePercent: 0,
+        gstMode: 'NO_GST',
+        totalLandArea: realEstateForm.totalLandArea,
+        landAreaUnit: realEstateForm.landAreaUnit,
+        surveyNumber: realEstateForm.surveyNumber,
+        layoutApprovalNumber: realEstateForm.layoutApprovalNumber,
+      };
+
+      const res = await api.createProject(payload);
+      if (res.success && res.project) {
+        if (realEstateForm.generateBatch && Number(realEstateForm.numberOfPlots) > 0) {
+          try {
+            await api.createPlotBatch(res.project.id, {
+              groupName: `${realEstateForm.sizeCents} Cents Standard Plots`,
+              numberOfPlots: realEstateForm.numberOfPlots,
+              sizeCents: realEstateForm.sizeCents,
+              ratePerCent: realEstateForm.ratePerCent,
+              plotPrice: realEstateForm.plotPrice,
+              prefix: realEstateForm.prefix || 'PLOT-',
+              startNumber: '1',
+              facing: realEstateForm.facing || 'EAST',
+            });
+          } catch (batchErr) {
+            console.error('Batch generation error:', batchErr);
+          }
+        }
+
+        setShowRealEstateCreateModal(false);
+        fetchProjects();
+        refreshProjects();
+        if (hubTab === 'REAL_ESTATE_HUB') fetchRealEstatePlots();
+        alert(`🎉 Real estate land layout "${res.project.name}" (${res.project.code}) created successfully!`);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to create real estate project');
+    }
+  };
 
   const openEditProjectModal = (p: Project) => {
     setEditingProject(p);
@@ -396,32 +543,80 @@ export const Projects: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hasRole('OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER') && (
             <button
               onClick={() => setShowClientModal(true)}
-              className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 shadow-sm transition"
+              className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs border border-slate-200 shadow-sm transition"
               title="Add a new Client to the system"
             >
               <Building2 className="w-4 h-4 text-amber-600" />
-              <span>+ Add New Client</span>
+              <span>+ Add Client</span>
             </button>
           )}
 
           {hasRole('OWNER', 'PROJECT_MANAGER') && (
-            <button
-              onClick={() => openCreateProjectModal()}
-              className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create New Project</span>
-            </button>
+            <>
+              <button
+                onClick={() => openCreateProjectModal()}
+                className="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Construction Project</span>
+              </button>
+
+              {realEstateAllowed && (
+                <button
+                  onClick={() => openCreateRealEstateModal()}
+                  className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition"
+                  title="Create a new plotted layout development (Product sale with plot inventory)"
+                >
+                  <Landmark className="w-4 h-4" />
+                  <span>+ 🌾 New Land Project (Plots)</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+      {/* Main Switcher: Construction Projects vs Real Estate Availability Hub */}
+      {realEstateAllowed && (
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+          <button
+            onClick={() => setHubTab('PROJECTS')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              hubTab === 'PROJECTS'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-amber-500" />
+            <span>All Construction & Turnkey Projects ({projects.length})</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setHubTab('REAL_ESTATE_HUB');
+              fetchRealEstatePlots();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              hubTab === 'REAL_ESTATE_HUB'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Landmark className="w-4 h-4 text-emerald-400" />
+            <span>🌾 Real Estate & Plot Availability Hub ({projects.filter((p) => p.projectType === 'REAL_ESTATE').length})</span>
+          </button>
+        </div>
+      )}
+
+      {/* VIEW 1: CONSTRUCTION PROJECTS DIRECTORY */}
+      {hubTab === 'PROJECTS' && (
+        <>
+          {/* Filter and Search Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
@@ -650,6 +845,275 @@ export const Projects: React.FC = () => {
                 </div>
               </div>
             ))}
+        </div>
+      )}
+        </>
+      )}
+
+      {/* VIEW 2: REAL ESTATE & PLOT AVAILABILITY HUB */}
+      {realEstateAllowed && hubTab === 'REAL_ESTATE_HUB' && (
+        <div className="space-y-4">
+          {/* Real-Time Cross-Project Live Availability KPI Summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-semibold text-slate-500 block">Total Layout Plots</span>
+              <span className="text-xl font-black text-slate-900 mt-1 block">
+                {plotsSummary?.totalPlots || allPlots.length}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Across All Land Layouts</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs">
+              <span className="text-[11px] font-semibold text-emerald-600 block flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Ready to Sell
+              </span>
+              <span className="text-xl font-black text-emerald-600 mt-1 block">
+                {plotsSummary?.availableCount || allPlots.filter((p) => p.status === 'AVAILABLE').length}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Instant Booking Available</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-xs">
+              <span className="text-[11px] font-semibold text-amber-600 block flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                Booked / Token
+              </span>
+              <span className="text-xl font-black text-amber-600 mt-1 block">
+                {(plotsSummary?.bookedCount || 0) + (plotsSummary?.tokenPaidCount || 0) ||
+                  allPlots.filter((p) => p.status === 'BOOKED' || p.status === 'TOKEN_PAID').length}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Advance Collected</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs">
+              <span className="text-[11px] font-semibold text-rose-600 block flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-rose-500" />
+                Lapsed (No-Show)
+              </span>
+              <span className="text-xl font-black text-rose-600 mt-1 block">
+                {plotsSummary?.lapsedCount || allPlots.filter((p) => p.status === 'TOKEN_LAPSED_NO_SHOW').length}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Eligible to Re-assign</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-semibold text-slate-500 block">Total Token Inflow</span>
+              <span className="text-base font-black text-emerald-600 mt-1 block truncate">
+                {formatCurrency(plotsSummary?.totalCollected || 0)}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Posted to Ledger</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-semibold text-slate-500 block">Balance Due</span>
+              <span className="text-base font-black text-indigo-600 mt-1 block truncate">
+                {formatCurrency(plotsSummary?.totalBalance || 0)}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-1 block">Due at SRO Registration</span>
+            </div>
+          </div>
+
+          {/* Cross-Project Filters & Fast Search for Sales Team */}
+          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              {/* Land Project Selector */}
+              <select
+                value={hubFilterProject}
+                onChange={(e) => setHubFilterProject(e.target.value)}
+                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-bold text-slate-800 focus:outline-none"
+              >
+                <option value="ALL">🌾 All Land Layout Projects ({landProjects.length})</option>
+                {landProjects.map((lp) => (
+                  <option key={lp.id} value={lp.id}>
+                    {lp.name} ({lp._count?.plots || 0} plots)
+                  </option>
+                ))}
+              </select>
+
+              {/* Status Selector */}
+              <select
+                value={hubFilterStatus}
+                onChange={(e) => setHubFilterStatus(e.target.value)}
+                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="AVAILABLE">Available</option>
+                <option value="TOKEN_PAID">Token Paid</option>
+                <option value="BOOKED">Booked</option>
+                <option value="TOKEN_LAPSED_NO_SHOW">Token Lapsed (No-Show)</option>
+                <option value="REGISTERED">Registered</option>
+              </select>
+
+              {/* Size Selector */}
+              <select
+                value={hubFilterSize}
+                onChange={(e) => setHubFilterSize(e.target.value)}
+                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="ALL">All Plot Sizes</option>
+                <option value="2.5">2.5 Cents (1,089 sqft)</option>
+                <option value="3">3 Cents (1,307 sqft)</option>
+                <option value="5">5 Cents (2,178 sqft)</option>
+                <option value="10">10 Cents</option>
+              </select>
+            </div>
+
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Quick search plot #, buyer, phone..."
+                value={hubSearch}
+                onChange={(e) => setHubSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          {/* Plot Grid Display across all projects */}
+          {hubLoading ? (
+            <div className="text-center py-12 text-slate-400 text-xs">Loading plot inventory across land layouts...</div>
+          ) : allPlots.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500">
+              <Landmark className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold">No plots found matching current filter</p>
+              <p className="text-xs text-slate-400 mt-1">Try selecting "All Land Layout Projects" or clearing search keywords.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {allPlots.map((p) => {
+                const isAvail = p.status === 'AVAILABLE';
+                const isLapsed = p.status === 'TOKEN_LAPSED_NO_SHOW';
+                const isReg = p.status === 'REGISTERED';
+
+                return (
+                  <div
+                    key={p.id}
+                    className={`bg-white rounded-2xl border p-4 shadow-xs transition hover:shadow-md flex flex-col justify-between ${
+                      isAvail
+                        ? 'border-emerald-200'
+                        : isLapsed
+                        ? 'border-rose-300 bg-rose-50/20'
+                        : isReg
+                        ? 'border-indigo-200'
+                        : 'border-amber-200 bg-amber-50/10'
+                    }`}
+                  >
+                    <div>
+                      {/* Top Bar: Plot # and Status */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{
+                              backgroundColor: isAvail ? '#10b981' : isLapsed ? '#f43f5e' : isReg ? '#6366f1' : '#f59e0b',
+                            }}
+                          />
+                          {p.plotNumber}
+                        </span>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                            isAvail
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : isLapsed
+                              ? 'bg-rose-100 text-rose-800 animate-pulse'
+                              : isReg
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {isLapsed ? 'LAPSED' : p.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+
+                      {/* Land Project Name & Location */}
+                      <div className="text-[11px] text-slate-500 mb-2 truncate">
+                        <span className="font-semibold text-slate-800">{p.project?.name || 'Land Project'}</span>
+                        {p.project?.siteAddress && (
+                          <span className="block text-[10px] text-slate-400 truncate mt-0.5">
+                            📍 {p.project.siteAddress}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Size & Facing */}
+                      <div className="flex items-center justify-between text-xs text-slate-700 border-b border-slate-100 pb-2 mb-2">
+                        <span className="font-bold">
+                          {p.sizeCents} Cents{' '}
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            ({p.sizeSqFt || Math.round(p.sizeCents * 435.6)} sqft)
+                          </span>
+                        </span>
+                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-semibold">
+                          Facing: {p.facing || 'East'}
+                        </span>
+                      </div>
+
+                      {/* Price */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] text-slate-400">Total Price:</span>
+                        <span className="text-sm font-black text-slate-900">{formatCurrency(p.price)}</span>
+                      </div>
+
+                      {/* Buyer Details if Booked */}
+                      {!isAvail && (
+                        <div className="bg-slate-50 rounded-lg p-2 text-xs space-y-1 border border-slate-100 mb-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-400">Buyer:</span>
+                            <span className="font-bold text-slate-800 truncate max-w-[120px]">
+                              {p.buyerName || 'Client'}
+                            </span>
+                          </div>
+                          {p.totalReceived > 0 && (
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-emerald-600 font-semibold">Received:</span>
+                              <span className="font-mono font-bold text-emerald-600">
+                                {formatCurrency(p.totalReceived)}
+                              </span>
+                            </div>
+                          )}
+                          {p.balanceDue > 0 && (
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-rose-600 font-semibold">Balance:</span>
+                              <span className="font-mono font-bold text-rose-600">
+                                {formatCurrency(p.balanceDue)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Footer: Direct Link to Project Plots Tab */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <Link
+                        to={`/projects/${p.projectId}?tab=plots`}
+                        className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 transition"
+                      >
+                        <span>Open Layout Plots</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </Link>
+
+                      {isAvail ? (
+                        <Link
+                          to={`/projects/${p.projectId}?tab=plots`}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+                        >
+                          Book Now
+                        </Link>
+                      ) : (
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {p.status === 'REGISTERED' ? '✓ Registered' : 'Under Booking'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1388,6 +1852,300 @@ export const Projects: React.FC = () => {
                 {isDeleting ? 'Deleting...' : 'Confirm Delete Project'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Modal: Create Real Estate Land Project (Product) */}
+      {realEstateAllowed && showRealEstateCreateModal && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full my-8 overflow-hidden animate-in fade-in zoom-in-95">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white z-10">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">New Real Estate Land Project (Plot Layout)</h2>
+                  <p className="text-xs text-slate-500">
+                    Product-based layout development with acreage, survey numbers, and plot batch inventory.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRealEstateCreateModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRealEstateProject} className="flex flex-col max-h-[75vh] overflow-hidden">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar text-xs">
+                {/* Product vs Service Clarification Banner */}
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-emerald-800">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span>Real Estate Land Product Model</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    Unlike service contracting, plotted layouts are enterprise products owned by your firm. Plots can be added in bulk or individually, and sold directly to buyers with token advance, full payment, and legal SRO registration tracking.
+                  </p>
+                </div>
+
+                {/* Project Code & Name */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Project Code *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. PRJ-RE-002"
+                      value={realEstateForm.code}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, code: e.target.value.toUpperCase() })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold uppercase focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Layout / Project Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Prestige Green Valley Land & Plot Layout"
+                      value={realEstateForm.name}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, name: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Location & City */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Site Location & Address *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Sy. No 88/1A, Kanakapura Main Road, Harohalli"
+                      value={realEstateForm.siteAddress}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, siteAddress: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={realEstateForm.city}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, city: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Land Area & Unit */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Total Land Area *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="e.g. 5"
+                      value={realEstateForm.totalLandArea}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, totalLandArea: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Land Area Unit</label>
+                    <select
+                      value={realEstateForm.landAreaUnit}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, landAreaUnit: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                    >
+                      <option value="ACRES">Acres (1 Acre = 100 Cents)</option>
+                      <option value="CENTS">Cents (435.6 sq.ft)</option>
+                      <option value="GUNTHA">Gunthas (1,089 sq.ft)</option>
+                      <option value="SQFT">Square Feet (Sq.Ft)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Survey / Khasra Numbers</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Sy. No. 88/1A, 88/2B"
+                      value={realEstateForm.surveyNumber}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, surveyNumber: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                {/* Approval & Estimated Valuation */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">DTCP / BDA / RERA Approval #</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. DTCP/PL/2026/894"
+                      value={realEstateForm.layoutApprovalNumber}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, layoutApprovalNumber: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Total Estimated Project Value (₹) *</label>
+                    <input
+                      type="number"
+                      required
+                      placeholder="e.g. 75000000"
+                      value={realEstateForm.contractValue}
+                      onChange={(e) => setRealEstateForm({ ...realEstateForm, contractValue: e.target.value })}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-emerald-600"
+                    />
+                  </div>
+                </div>
+
+                {/* GST Tax Configuration - Exempt by Law */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">GST Tax Configuration:</span>
+                    <span className="font-bold font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-[11px]">
+                      0% (No GST / Exempt)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Per Schedule III of the CGST Act (Item 5), sale of land or plotted layouts is neither a supply of goods nor services. Real estate land projects automatically default to 0% GST, meaning tax is not added to expenses.
+                  </p>
+                </div>
+
+                {/* Checkbox: Upfront Plot Batch Generation */}
+                <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center space-x-2 cursor-pointer font-bold text-xs text-indigo-950">
+                      <input
+                        type="checkbox"
+                        checked={realEstateForm.generateBatch}
+                        onChange={(e) => setRealEstateForm({ ...realEstateForm, generateBatch: e.target.checked })}
+                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>Generate Initial Plot Inventory Now (Batch Generator)</span>
+                    </label>
+                    <span className="text-[10px] text-indigo-700 font-semibold">Recommended</span>
+                  </div>
+
+                  {realEstateForm.generateBatch && (
+                    <div className="space-y-3 pt-2 border-t border-indigo-100">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Number of Plots *</label>
+                          <input
+                            type="number"
+                            value={realEstateForm.numberOfPlots}
+                            onChange={(e) => setRealEstateForm({ ...realEstateForm, numberOfPlots: e.target.value })}
+                            className="w-full text-xs p-1.5 bg-white border border-slate-300 rounded font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Size (Cents) *</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={realEstateForm.sizeCents}
+                            onChange={(e) => {
+                              const sz = parseFloat(e.target.value) || 0;
+                              const rate = parseFloat(realEstateForm.ratePerCent) || 0;
+                              setRealEstateForm({
+                                ...realEstateForm,
+                                sizeCents: e.target.value,
+                                plotPrice: String(Math.round(sz * rate)),
+                              });
+                            }}
+                            className="w-full text-xs p-1.5 bg-white border border-slate-300 rounded font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Rate / Cent (₹) *</label>
+                          <input
+                            type="number"
+                            value={realEstateForm.ratePerCent}
+                            onChange={(e) => {
+                              const rate = parseFloat(e.target.value) || 0;
+                              const sz = parseFloat(realEstateForm.sizeCents) || 0;
+                              setRealEstateForm({
+                                ...realEstateForm,
+                                ratePerCent: e.target.value,
+                                plotPrice: String(Math.round(sz * rate)),
+                              });
+                            }}
+                            className="w-full text-xs p-1.5 bg-white border border-slate-300 rounded font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Total Plot Price (₹)</label>
+                          <input
+                            type="number"
+                            value={realEstateForm.plotPrice}
+                            onChange={(e) => setRealEstateForm({ ...realEstateForm, plotPrice: e.target.value })}
+                            className="w-full text-xs p-1.5 bg-white border border-slate-300 rounded font-mono font-bold text-emerald-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Plot Prefix</label>
+                          <input
+                            type="text"
+                            value={realEstateForm.prefix}
+                            onChange={(e) => setRealEstateForm({ ...realEstateForm, prefix: e.target.value.toUpperCase() })}
+                            className="w-full text-xs p-1.5 bg-white border border-slate-300 rounded font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Default Facing</label>
+                          <select
+                            value={realEstateForm.facing}
+                            onChange={(e) => setRealEstateForm({ ...realEstateForm, facing: e.target.value })}
+                            className="w-full text-xs p-1.5 bg-white border border-slate-300 rounded font-semibold"
+                          >
+                            <option value="EAST">East</option>
+                            <option value="NORTH">North</option>
+                            <option value="WEST">West</option>
+                            <option value="SOUTH">South</option>
+                            <option value="CORNER">Corner</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-indigo-900 font-medium">
+                        Preview: <strong>{realEstateForm.numberOfPlots} plots</strong> of <strong>{realEstateForm.sizeCents} cents each</strong> ({realEstateForm.prefix}01 to {realEstateForm.prefix}{String(realEstateForm.numberOfPlots).padStart(2, '0')}) @ ₹{Number(realEstateForm.plotPrice || 0).toLocaleString('en-IN')} each.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Fixed Sticky Footer */}
+              <div className="p-4 border-t border-slate-100 flex items-center justify-end space-x-2 sticky bottom-0 bg-white z-10">
+                <button
+                  type="button"
+                  onClick={() => setShowRealEstateCreateModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition flex items-center gap-1.5"
+                >
+                  <Landmark className="w-4 h-4" />
+                  <span>Create Real Estate Project & Inventory</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

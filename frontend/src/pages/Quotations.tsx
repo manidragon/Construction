@@ -46,6 +46,7 @@ import {
   Printer,
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
+import DynamicSelect from '../components/common/DynamicSelect';
 
 const COMMON_AREAS = [
   'Living Room',
@@ -162,6 +163,64 @@ export const Quotations: React.FC = () => {
     { name: '40% on Framework & Material Delivery at Site', percentage: 40, amount: 0 },
     { name: '10% on Final Handover & Snag Rectification', percentage: 10, amount: 0 },
   ]);
+
+  const handleAddMilestone = () => {
+    const currentTotal = milestones.reduce((sum, m) => sum + (Number(m.percentage) || 0), 0);
+    const remaining = Math.max(0, 100 - currentTotal);
+    setMilestones([
+      ...milestones,
+      {
+        name: `Milestone ${milestones.length + 1} (${remaining > 0 ? remaining : 10}% Stage)`,
+        percentage: remaining > 0 ? remaining : 10,
+        amount: 0,
+      },
+    ]);
+  };
+
+  const handleRemoveMilestone = (index: number) => {
+    if (milestones.length <= 1) return;
+    setMilestones(milestones.filter((_, idx) => idx !== index));
+  };
+
+  const handleUpdateMilestone = (index: number, field: 'name' | 'percentage', value: any) => {
+    const updated = [...milestones];
+    if (field === 'percentage') {
+      const numVal = Math.max(0, Math.min(100, Number(value) || 0));
+      updated[index] = { ...updated[index], percentage: numVal };
+    } else {
+      updated[index] = { ...updated[index], name: String(value) };
+    }
+    setMilestones(updated);
+  };
+
+  const handleApplyMilestonePreset = (preset: '3-stage' | '4-stage' | '5-stage' | 'full') => {
+    if (preset === '3-stage') {
+      setMilestones([
+        { name: '50% Advance on Booking & Mobilization', percentage: 50, amount: 0 },
+        { name: '40% on Framework & Material Delivery at Site', percentage: 40, amount: 0 },
+        { name: '10% on Final Handover & Snag Rectification', percentage: 10, amount: 0 },
+      ]);
+    } else if (preset === '4-stage') {
+      setMilestones([
+        { name: 'Stage 1: 25% Advance Booking & Mobilization', percentage: 25, amount: 0 },
+        { name: 'Stage 2: 25% Structural / Plinth Completion', percentage: 25, amount: 0 },
+        { name: 'Stage 3: 25% Material Delivery & Framework', percentage: 25, amount: 0 },
+        { name: 'Stage 4: 25% Final Finishing & Handover', percentage: 25, amount: 0 },
+      ]);
+    } else if (preset === '5-stage') {
+      setMilestones([
+        { name: 'Stage 1: 30% Booking & Foundation', percentage: 30, amount: 0 },
+        { name: 'Stage 2: 25% Brickwork & Superstructure', percentage: 25, amount: 0 },
+        { name: 'Stage 3: 20% Plastering & MEP Services', percentage: 20, amount: 0 },
+        { name: 'Stage 4: 15% Flooring & Finishing', percentage: 15, amount: 0 },
+        { name: 'Stage 5: 10% Handover & Snag List Clearance', percentage: 10, amount: 0 },
+      ]);
+    } else if (preset === 'full') {
+      setMilestones([
+        { name: '100% Advance Payment on Booking', percentage: 100, amount: 0 },
+      ]);
+    }
+  };
 
   // Dispatch modal
   const [dispatchQuotationData, setDispatchQuotationData] = useState<Quotation | null>(null);
@@ -499,11 +558,16 @@ export const Quotations: React.FC = () => {
     totalAmount = Math.round((subtotal + gstAmount) * 100) / 100;
   }
 
-  // Auto-calculate milestone rupee amounts
-  const updatedMilestones = milestones.map((m) => ({
-    ...m,
-    amount: Math.round(totalAmount * (m.percentage / 100)),
-  }));
+  // Auto-calculate milestone rupee amounts and percentage totals
+  const totalMilestonePercentage = milestones.reduce((sum, m) => sum + (Number(m.percentage) || 0), 0);
+  const updatedMilestones = milestones.map((m) => {
+    const pct = Number(m.percentage) || 0;
+    return {
+      ...m,
+      percentage: pct,
+      amount: Math.round(totalAmount * (pct / 100)),
+    };
+  });
 
   // Items manipulation
   const handleItemChange = (index: number, field: keyof QuotationItem, value: any) => {
@@ -1043,18 +1107,14 @@ export const Quotations: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Project Type</label>
-                <select
+                <label className="block text-slate-700 font-semibold mb-1">Project Type *</label>
+                <DynamicSelect
+                  category="ServiceType"
                   value={projectType}
-                  onChange={(e) => setProjectType(e.target.value as LeadProjectType)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium"
-                >
-                  {PROJECT_TYPE_OPTIONS.map((pt) => (
-                    <option key={pt.key} value={pt.key}>
-                      {pt.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setProjectType(val as any)}
+                  className="!bg-white !border-slate-300 !text-slate-900 !py-2 !rounded-lg !text-sm font-semibold"
+                  placeholder="Select Project Type..."
+                />
               </div>
 
               <div>
@@ -1425,11 +1485,14 @@ export const Quotations: React.FC = () => {
 
                 {/* Milestone preview badges */}
                 <div className="pt-3 border-t border-slate-200 space-y-1.5 text-[11px]">
-                  <p className="font-bold text-slate-700">Calculated Milestone Collections:</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-slate-700">Calculated Milestone Collections:</p>
+                    <span className="font-bold text-slate-400">({milestones.length} Stages)</span>
+                  </div>
                   {updatedMilestones.map((m, i) => (
                     <div key={i} className="flex items-center justify-between text-slate-600">
-                      <span>{m.name}:</span>
-                      <span className="font-semibold text-slate-800">{formatCurrency(m.amount)}</span>
+                      <span className="truncate pr-2">{m.name || `Milestone ${i + 1}`} ({m.percentage}%):</span>
+                      <span className="font-semibold text-slate-800 shrink-0">{formatCurrency(m.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -1437,38 +1500,154 @@ export const Quotations: React.FC = () => {
             </div>
           </div>
 
-          {/* 4. Milestone Payment Terms & Penalty Clauses (Requirement 4) */}
+          {/* 4. Milestone Payment Terms & Penalty Clauses */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-              <h2 className="font-bold text-slate-900 text-sm">
-                Milestone Payment Terms & Delay Penalty Clauses
-              </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                <h2 className="font-bold text-slate-900 text-sm">
+                  Milestone Payment Terms & Delay Penalty Clauses
+                </h2>
+              </div>
+
+              <div className="flex items-center flex-wrap gap-2">
+                {/* Total Percentage Status Badge */}
+                {totalMilestonePercentage === 100 ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Total: 100% (Balanced ✓)</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>
+                      Total: {totalMilestonePercentage}%{' '}
+                      {totalMilestonePercentage < 100
+                        ? `(${100 - totalMilestonePercentage}% remaining)`
+                        : `(${totalMilestonePercentage - 100}% over 100%)`}
+                    </span>
+                  </span>
+                )}
+
+                {/* Add Milestone Button */}
+                <button
+                  type="button"
+                  onClick={handleAddMilestone}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>+ Add Milestone</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Quick Stage Presets */}
+            <div className="flex items-center justify-between flex-wrap gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+              <span className="font-bold text-slate-600 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Quick Stage Presets:
+              </span>
+              <div className="flex items-center flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleApplyMilestonePreset('3-stage')}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 font-semibold text-slate-700 transition cursor-pointer"
+                >
+                  3 Stages (50-40-10)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyMilestonePreset('4-stage')}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 font-semibold text-slate-700 transition cursor-pointer"
+                >
+                  4 Stages (25-25-25-25)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyMilestonePreset('5-stage')}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 font-semibold text-slate-700 transition cursor-pointer"
+                >
+                  5 Stages (30-25-20-15-10)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyMilestonePreset('full')}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 font-semibold text-slate-700 transition cursor-pointer"
+                >
+                  100% Full Advance
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Milestones Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {milestones.map((m, idx) => (
-                <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div key={idx} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 relative group hover:border-indigo-300 transition shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-xs">Milestone {idx + 1}</span>
-                    <span className="font-bold text-emerald-700">{m.percentage}%</span>
+                    <span className="font-bold text-slate-800 text-xs">
+                      Milestone {idx + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={m.percentage}
+                          onChange={(e) => handleUpdateMilestone(idx, 'percentage', e.target.value)}
+                          className="w-12 text-right font-extrabold text-xs text-emerald-700 focus:outline-none"
+                        />
+                        <span className="font-bold text-xs text-slate-400">%</span>
+                      </div>
+                      {milestones.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMilestone(idx)}
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          title="Remove this milestone"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    value={m.name}
-                    onChange={(e) => {
-                      const updated = [...milestones];
-                      updated[idx].name = e.target.value;
-                      setMilestones(updated);
-                    }}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs font-semibold focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                    <span>Payable:</span>
-                    <span className="font-bold text-slate-900">{formatCurrency(updatedMilestones[idx].amount)}</span>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                      Stage Description / Term
+                    </label>
+                    <input
+                      type="text"
+                      value={m.name}
+                      onChange={(e) => handleUpdateMilestone(idx, 'name', e.target.value)}
+                      placeholder={`Milestone ${idx + 1} details`}
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-amber-500 focus:outline-none bg-white text-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/80 font-medium">
+                    <span className="text-slate-500">Payable Amount:</span>
+                    <span className="font-extrabold text-slate-900">
+                      {formatCurrency(updatedMilestones[idx]?.amount || 0)}
+                    </span>
                   </div>
                 </div>
               ))}
+
+              {/* Add Milestone Card */}
+              <button
+                type="button"
+                onClick={handleAddMilestone}
+                className="p-4 bg-slate-50/60 hover:bg-indigo-50/50 border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-600 hover:text-indigo-800 transition min-h-[140px] group cursor-pointer"
+              >
+                <PlusCircle className="w-6 h-6 text-slate-400 group-hover:text-indigo-600 transition" />
+                <span className="text-xs font-bold">+ Add Another Milestone</span>
+                <span className="text-[10px] text-slate-400">
+                  {100 - totalMilestonePercentage > 0
+                    ? `Default to remaining ${100 - totalMilestonePercentage}%`
+                    : 'Set custom stage description & %'}
+                </span>
+              </button>
             </div>
 
             {/* Late Payment Penalty Clause (Option to Add or Remove via Tick Box) */}
@@ -1671,7 +1850,15 @@ export const Quotations: React.FC = () => {
                       `Dear ${dispatchQuotationData.clientName},\n` +
                       `Please find attached our itemized commercial proposal for your ${dispatchQuotationData.projectType.replace(/_/g, ' ')} project at ${dispatchQuotationData.siteAddress}.\n\n` +
                       `*Total Agreed Value:* ${formatCurrency(dispatchQuotationData.totalAmount)} (${dispatchQuotationData.gstMode === 'NO_GST' ? 'No GST (0%)' : dispatchQuotationData.gstMode === 'EXCLUSIVE' ? '+18% GST Exclusive' : '18% GST Inclusive'})\n` +
-                      `*Payment Milestones:* 50% Advance, 40% Material Delivery, 10% Handover.\n` +
+                      `*Payment Milestones:* ${(() => {
+                        try {
+                          const ms = JSON.parse(dispatchQuotationData.milestoneTerms || '[]');
+                          if (Array.isArray(ms) && ms.length > 0) {
+                            return ms.map((m: any) => `${m.percentage}% (${m.name || 'Stage'})`).join(' | ');
+                          }
+                        } catch (e) {}
+                        return 'Milestone schedule as agreed';
+                      })()}\n` +
                       `*Late Payment Terms:* ${dispatchQuotationData.penaltyTerms || 'None (Waived)'}\n\n` +
                       `View detailed quotation here: https://apexbuildtech.com/q/${dispatchQuotationData.quotationNumber}`}
                   </div>

@@ -23,6 +23,7 @@ frontend/.env.local
 *.db-shm
 backend/prisma/*.db
 backend/prisma/*.db-journal
+backend/prisma/tenants/
 backend/dev.db
 backend/dev.db-journal
 uploads/

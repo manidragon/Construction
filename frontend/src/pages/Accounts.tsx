@@ -46,6 +46,7 @@ export const Accounts: React.FC = () => {
 
   // Filters
   const [journalFilter, setJournalFilter] = useState<string>('ALL');
+  const [liquidityFilter, setLiquidityFilter] = useState<'ALL' | 'CASH' | 'BANK'>('ALL');
   const [projectFilter, setProjectFilter] = useState<string>('ALL');
   const [journalSearch, setJournalSearch] = useState<string>('');
   const [journalViewMode, setJournalViewMode] = useState<'daybook' | 'cards'>('daybook');
@@ -57,6 +58,9 @@ export const Accounts: React.FC = () => {
   const [journalForm, setJournalForm] = useState({
     entryDate: new Date().toISOString().split('T')[0],
     narration: '',
+    chequeNumber: '',
+    chequeBank: '',
+    chequeDate: '',
     lines: [
       { accountCode: '1030', debit: 0, credit: 0, projectId: '' },
       { accountCode: '4010', debit: 0, credit: 0, projectId: '' },
@@ -161,6 +165,9 @@ export const Accounts: React.FC = () => {
         setJournalForm({
           entryDate: new Date().toISOString().split('T')[0],
           narration: '',
+          chequeNumber: '',
+          chequeBank: '',
+          chequeDate: '',
           lines: [
             { accountCode: '1030', debit: 0, credit: 0, projectId: '' },
             { accountCode: '4010', debit: 0, credit: 0, projectId: '' },
@@ -188,6 +195,25 @@ export const Accounts: React.FC = () => {
       }
     }
 
+    // Liquidity Type Filter (Cash vs Bank)
+    if (liquidityFilter !== 'ALL') {
+      if (liquidityFilter === 'CASH') {
+        const hasCash = j.lines.some((l) => {
+          const code = l.account?.code || (l as any).accountCode;
+          const name = l.account?.name?.toLowerCase() || '';
+          return code === '1010' || code === '1020' || name.includes('cash');
+        });
+        if (!hasCash) return false;
+      } else if (liquidityFilter === 'BANK') {
+        const hasBank = j.lines.some((l) => {
+          const code = l.account?.code || (l as any).accountCode;
+          const name = l.account?.name?.toLowerCase() || '';
+          return code === '1030' || code === '1040' || name.includes('bank');
+        });
+        if (!hasBank) return false;
+      }
+    }
+
     // Project Filter
     if (projectFilter !== 'ALL') {
       const hasProject = j.lines.some((l) => l.project?.code === projectFilter || (l as any).projectId === projectFilter);
@@ -204,7 +230,11 @@ export const Accounts: React.FC = () => {
         (l) => l.account?.name.toLowerCase().includes(q) || l.account?.code.includes(q)
       );
       const matchProject = j.lines.some((l) => l.project?.name.toLowerCase().includes(q));
-      return matchNumber || matchNarration || matchType || matchLines || matchProject;
+      const matchCheque = Boolean(
+        (j.chequeNumber && j.chequeNumber.toLowerCase().includes(q)) ||
+        (j.chequeBank && j.chequeBank.toLowerCase().includes(q))
+      );
+      return matchNumber || matchNarration || matchType || matchLines || matchProject || matchCheque;
     }
 
     return true;
@@ -217,6 +247,12 @@ export const Accounts: React.FC = () => {
   const purchaseCount = journals.filter((j) => j.tallyVoucherType === 'Purchase').length;
   const contraCount = journals.filter((j) => j.tallyVoucherType === 'Contra').length;
   const journalVoucherCount = journals.filter((j) => j.tallyVoucherType === 'Journal').length;
+  const cashVoucherCount = journals.filter((j) =>
+    j.lines.some((l) => ['1010', '1020'].includes(l.account?.code || (l as any).accountCode) || l.account?.name?.toLowerCase().includes('cash'))
+  ).length;
+  const bankVoucherCount = journals.filter((j) =>
+    j.lines.some((l) => ['1030', '1040'].includes(l.account?.code || (l as any).accountCode) || l.account?.name?.toLowerCase().includes('bank'))
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -484,6 +520,46 @@ export const Accounts: React.FC = () => {
 
           {/* Filter Bar: Tally Voucher Function Keys & Operational Sources */}
           <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            {/* Liquidity View: Cash-in-Hand vs Bank Accounts */}
+            <div className="flex flex-wrap items-center gap-2 pb-2.5 border-b border-slate-200/60">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
+                <Landmark className="w-3.5 h-3.5 text-slate-500" />
+                <span>Treasury Ledger View:</span>
+              </span>
+              <button
+                onClick={() => setLiquidityFilter('ALL')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                  liquidityFilter === 'ALL'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                All Vouchers ({journals.length})
+              </button>
+              <button
+                onClick={() => setLiquidityFilter('CASH')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                  liquidityFilter === 'CASH'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50'
+                }`}
+              >
+                <span>💵 Cash-in-Hand (1010/1020)</span>
+                <span className="text-[10px] bg-black/20 px-1.5 py-0.2 rounded-full">{cashVoucherCount}</span>
+              </button>
+              <button
+                onClick={() => setLiquidityFilter('BANK')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                  liquidityFilter === 'BANK'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50'
+                }`}
+              >
+                <span>🏛️ Bank Accounts (1030/1040)</span>
+                <span className="text-[10px] bg-black/20 px-1.5 py-0.2 rounded-full">{bankVoucherCount}</span>
+              </button>
+            </div>
+
             {/* Tally Voucher Type Pills */}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
@@ -656,7 +732,12 @@ export const Accounts: React.FC = () => {
                                 {j.entryNumber}
                               </td>
                               <td colSpan={2} className="py-2 px-3 text-slate-600 text-[11px] italic truncate max-w-md">
-                                {j.narration}
+                                <span>{j.narration}</span>
+                                {j.chequeNumber && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 ml-2 not-italic">
+                                    Chq #{j.chequeNumber} {j.chequeBank ? `(${j.chequeBank})` : ''} {j.chequeDate ? `dt ${formatDate(j.chequeDate)}` : ''}
+                                  </span>
+                                )}
                               </td>
                               <td
                                 colSpan={2}
@@ -766,7 +847,14 @@ export const Accounts: React.FC = () => {
                         </span>
                       </div>
 
-                      <p className="text-xs text-slate-700 font-medium">{j.narration}</p>
+                      <p className="text-xs text-slate-700 font-medium">
+                        <span>{j.narration}</span>
+                        {j.chequeNumber && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 ml-2">
+                            Cheque: #{j.chequeNumber} {j.chequeBank ? `(${j.chequeBank})` : ''} {j.chequeDate ? `dt ${formatDate(j.chequeDate)}` : ''}
+                          </span>
+                        )}
+                      </p>
 
                       <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mt-2">
                         <table className="w-full text-left">
@@ -1233,11 +1321,12 @@ export const Accounts: React.FC = () => {
       {/* POST MULTI-LEG MANUAL JOURNAL VOUCHER MODAL                               */}
       {/* ========================================================================= */}
       {showJournalModal && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col my-auto overflow-hidden text-slate-900">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 p-4 sm:p-5 shrink-0 bg-slate-50">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900">
                   Post Manual Journal Voucher [Tally F7 / F4]
                 </h3>
                 <p className="text-[11px] text-slate-500">
@@ -1246,13 +1335,14 @@ export const Accounts: React.FC = () => {
               </div>
               <button
                 onClick={() => setShowJournalModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handlePostJournal} className="mt-4 space-y-4">
+            {/* Scrollable Body Form */}
+            <form onSubmit={handlePostJournal} id="manual-journal-form" className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1278,6 +1368,50 @@ export const Accounts: React.FC = () => {
                     onChange={(e) => setJournalForm({ ...journalForm, narration: e.target.value })}
                     className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Cheque / Bank Instrument Details */}
+              <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80">
+                <span className="text-[11px] font-bold text-amber-900 block mb-2">
+                  Cheque / Bank Instrument Details (Optional)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                      Cheque / Ref No.
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CHQ-882190"
+                      value={journalForm.chequeNumber}
+                      onChange={(e) => setJournalForm({ ...journalForm, chequeNumber: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                      Bank Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. HDFC Bank Ltd."
+                      value={journalForm.chequeBank}
+                      onChange={(e) => setJournalForm({ ...journalForm, chequeBank: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                      Cheque Date
+                    </label>
+                    <input
+                      type="date"
+                      value={journalForm.chequeDate}
+                      onChange={(e) => setJournalForm({ ...journalForm, chequeDate: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1393,23 +1527,25 @@ export const Accounts: React.FC = () => {
                   );
                 })()}
               </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowJournalModal(false)}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-black bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-md transition"
-                >
-                  Post Balanced Voucher
-                </button>
-              </div>
             </form>
+
+            {/* Fixed/Sticky Footer */}
+            <div className="p-4 border-t border-slate-100 flex justify-end space-x-2 shrink-0 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowJournalModal(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="manual-journal-form"
+                className="px-4 py-2 text-xs font-black bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-md transition"
+              >
+                Post Balanced Voucher
+              </button>
+            </div>
           </div>
         </div>
       )}

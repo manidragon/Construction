@@ -17,6 +17,7 @@ import {
   Edit2,
   Trash2,
   Share2,
+  Users,
 } from 'lucide-react';
 import { ReceiptShareModal } from '../components/ReceiptShareModal';
 import { InvoiceShareModal } from '../components/InvoiceShareModal';
@@ -51,9 +52,9 @@ export const Billing: React.FC = () => {
     invoiceDate: '',
     dueDate: '',
     subtotal: '',
-    retentionPercent: '5.0',
-    tdsPercent: '2.0',
-    gstPercent: '18.0',
+    retentionPercent: '0',
+    tdsPercent: '0',
+    gstPercent: '0',
     certificationNotes: '',
     status: 'APPROVED',
   });
@@ -834,9 +835,30 @@ export const Billing: React.FC = () => {
                     <td className="py-3 px-3 font-mono font-bold text-slate-900">{rcp.receiptNumber}</td>
                     <td className="py-3 px-3 text-slate-500">{formatDate(rcp.receiptDate)}</td>
                     <td className="py-3 px-3 text-slate-800">
-                      <strong>{rcp.project?.name}</strong>
+                      <div className="font-bold text-slate-900">{rcp.project?.name || '—'}</div>
+                      {(rcp.client?.name || rcp.invoice?.client?.name) ? (
+                        <div className="text-[11px] text-indigo-600 font-semibold flex items-center gap-1 mt-0.5">
+                          <Users className="w-3 h-3 text-indigo-500 inline shrink-0" />
+                          <span>{rcp.client?.name || rcp.invoice?.client?.name}</span>
+                          {rcp.client?.code && (
+                            <span className="text-[9px] text-slate-400 font-mono">({rcp.client.code})</span>
+                          )}
+                        </div>
+                      ) : rcp.notes && rcp.notes.includes('Buyer:') ? (
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {rcp.notes.split('•')[0]}
+                        </div>
+                      ) : null}
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-700">{rcp.invoice?.invoiceNumber || '—'}</td>
+                    <td className="py-3 px-3 font-mono">
+                      {rcp.invoice?.invoiceNumber ? (
+                        <span className="px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded font-bold text-[11px] shadow-2xs">
+                          {rcp.invoice.invoiceNumber}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3 font-semibold text-slate-600">{rcp.paymentMethod}</td>
                     <td className="py-3 px-3 font-mono text-slate-500">{rcp.referenceNo || '—'}</td>
                     <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-600 text-sm">

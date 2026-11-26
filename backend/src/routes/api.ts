@@ -18,6 +18,7 @@ import {
   createTenant,
   extendTrial,
   updateTenantStatus,
+  updateTenantFeatures,
   getTenantCurrentStatus,
   resetDemoTenantData,
   getSaaSTransactions,
@@ -196,6 +197,23 @@ import {
 } from '../controllers/equipmentController';
 import { getDocuments, createDocument, deleteDocument } from '../controllers/documentController';
 import {
+  getProjectPlots,
+  createPlot,
+  createPlotBatch,
+  updatePlot,
+  deletePlot,
+  bookPlot,
+  recordPlotPayment,
+  completePlotRegistration,
+  uploadPlotDocument,
+  getPlotDocuments,
+  markPlotLapsed,
+  releaseOrReassignPlot,
+  getPlotHistory,
+  getAllPlotsSummary,
+  getAllRealEstatePlots,
+} from '../controllers/plotController';
+import {
   getStaffList,
   createStaff,
   updateStaff,
@@ -222,7 +240,7 @@ import {
   permanentDeleteRecycleBinItem,
   emptyRecycleBin,
 } from '../controllers/recycleBinController';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken, requireRole, requireRealEstateFeature } from '../middleware/auth';
 
 const router = Router();
 
@@ -279,6 +297,7 @@ router.get('/superadmin/tenants', requireRole('SUPER_ADMIN'), getAllTenants);
 router.post('/superadmin/tenants', requireRole('SUPER_ADMIN'), createTenant);
 router.patch('/superadmin/tenants/:id/extend-trial', requireRole('SUPER_ADMIN'), extendTrial);
 router.patch('/superadmin/tenants/:id/status', requireRole('SUPER_ADMIN'), updateTenantStatus);
+router.patch('/superadmin/tenants/:id/features', requireRole('SUPER_ADMIN'), updateTenantFeatures);
 router.post('/superadmin/tenants/:id/reset-demo', requireRole('SUPER_ADMIN'), resetDemoTenantData);
 router.post('/company/reset-demo', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), resetDemoTenantData);
 router.get('/superadmin/saas-transactions', requireRole('SUPER_ADMIN'), getSaaSTransactions);
@@ -327,6 +346,23 @@ router.post('/projects/:projectId/seed-interior-phases', requireRole('OWNER', 'P
 router.post('/projects/:projectId/change-orders', requireRole('OWNER', 'PROJECT_MANAGER'), createChangeOrder);
 router.put('/projects/:projectId/change-orders/:changeOrderId', requireRole('OWNER', 'PROJECT_MANAGER'), updateChangeOrder);
 router.delete('/projects/:projectId/change-orders/:changeOrderId', requireRole('OWNER', 'PROJECT_MANAGER'), deleteChangeOrder);
+
+// Real Estate Land & Plot Layout Inventory (Gated by Tenant realEstateEnabled)
+router.get('/plots/summary', requireRealEstateFeature, getAllPlotsSummary);
+router.get('/plots/all', requireRealEstateFeature, getAllRealEstatePlots);
+router.get('/projects/:projectId/plots', requireRealEstateFeature, getProjectPlots);
+router.post('/projects/:projectId/plots', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER'), createPlot);
+router.post('/projects/:projectId/plots/batch', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER'), createPlotBatch);
+router.put('/projects/:projectId/plots/:id', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER'), updatePlot);
+router.delete('/projects/:projectId/plots/:id', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER'), deletePlot);
+router.post('/projects/:projectId/plots/:id/book', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER'), bookPlot);
+router.post('/projects/:projectId/plots/:id/payment', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER'), recordPlotPayment);
+router.post('/projects/:projectId/plots/:id/register', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER'), completePlotRegistration);
+router.get('/projects/:projectId/plots/:id/documents', requireRealEstateFeature, getPlotDocuments);
+router.post('/projects/:projectId/plots/:id/documents', requireRealEstateFeature, uploadPlotDocument);
+router.post('/projects/:projectId/plots/:id/mark-lapsed', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER', 'ACCOUNTS_MANAGER'), markPlotLapsed);
+router.post('/projects/:projectId/plots/:id/release', requireRealEstateFeature, requireRole('OWNER', 'PROJECT_MANAGER'), releaseOrReassignPlot);
+router.get('/projects/:projectId/plots/:id/history', requireRealEstateFeature, getPlotHistory);
 
 // BOQ & Budgets
 router.get('/boq/:projectId', getBOQByProject);

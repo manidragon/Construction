@@ -31,6 +31,7 @@ export interface Company {
   planType?: 'FREE_TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE';
   subscriptionModel?: string;
   onboardingCompleted?: boolean;
+  realEstateEnabled?: boolean;
   suspendedReason?: string;
   isSuspended?: boolean;
   trialStartDate?: string;
@@ -60,6 +61,7 @@ export interface Tenant {
   name: string;
   companyName: string;
   code: string;
+  ownerName?: string;
   ownerEmail: string;
   adminPassword?: string;
   databasePath?: string;
@@ -70,6 +72,7 @@ export interface Tenant {
   planType: 'FREE_TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE' | string;
   subscriptionModel?: 'TRIAL' | 'LIFETIME' | 'MONTHLY' | 'YEARLY' | string;
   onboardingCompleted?: boolean;
+  realEstateEnabled?: boolean;
   suspendedReason?: string;
   isSuspended?: boolean;
   activeDevicesCount?: number;
@@ -278,15 +281,22 @@ export interface Project {
   advancePaymentConfirmed?: boolean;
   advancePaymentConfirmedBy?: string;
   advancePaymentConfirmedAt?: string;
+  totalLandArea?: number;
+  landAreaUnit?: string;
+  surveyNumber?: string;
+  layoutApprovalNumber?: string;
+  plots?: Plot[];
+  plotBatches?: PlotBatch[];
+  _count?: {
+    tasks?: number;
+    boqItems?: number;
+    dailyReports?: number;
+    clientInvoices?: number;
+    expenses?: number;
+    plots?: number;
+  };
   advancePaymentReference?: string;
   convertedFromLeadId?: string;
-  _count?: {
-    tasks: number;
-    boqItems: number;
-    dailyReports: number;
-    clientInvoices: number;
-    expenses: number;
-  };
 }
 
 export interface ContractChangeOrder {
@@ -843,6 +853,7 @@ export interface ClientReceipt {
     balanceDue?: number;
     subtotal?: number;
     milestoneName?: string;
+    client?: Client;
   };
   receiptDate: string;
   amount: number;
@@ -872,6 +883,9 @@ export interface JournalEntry {
   tallyVoucherType?: 'Payment' | 'Receipt' | 'Sales' | 'Purchase' | 'Contra' | 'Journal';
   tallyShortcut?: 'F5' | 'F6' | 'F8' | 'F9' | 'F4' | 'F7';
   tallyCategory?: string;
+  chequeNumber?: string;
+  chequeBank?: string;
+  chequeDate?: string;
   lines: {
     id: string;
     account: { code: string; name: string; tallyGroup?: string };
@@ -906,6 +920,7 @@ export interface DocumentAttachment {
   fileUrl: string;
   fileSize?: number;
   fileType?: string;
+  description?: string;
   projectId?: string;
   project?: { code: string; name: string };
   createdAt: string;
@@ -1199,6 +1214,10 @@ export interface Lead {
   siteVisitDate?: string;
   siteVisitNotes?: string | null;
   clientBudgetDiscussion?: string | null;
+  interestCategory?: 'CONSTRUCTION' | 'INTERIOR' | 'REAL_ESTATE_PLOT';
+  targetLandProjectId?: string;
+  preferredPlotSize?: number | string;
+  preferredFacing?: string;
   canViewConfidential?: boolean;
   isConfidentialMasked?: boolean;
   convertedProjectId?: string;
@@ -1218,8 +1237,100 @@ export interface Lead {
   updatedAt: string;
 }
 
+
+
+
 // -------------------------------------------------------------
-// MODULE 2: BOQ Quotation Types
+// Real Estate: Land & Plot Layout Extension
+// -------------------------------------------------------------
+
+export interface PlotBookingHistory {
+  id: string;
+  plotId: string;
+  projectId: string;
+  buyerName: string;
+  buyerPhone?: string;
+  buyerEmail?: string;
+  action: 'BOOKED' | 'TOKEN_PAID' | 'TOKEN_LAPSED_NO_SHOW' | 'RELEASED' | 'REASSIGNED' | 'REGISTERED' | 'CANCELLED';
+  tokenAmount: number;
+  totalReceived: number;
+  balanceDue: number;
+  paymentMethod?: string;
+  paymentReference?: string;
+  chequeNumber?: string;
+  chequeBank?: string;
+  notes?: string;
+  actionDate: string;
+  createdById?: string;
+  createdAt: string;
+}
+
+export interface PlotBatch {
+  id: string;
+  projectId: string;
+  groupName: string;
+  numberOfPlots: number;
+  sizeCents: number;
+  sizeSqFt: number;
+  ratePerCent: number;
+  plotPrice: number;
+  facing?: string;
+  prefix?: string;
+  startNumber?: number;
+  notes?: string;
+  createdAt: string;
+  _count?: {
+    plots: number;
+  };
+}
+
+export interface Plot {
+  id: string;
+  tenantId?: string;
+  projectId: string;
+  batchId?: string;
+  batch?: { id: string; groupName: string; sizeCents: number };
+  plotNumber: string;
+  sizeCents: number;
+  sizeSqFt: number;
+  ratePerCent?: number;
+  price: number;
+  facing?: string;
+  dimensions?: string;
+  notes?: string;
+  status: 'AVAILABLE' | 'BOOKED' | 'TOKEN_PAID' | 'REGISTERED' | 'TOKEN_LAPSED_NO_SHOW' | 'BLOCKED';
+  paymentType?: 'TOKEN_ADVANCE' | 'ADVANCE_PAYMENT' | 'FULL_PAYMENT';
+  clientId?: string;
+  client?: { id: string; code: string; name: string; phone: string; email?: string; billingAddress?: string };
+  buyerName?: string;
+  buyerPhone?: string;
+  buyerEmail?: string;
+  buyerAadhaar?: string;
+  buyerAddress?: string;
+  tokenAmount: number;
+  totalReceived: number;
+  balanceDue: number;
+  bookingDate?: string;
+  tokenDate?: string;
+  tokenLapsedDate?: string;
+  lapsedReason?: string;
+  registrationDate?: string;
+  subRegistrarOffice?: string;
+  deedNumber?: string;
+  registrationDocUrl?: string;
+  registrationNotes?: string;
+  paymentMethod?: string;
+  paymentReference?: string;
+  chequeNumber?: string;
+  chequeBank?: string;
+  chequeDate?: string;
+  receiptAttachmentUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+  bookingHistory?: PlotBookingHistory[];
+  documents?: any[];
+  project?: any;
+}
 // -------------------------------------------------------------
 
 export interface QuotationItem {
@@ -1270,5 +1381,8 @@ export interface Quotation {
   createdAt: string;
   updatedAt: string;
 }
+
+
+
 
 
