@@ -21,6 +21,7 @@ import {
   updateTenantFeatures,
   getTenantCurrentStatus,
   resetDemoTenantData,
+  cleanLiveDatabase,
   getSaaSTransactions,
   recordSaaSTransaction,
   getSupportTickets,
@@ -299,6 +300,7 @@ router.patch('/superadmin/tenants/:id/extend-trial', requireRole('SUPER_ADMIN'),
 router.patch('/superadmin/tenants/:id/status', requireRole('SUPER_ADMIN'), updateTenantStatus);
 router.patch('/superadmin/tenants/:id/features', requireRole('SUPER_ADMIN'), updateTenantFeatures);
 router.post('/superadmin/tenants/:id/reset-demo', requireRole('SUPER_ADMIN'), resetDemoTenantData);
+router.post('/superadmin/clean-database', requireRole('SUPER_ADMIN'), cleanLiveDatabase);
 router.post('/company/reset-demo', requireRole('SUPER_ADMIN', 'TENANT_ADMIN', 'OWNER'), resetDemoTenantData);
 router.get('/superadmin/saas-transactions', requireRole('SUPER_ADMIN'), getSaaSTransactions);
 router.post('/superadmin/saas-transactions', requireRole('SUPER_ADMIN'), recordSaaSTransaction);

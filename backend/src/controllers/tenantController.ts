@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import { logAudit } from '../middleware/auth';
 import { provisionTenantDatabase, getTenantDbSize, getTenantPrisma } from '../utils/tenantDb';
+import { clearOperationalDataKeepTenants } from '../utils/databaseCleanup';
 
 async function ensureDemoTenantsExist() {
   try {
@@ -1438,6 +1439,42 @@ export const completeCompanyOnboarding = async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     console.error('Error completing onboarding:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/superadmin/clean-database
+ * Wipe all operational/project/CRM/financial data across the database while preserving all Tenants & Users
+ */
+export const cleanLiveDatabase = async (req: Request, res: Response) => {
+  try {
+    const confirmText = String(req.body?.confirmText || '').trim();
+    if (confirmText !== 'CLEAR ALL DATA') {
+      return res.status(400).json({
+        success: false,
+        message: 'Confirmation failed. You must enter "CLEAR ALL DATA" to wipe operational data.',
+      });
+    }
+
+    const summary = await clearOperationalDataKeepTenants();
+
+    await logAudit(
+      req.user?.id,
+      'CLEAN_LIVE_DATABASE',
+      'SYSTEM',
+      'ALL_OPERATIONAL_DATA',
+      summary,
+      req.ip
+    );
+
+    return res.json({
+      success: true,
+      message: `Live database cleaned! Removed ${summary.totalDeletedRows} operational records while preserving ${summary.preserved.companies} tenants and ${summary.preserved.users} user logins.`,
+      summary,
+    });
+  } catch (error: any) {
+    console.error('Error cleaning live database:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

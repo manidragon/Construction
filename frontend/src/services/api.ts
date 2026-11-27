@@ -364,6 +364,8 @@ class ApiService {
     this.request<any>(`/superadmin/tenants/${id}/features`, { method: 'PATCH', body: JSON.stringify(data) });
   resetDemoTenant = (id: string) =>
     this.request<any>(`/superadmin/tenants/${id}/reset-demo`, { method: 'POST' });
+  cleanLiveDatabase = (confirmText: string) =>
+    this.request<any>('/superadmin/clean-database', { method: 'POST', body: JSON.stringify({ confirmText }) });
   resetMyDemoCompany = () =>
     this.request<any>('/company/reset-demo', { method: 'POST' });
   getTenantCurrentStatus = () => this.request<any>('/company/current-status');

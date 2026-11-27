@@ -116,6 +116,11 @@ export const SuperAdmin: React.FC = () => {
   const [resetDemoModalTenant, setResetDemoModalTenant] = useState<Tenant | null>(null);
   const [submittingResetDemo, setSubmittingResetDemo] = useState(false);
 
+  // Clean Live Database (Keep Tenants) Modal state
+  const [isCleanDbModalOpen, setIsCleanDbModalOpen] = useState(false);
+  const [cleanDbConfirmText, setCleanDbConfirmText] = useState('');
+  const [submittingCleanDb, setSubmittingCleanDb] = useState(false);
+
   // SaaS Inflow / Transaction Record Modal state
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
@@ -314,6 +319,30 @@ export const SuperAdmin: React.FC = () => {
       alert(err.message || 'Error resetting demo data.');
     } finally {
       setSubmittingResetDemo(false);
+    }
+  };
+
+  const handleCleanDatabaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cleanDbConfirmText.trim() !== 'CLEAR ALL DATA') {
+      alert('Please type CLEAR ALL DATA exactly to confirm.');
+      return;
+    }
+    try {
+      setSubmittingCleanDb(true);
+      const res = await api.cleanLiveDatabase(cleanDbConfirmText.trim());
+      if (res.success) {
+        setIsCleanDbModalOpen(false);
+        setCleanDbConfirmText('');
+        alert(res.message || 'Database cleaned successfully while preserving all tenants!');
+        fetchData();
+      } else {
+        alert(res.message || 'Failed to clean database.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error cleaning database.');
+    } finally {
+      setSubmittingCleanDb(false);
     }
   };
 
@@ -532,6 +561,17 @@ export const SuperAdmin: React.FC = () => {
           >
             <Receipt className="w-4 h-4" />
             <span>Record SaaS Inflow</span>
+          </button>
+          <button
+            onClick={() => {
+              setCleanDbConfirmText('');
+              setIsCleanDbModalOpen(true);
+            }}
+            className="bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-semibold px-3.5 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm"
+            title="Delete all projects, plots, leads, billing, and operational data while keeping all Tenants & Users"
+          >
+            <Database className="w-4 h-4 text-rose-400" />
+            <span>Clean Live DB</span>
           </button>
           <button
             onClick={() => {
@@ -1947,6 +1987,78 @@ export const SuperAdmin: React.FC = () => {
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: CLEAN LIVE DATABASE (KEEP TENANTS & USERS) */}
+      {/* ========================================================================= */}
+      {isCleanDbModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-rose-500/40 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <div className="flex items-center gap-2 text-rose-400">
+                <Database className="w-5 h-5" />
+                <h3 className="font-bold text-white text-base">Clean Live Database (Keep Tenants)</h3>
+              </div>
+              <button
+                onClick={() => setIsCleanDbModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCleanDatabaseSubmit} className="space-y-4 text-xs">
+              <div className="p-3 bg-rose-950/50 border border-rose-800/70 rounded-xl text-rose-200 space-y-1.5">
+                <p className="font-bold text-rose-300 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" /> Permanently deletes all operational records:
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  Projects, Plots &amp; Batches, Leads, Quotations, BOQ, Tasks, DPRs, Materials, Inventory, Suppliers, Purchase Orders, Labour &amp; Attendance, Clients, Invoices, Receipts, Expenses, Petty Cash, Journal Entries, Office Staff, Documents, Recycle Bin, and Logs.
+                </p>
+              </div>
+
+              <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-emerald-200 space-y-1">
+                <p className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" /> Preserved 100% intact:
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  All <strong>Tenants (Companies)</strong>, <strong>User Logins &amp; Passwords</strong>, <strong>Real Estate CRM feature flags</strong>, SaaS Ledger transactions, Support Tickets, and Dropdown options (Chart of Accounts balances reset to ₹0).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Type <span className="font-mono text-rose-400 font-bold">CLEAR ALL DATA</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={cleanDbConfirmText}
+                  onChange={(e) => setCleanDbConfirmText(e.target.value)}
+                  placeholder="CLEAR ALL DATA"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCleanDbModalOpen(false)}
+                  className="px-4 py-2 border border-slate-700 rounded-xl text-slate-300 hover:bg-slate-800 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingCleanDb || cleanDbConfirmText.trim() !== 'CLEAR ALL DATA'}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold rounded-xl transition"
+                >
+                  {submittingCleanDb ? 'Cleaning...' : 'Clean Database Now'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
